@@ -4,6 +4,8 @@
  */
 const it = {
   common: {
+    retry: "Riprova",
+    loading: "Caricamento…",
     all: "Tutti",
     back: "Indietro",
     cancel: "Annulla",

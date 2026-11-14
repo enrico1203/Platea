@@ -3,6 +3,8 @@ import type { Messages } from "./index";
 
 const en = {
   common: {
+    retry: "Retry",
+    loading: "Loading…",
     all: "All",
     back: "Back",
     cancel: "Cancel",

@@ -69,7 +69,7 @@ function LibraryDialog({ lib, onClose }: { lib: Library | null; onClose: () => v
 export default function Libraries() {
   const { t, relative, num } = useI18n();
   const qc = useQueryClient();
-  const { data } = useQuery({ queryKey: ["libraries", "admin"], queryFn: () => api<Page<Library>>("/api/v1/libraries").then((r) => r.items) });
+  const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ["libraries", "admin"], queryFn: () => api<Page<Library>>("/api/v1/libraries").then((r) => r.items) });
   const [edit, setEdit] = useState<Library | null | "new">(null);
   const [del, setDel] = useState<Library | null>(null);
   const [confirmMissing, setConfirmMissing] = useState<Library | null>(null);
@@ -82,6 +82,13 @@ export default function Libraries() {
           <button className="pl-btn pl-btn--primary" onClick={() => setEdit("new")}><Plus />{t("admin.libraries.add")}</button>
         </div>
       </div>
+      {isLoading && <div className="t-small subtle" role="status">{t("common.loading")}</div>}
+      {isError && (
+        <Alert tone="danger">
+          {(error as ApiError)?.message || t("errors.network")}{" "}
+          <button className="pl-btn pl-btn--ghost" onClick={() => refetch()}>{t("common.retry")}</button>
+        </Alert>
+      )}
       {data?.length === 0 && <Empty>{t("home.emptyAdmin")}</Empty>}
       <div className="stack">
         {data?.map((l) => (
