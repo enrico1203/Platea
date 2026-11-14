@@ -21,6 +21,8 @@ pub fn routes(api: Api) -> Api {
         .get("/api/v1/items/{id}", "Libreria", Access::User, "Dettaglio di un elemento con file, tracce, persone", detail)
         .get("/api/v1/items/{id}/children", "Libreria", Access::User, "Stagioni di una serie o episodi di una stagione", children)
         .get("/api/v1/items/{id}/next", "Libreria", Access::User, "Episodio successivo", next_episode)
+        .get("/api/v1/items/{id}/similar", "Libreria", Access::User, "Titoli simili: stesso tipo, generi in comune, poi voto", similar)
+        .get("/api/v1/people/{id}", "Libreria", Access::User, "Una persona con i titoli della libreria in cui compare", person)
         .get("/api/v1/home", "Libreria", Access::User, "Continua a guardare, prossimi episodi, aggiunti di recente", home)
         .get("/api/v1/search", "Libreria", Access::User, "Ricerca per titolo", search)
         .get("/api/v1/genres", "Libreria", Access::User, "Generi presenti in una libreria", genres)
@@ -396,8 +398,8 @@ async fn detail(State(state): State<Shared>, user: AuthUser, Path(id): Path<Stri
         .bind(iid)
         .fetch_all(&state.db.read)
         .await?;
-    let people: Vec<(String, String, Option<String>, Option<i64>)> = sqlx::query_as(
-        "SELECT p.name, ip.role, ip.character, (SELECT id FROM images im WHERE im.person_id = p.id AND im.kind = 'profile')
+    let people: Vec<(i64, String, String, Option<String>, Option<i64>)> = sqlx::query_as(
+        "SELECT p.id, p.name, ip.role, ip.character, (SELECT id FROM images im WHERE im.person_id = p.id AND im.kind = 'profile')
          FROM item_people ip JOIN people p ON p.id = ip.person_id WHERE ip.item_id = ? ORDER BY ip.sort_order LIMIT 40",
     )
     .bind(row.series_id.filter(|_| row.kind == "season" || row.kind == "episode").unwrap_or(iid))
@@ -414,7 +416,10 @@ async fn detail(State(state): State<Shared>, user: AuthUser, Path(id): Path<Stri
     o.insert("studios".into(), json!(studios));
     o.insert(
         "people".into(),
-        json!(people.iter().map(|(n, r, c, img)| json!({ "name": n, "role": r, "character": c, "image": image_url(&state, *img) })).collect::<Vec<_>>()),
+        json!(people
+            .iter()
+            .map(|(id, n, r, c, img)| json!({ "id": state.ids.encode(*id), "name": n, "role": r, "character": c, "image": image_url(&state, *img) }))
+            .collect::<Vec<_>>()),
     );
     o.insert("external_ids".into(), json!(ext.into_iter().collect::<std::collections::HashMap<_, _>>()));
     o["images"]["logo"] = json!(image_url(&state, logo));
@@ -451,6 +456,66 @@ async fn children(State(state): State<Shared>, user: AuthUser, Path(id): Path<St
     };
     let rows: Vec<ItemRow> = sqlx::query_as(&sql).bind(user.user_id).bind(iid).fetch_all(&state.db.read).await?;
     Ok(Json(json!({ "items": rows.iter().map(|r| item_json(&state, r)).collect::<Vec<_>>() })))
+}
+
+/// Titoli simili: stesso tipo (film o serie), ordinati per generi in comune, poi per voto.
+/// Gli altri film della stessa collezione vengono prima: chi guarda il terzo capitolo cerca gli altri.
+async fn similar(State(state): State<Shared>, user: AuthUser, Path(id): Path<String>) -> ApiResult<Json<Value>> {
+    let iid = decode(&state, &id)?;
+    let row = load_item(&state, &user, iid).await?;
+    let base = match row.kind.as_str() {
+        "movie" | "series" => iid,
+        "season" | "episode" => row.series_id.unwrap_or(iid),
+        _ => return Ok(Json(json!({ "items": [] }))),
+    };
+    let kind = if row.kind == "movie" { "movie" } else { "series" };
+    let sql = format!(
+        "{ITEM_SELECT} JOIN (
+            SELECT ig.item_id AS sid, COUNT(*) AS shared FROM item_genres ig
+            WHERE ig.genre_id IN (SELECT genre_id FROM item_genres WHERE item_id = ?2) AND ig.item_id <> ?2
+            GROUP BY ig.item_id
+         ) g ON g.sid = i.id
+         WHERE i.kind = '{kind}' AND i.available = 1 {}
+         ORDER BY EXISTS (SELECT 1 FROM collection_members a JOIN collection_members b ON a.collection_id = b.collection_id WHERE a.item_id = ?2 AND b.item_id = i.id) DESC,
+                  g.shared DESC, COALESCE(i.community_rating, 0) DESC
+         LIMIT 16",
+        user.library_filter("i.library_id")
+    );
+    let rows: Vec<ItemRow> = sqlx::query_as(&sql).bind(user.user_id).bind(base).fetch_all(&state.db.read).await?;
+    Ok(Json(json!({ "items": rows.iter().map(|r| item_json(&state, r)).collect::<Vec<_>>() })))
+}
+
+/// Una persona: foto, ruoli e i titoli della libreria (visibili all'utente) in cui compare, dal più recente.
+async fn person(State(state): State<Shared>, user: AuthUser, Path(id): Path<String>) -> ApiResult<Json<Value>> {
+    let pid = state.ids.decode(&id).ok_or_else(|| ApiError::not_found("Persona"))?;
+    let p: Option<(String, Option<i64>)> = sqlx::query_as("SELECT name, tmdb_id FROM people WHERE id = ?").bind(pid).fetch_optional(&state.db.read).await?;
+    let (name, tmdb) = p.ok_or_else(|| ApiError::not_found("Persona"))?;
+    let image: Option<i64> =
+        sqlx::query_scalar("SELECT id FROM images WHERE person_id = ? AND kind = 'profile'").bind(pid).fetch_optional(&state.db.read).await?;
+    let sql = format!(
+        "{ITEM_SELECT} WHERE i.id IN (SELECT item_id FROM item_people WHERE person_id = ?2) AND i.kind IN ('movie','series') {}
+         ORDER BY COALESCE(i.year, 0) DESC, i.sort_title LIMIT 500",
+        user.library_filter("i.library_id")
+    );
+    let rows: Vec<ItemRow> = sqlx::query_as(&sql).bind(user.user_id).bind(pid).fetch_all(&state.db.read).await?;
+    let roles: Vec<(i64, String, Option<String>)> =
+        sqlx::query_as("SELECT item_id, role, character FROM item_people WHERE person_id = ?").bind(pid).fetch_all(&state.db.read).await?;
+    let items: Vec<Value> = rows
+        .iter()
+        .map(|r| {
+            let mut v = item_json(&state, r);
+            let mine: Vec<&(i64, String, Option<String>)> = roles.iter().filter(|x| x.0 == r.id).collect();
+            v["roles"] = json!(mine.iter().map(|x| json!({ "role": x.1, "character": x.2 })).collect::<Vec<_>>());
+            v
+        })
+        .collect();
+    Ok(Json(json!({
+        "id": id,
+        "name": name,
+        "image": image_url(&state, image),
+        "tmdb_id": tmdb,
+        "items": items,
+    })))
 }
 
 /// Episodio successivo nell'ordine stagione/episodio (speciali esclusi).

@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { Item, Library as Lib, Page } from "../api/types";
-import { PosterCard } from "../components/PosterCard";
+import { PosterCard, PosterSkeleton } from "../components/PosterCard";
 import { Empty, SelectField } from "../components/ui";
 import { useI18n } from "../i18n";
 
@@ -70,7 +70,10 @@ export default function Library() {
       {q.isSuccess && items.length === 0 ? (
         <Empty>{t("library.empty")}</Empty>
       ) : (
-        <div className="poster-grid">{items.map((i) => <PosterCard key={i.id} item={i} />)}</div>
+        <div className="poster-grid">
+          {items.map((i) => <PosterCard key={i.id} item={i} />)}
+          {(q.isLoading || q.isFetchingNextPage) && <PosterSkeleton count={q.isLoading ? 18 : 6} />}
+        </div>
       )}
       <div ref={sentinel} style={{ height: 1 }} />
     </div>

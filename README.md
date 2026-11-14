@@ -12,6 +12,7 @@ Platea serve il file originale quando il client lo regge, fa remux o transcodifi
 - **Nessuna licenza, nessun limite.** Utenti, dispositivi, stream e funzioni illimitati, transcodifica hardware inclusa.
 - **Collezioni automatiche.** Le saghe (James Bond, Harry Potter…) si formano da sole dagli NFO e da TMDB.
 - **Limite per età.** Per ogni utente una classificazione massima: le sigle di ogni paese (T, VM14, PG-13, TV-MA…) diventano età, e i titoli oltre il limite spariscono ovunque, Infuse compreso.
+- **Ogni utente a modo suo.** Lingua dell'audio e dei sottotitoli, episodio successivo automatico, home su misura, immagine del profilo; per l'amministratore download consentito o no, fasce orarie, profili per bambini.
 - **Account con scadenza.** Dopo la data scelta l'utente continua a sfogliare la libreria ma non riproduce né scarica.
 - **Tutto dalla dashboard.** Nessun file di configurazione da modificare dopo il primo avvio.
 

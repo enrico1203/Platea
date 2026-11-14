@@ -74,6 +74,13 @@ const it = {
     doneHelp: "La scansione è partita. La home si riempie mentre arrivano i metadati.",
     open: "Apri Platea",
   },
+  hero: {
+    resume: "Stavi guardando",
+    left: "mancano {time}",
+    added: "Aggiunto il {date}",
+    resumeAction: "Riprendi",
+    details: "Dettagli",
+  },
   home: {
     resume: "Continua a guardare",
     nextUp: "Prossimi episodi",
@@ -124,6 +131,11 @@ const it = {
     addTo: "Aggiungi a playlist",
     added: { one: "Aggiunta {count} voce a «{name}».", other: "Aggiunte {count} voci a «{name}»." },
   },
+  person: {
+    as: "nel ruolo di {character}",
+    inLibrary: { one: "{count} titolo in libreria", other: "{count} titoli in libreria" },
+    none: "Nessun titolo di questa persona nelle librerie che puoi vedere.",
+  },
   search: {
     label: "Cerca",
     placeholder: "Titolo di un film o di una serie",
@@ -160,6 +172,7 @@ const it = {
     needsReview: "Associazione incerta: verifica che sia la scheda giusta.",
     technical: "Dettagli tecnici",
     download: "Scarica il file originale",
+    similar: "Titoli simili",
     downloadStarted: "Download di «{name}» avviato.",
     version: "Versione",
     file: "File",
@@ -208,6 +221,9 @@ const it = {
     },
   },
   account: {
+    revokeOthers: "Scollega tutti gli altri",
+    revokedOthers: { one: "{count} dispositivo scollegato.", other: "{count} dispositivi scollegati." },
+    showAllDevices: "Mostra tutti ({count})",
     appearance: "Lingua e aspetto",
     playback: "Riproduzione",
     audioLanguage: "Lingua dell'audio",

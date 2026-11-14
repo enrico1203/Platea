@@ -20,7 +20,7 @@ export interface VideoStream { index: number; codec: string; profile: string | n
 export interface AudioStream { index: number; codec: string; channels: number | null; channel_layout: string | null; bitrate: number | null; language: string | null; title: string | null; default: boolean }
 export interface SubtitleStream { index: number; codec: string; language: string | null; title: string | null; default: boolean; forced: boolean; external: boolean; image: boolean }
 export interface MediaFile { id: string; name: string; version_label: string | null; container: string | null; size: number; duration_ms: number | null; bitrate: number | null; state: string; probe_state: string; probe_error: string | null; video: VideoStream[]; audio: AudioStream[]; subtitles: SubtitleStream[] }
-export interface Person { name: string; role: string; character: string | null; image: string | null }
+export interface Person { id: string; name: string; role: string; character: string | null; image: string | null }
 export interface ItemDetail extends Item { tagline: string | null; genres: string[]; studios: string[]; people: Person[]; external_ids: Record<string, string>; files?: MediaFile[]; locked_fields?: string[]; collections?: { id: string; title: string }[] }
 export interface Page<T> { items: T[]; next_cursor?: string | null }
 export interface Library {
@@ -68,3 +68,4 @@ export interface UserPrefs {
   subtitle_size: "s" | "m" | "l" | "xl"; subtitle_background: boolean;
   home_sections: string[]; home_hidden_libraries: string[]; hide_played_in_recent: boolean; theme: string;
 }
+export interface PersonDetail { id: string; name: string; image: string | null; tmdb_id: number | null; items: (Item & { roles: { role: string; character: string | null }[] })[] }

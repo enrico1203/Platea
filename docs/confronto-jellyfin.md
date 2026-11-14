@@ -15,13 +15,13 @@ La colonna **Priorità** indica l'ordine di lavoro: **A** subito, **B** dopo, **
 | Sessioni contemporanee massime | ✅ | ✅ | — |
 | Accesso da remoto | ✅ | ✅ | — |
 | Classificazione massima | ✅ | ✅ (sigle di ogni paese convertite in età) | — |
-| Bloccare i titoli senza classificazione | ✅ | ❌ | A |
-| **Download del file originale** | ✅ (EnableContentDownloading) | ❌ | **A** |
+| Bloccare i titoli senza classificazione | ✅ | ✅ | — |
+| **Download del file originale** | ✅ (EnableContentDownloading) | ✅ (link firmato riprendibile, anche Infuse) | — |
 | Scadenza dell'account | ❌ | ✅ (solo Platea) | — |
-| Fasce orarie di accesso (AccessSchedules) | ✅ | ❌ | A |
+| Fasce orarie di accesso (AccessSchedules) | ✅ | ✅ | — |
 | Tag consentiti / bloccati | ✅ | ❌ | C |
 | Blocco dopo N tentativi di accesso falliti | ✅ | 🟡 (rallentamento, non blocco) | B |
-| Gestione dei propri dispositivi | ✅ | ✅ | — |
+| Gestione dei propri dispositivi | ✅ | ✅ (anche "scollega tutti gli altri") | — |
 | Cancellare contenuti dal disco | ✅ | ➖ (Platea non scrive mai nelle cartelle dei media) | — |
 | Gestire collezioni e sottotitoli | ✅ | ❌ | C |
 | Controllo remoto di altre sessioni | ✅ | ❌ | C |
@@ -32,16 +32,16 @@ La colonna **Priorità** indica l'ordine di lavoro: **A** subito, **B** dopo, **
 | Funzione | Jellyfin | Platea | Priorità |
 | --- | --- | --- | --- |
 | Lingua dell'interfaccia | ✅ | ✅ (it, en) | — |
-| **Lingua audio preferita** | ✅ | ❌ | **A** |
-| **Lingua e modalità dei sottotitoli** (predefiniti, sempre, solo forzati, nessuno, intelligente) | ✅ | ❌ | **A** |
-| Ricordare le tracce scelte | ✅ | 🟡 (qualità sì, tracce no) | A |
-| **Episodio successivo automatico** (con conto alla rovescia) | ✅ | 🟡 (sempre attivo, senza conto alla rovescia) | **A** |
-| Salto avanti/indietro configurabile | ✅ | ❌ (fisso) | A |
-| Aspetto dei sottotitoli (dimensione, sfondo) | ✅ | ❌ | A |
-| **Sezioni della home** (ordine, visibilità) e librerie nascoste dalla home | ✅ | ❌ | **A** |
-| Nascondere i già visti tra gli "aggiunti di recente" | ✅ | ❌ | A |
-| Immagine del profilo | ✅ | ❌ | A |
-| Tema chiaro/scuro | ✅ | 🟡 (segue il sistema) | B |
+| **Lingua audio preferita** | ✅ | ✅ | — |
+| **Lingua e modalità dei sottotitoli** (predefiniti, sempre, solo forzati, nessuno, intelligente) | ✅ | ✅ (sottotitoli di testo) | — |
+| Ricordare le tracce scelte | ✅ | 🟡 (lingue preferite sì, scelta per serie no) | B |
+| **Episodio successivo automatico** (con conto alla rovescia) | ✅ | ✅ (anche nelle playlist) | — |
+| Salto avanti/indietro configurabile | ✅ | ✅ | — |
+| Aspetto dei sottotitoli (dimensione, sfondo) | ✅ | ✅ | — |
+| **Sezioni della home** (ordine, visibilità) e librerie nascoste dalla home | ✅ | ✅ | — |
+| Nascondere i già visti tra gli "aggiunti di recente" | ✅ | ✅ | — |
+| Immagine del profilo | ✅ | ✅ | — |
+| Tema chiaro/scuro | ✅ | ✅ | — |
 | Qualità massima predefinita | ✅ | 🟡 (ricordata nel browser, non nel profilo) | B |
 | Cambio password | ✅ | ✅ | — |
 
@@ -53,8 +53,8 @@ La colonna **Priorità** indica l'ordine di lavoro: **A** subito, **B** dopo, **
 | Preferiti, visto/non visto, intere serie | ✅ | ✅ | — |
 | Filtri per genere, lettera, visti, preferiti | ✅ | ✅ | — |
 | Filtri per anno, risoluzione (4K), HDR | ✅ | ❌ | B |
-| **Pagina della persona** (filmografia) | ✅ | ❌ (cast non cliccabile) | **A** |
-| **Titoli simili** | ✅ | ❌ | **A** |
+| **Pagina della persona** (filmografia) | ✅ | ✅ | — |
+| **Titoli simili** | ✅ | ✅ (la saga per prima) | — |
 | Pagine per genere e studio | ✅ | 🟡 (filtro per genere) | B |
 | Collezioni | ✅ (manuali) | ✅ (automatiche da NFO e TMDB) | — |
 | Playlist | ✅ | ✅ | — |
@@ -94,6 +94,10 @@ La colonna **Priorità** indica l'ordine di lavoro: **A** subito, **B** dopo, **
 | Messaggio o avviso sulla pagina di accesso, CSS personalizzato | ✅ | ❌ | C |
 | Webhook e notifiche esterne | 🟡 (plugin) | ❌ | C |
 | TV in diretta, DVR, musica, libri, foto | ✅ | ➖ (fase 7) | — |
+
+## Stato della priorità A (14 novembre 2026)
+
+Fatta: tutte le voci qui sotto, salvo dove indicato.
 
 ## Cosa fare subito (priorità A)
 

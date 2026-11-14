@@ -19,6 +19,7 @@ pub fn routes(api: Api) -> Api {
         .post("/api/v1/me/password", "Accesso", Access::User, "Cambia la propria password", change_password)
         .get("/api/v1/me/devices", "Accesso", Access::User, "Dispositivi collegati al proprio account", my_devices)
         .delete("/api/v1/me/devices/{id}", "Accesso", Access::User, "Scollega un proprio dispositivo", revoke_my_device)
+        .post("/api/v1/me/devices/revoke-others", "Accesso", Access::User, "Scollega tutti i dispositivi tranne questo", revoke_other_devices)
         .get("/api/v1/me/preferences", "Accesso", Access::User, "Preferenze dell'utente: lingue, sottotitoli, player, home, tema", get_prefs)
         .put("/api/v1/me/preferences", "Accesso", Access::User, "Salva le preferenze (i campi mancanti tornano ai valori predefiniti)", put_prefs)
         .post("/api/v1/me/avatar", "Accesso", Access::User, "Carica l'immagine del profilo (JPEG, PNG o WebP; ritagliata a 256×256)", put_avatar)
@@ -141,7 +142,14 @@ async fn me(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<Value
 }
 
 pub async fn avatar_url(state: &Shared, user_id: i64) -> Option<String> {
-    let v: Option<i64> = sqlx::query_scalar("SELECT avatar_version FROM users WHERE id = ?").bind(user_id).fetch_optional(&state.db.read).await.ok().flatten();
+    // Colonna nullable: senza Option interno, NULL diventerebbe 0 e ogni utente avrebbe un'immagine inesistente.
+    let v: Option<i64> = sqlx::query_scalar::<_, Option<i64>>("SELECT avatar_version FROM users WHERE id = ?")
+        .bind(user_id)
+        .fetch_optional(&state.db.read)
+        .await
+        .ok()
+        .flatten()
+        .flatten();
     v.map(|v| format!("/api/v1/users/{}/avatar?v={v}", state.ids.encode(user_id)))
 }
 
@@ -253,6 +261,17 @@ pub async fn devices_of(state: &Shared, user_id: i64, current_token: Option<i64>
 
 async fn my_devices(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<Value>> {
     Ok(Json(json!({ "items": devices_of(&state, user.user_id, Some(user.token_id)).await? })))
+}
+
+async fn revoke_other_devices(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<Value>> {
+    if !user.perms.manage_devices && !user.is_admin {
+        return Err(ApiError::Forbidden("L'amministratore non consente di gestire i dispositivi".into()));
+    }
+    let n =
+        sqlx::query("DELETE FROM tokens WHERE user_id = ? AND id <> ?").bind(user.user_id).bind(user.token_id).execute(&state.db.write).await?.rows_affected();
+    state.token_cache.clear();
+    state.db.activity(Some(user.user_id), "devices", &format!("{} ha scollegato {n} dispositivi", user.username), None).await;
+    Ok(Json(json!({ "revoked": n })))
 }
 
 async fn revoke_my_device(State(state): State<Shared>, user: AuthUser, Path(id): Path<String>) -> ApiResult<Json<Value>> {

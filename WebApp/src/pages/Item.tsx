@@ -115,6 +115,8 @@ export default function ItemPage() {
   const { data: seasons } = useQuery({ queryKey: ["items", "children", seriesId], queryFn: () => api<Page<ItemT>>(`/api/v1/items/${seriesId}/children`).then((r) => r.items), enabled: !!seriesId });
   const currentSeason = season ?? (item?.kind === "season" ? item.id : seasons?.find((s) => (s.unplayed_count ?? 0) > 0 && (s.index_number ?? 0) > 0)?.id ?? seasons?.[0]?.id ?? null);
   const { data: episodes } = useQuery({ queryKey: ["items", "children", currentSeason], queryFn: () => api<Page<ItemT>>(`/api/v1/items/${currentSeason}/children`).then((r) => r.items), enabled: !!currentSeason });
+  const similarFor = item && (item.kind === "movie" || item.kind === "series") ? item.id : null;
+  const { data: similar } = useQuery({ queryKey: ["items", "similar", similarFor], queryFn: () => api<Page<ItemT>>(`/api/v1/items/${similarFor}/similar`).then((r) => r.items), enabled: !!similarFor });
   const { data: members } = useQuery({ queryKey: ["items", "children", id, "members"], queryFn: () => api<Page<ItemT>>(`/api/v1/items/${id}/children`).then((r) => r.items), enabled: item?.kind === "collection" });
   useEffect(() => { setSeason(null); setFileIdx(0); }, [id]);
 
@@ -258,13 +260,20 @@ export default function ItemPage() {
             <h2 className="t-h3">{t("item.cast")}</h2>
             <div className="people">
               {item.people.map((p, i) => (
-                <div className="person" key={`${p.name}-${p.role}-${i}`}>
+                <Link className="person" key={`${p.name}-${p.role}-${i}`} to={`/person/${p.id}`}>
                   <div className="person__img">{p.image && <img src={imageUrl(p.image, 185)} alt="" loading="lazy" />}</div>
                   <div className="t-small">{p.name}</div>
                   <div className="t-small subtle" style={{ marginTop: -6 }}>{p.role === "actor" ? p.character : t(`item.role.${p.role}` as "item.role.director")}</div>
-                </div>
+                </Link>
               ))}
             </div>
+          </section>
+        )}
+
+        {similar && similar.length > 0 && (
+          <section className="stack">
+            <h2 className="t-h3">{t("item.similar")}</h2>
+            <div className="poster-row">{similar.map((s) => <PosterCard key={s.id} item={s} />)}</div>
           </section>
         )}
 

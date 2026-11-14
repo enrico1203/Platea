@@ -20,6 +20,7 @@ export default function Account() {
   const [prefs, setPrefs] = useState<UserPrefs>({ ...DEFAULT_PREFS, ...me?.preferences });
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
+  const [allDevices, setAllDevices] = useState(false);
   const [msg, setMsg] = useState<{ tone: "danger" | "success"; text: string } | null>(null);
   const file = useRef<HTMLInputElement>(null);
   const { data: devices } = useQuery({ queryKey: ["me", "devices"], queryFn: () => api<{ items: Device[] }>("/api/v1/me/devices").then((r) => r.items) });
@@ -106,8 +107,8 @@ export default function Account() {
               <div className="list-row" key={s}>
                 <div className="spacer"><Switch checked={on} onChange={(v) => update({ home_sections: v ? [...prefs.home_sections, s] : prefs.home_sections.filter((x) => x !== s) })} label={t(`account.sections.${s}` as "account.sections.resume")} /></div>
                 {on && <>
-                  <button className="icon-btn" onClick={() => moveSection(s, -1)} aria-label={t("playlist.up")}><ArrowUp /></button>
-                  <button className="icon-btn" onClick={() => moveSection(s, 1)} aria-label={t("playlist.down")}><ArrowDown /></button>
+                  <button className="icon-btn" disabled={prefs.home_sections.indexOf(s) === 0} onClick={() => moveSection(s, -1)} aria-label={t("playlist.up")}><ArrowUp /></button>
+                  <button className="icon-btn" disabled={prefs.home_sections.indexOf(s) === prefs.home_sections.length - 1} onClick={() => moveSection(s, 1)} aria-label={t("playlist.down")}><ArrowDown /></button>
                 </>}
               </div>
             );
@@ -148,8 +149,18 @@ export default function Account() {
       </section>
 
       <section className="pl-panel">
-        <div className="panel-head"><h2 className="t-h3">{t("account.devices")}</h2></div>
-        {devices?.map((d) => (
+        <div className="panel-head row row--between">
+          <h2 className="t-h3">{t("account.devices")}{devices ? <span className="t-small subtle"> · {devices.length}</span> : null}</h2>
+          {devices && devices.length > 1 && (
+            <button className="pl-btn pl-btn--ghost pl-btn--sm" onClick={async () => {
+              const r = await api<{ revoked: number }>("/api/v1/me/devices/revoke-others", { method: "POST" });
+              qc.invalidateQueries({ queryKey: ["me", "devices"] });
+              toast(t("account.revokedOthers", { count: r.revoked }));
+            }}>{t("account.revokeOthers")}</button>
+          )}
+        </div>
+        {/* Il dispositivo in uso e i più recenti; gli altri a richiesta. */}
+        {devices?.filter((d, i) => allDevices || d.current || i < 10).map((d) => (
           <div className="list-row" key={d.id}>
             <div className="spacer">
               <div className="t-label">{d.device_name} {d.current && <Badge tone="direct">{t("account.thisDevice")}</Badge>}</div>
@@ -164,6 +175,9 @@ export default function Account() {
             )}
           </div>
         ))}
+        {devices && devices.length > 10 && !allDevices && (
+          <div className="list-row"><button className="pl-btn pl-btn--ghost pl-btn--sm" onClick={() => setAllDevices(true)}>{t("account.showAllDevices", { count: devices.length })}</button></div>
+        )}
       </section>
 
       <div><button className="pl-btn pl-btn--ghost" onClick={logout}>{t("nav.logout")}</button></div>

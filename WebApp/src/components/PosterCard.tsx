@@ -5,7 +5,7 @@ import type { Item } from "../api/types";
 import { useI18n } from "../i18n";
 
 /** Locandina 2:3 (o miniatura 16:9 per gli episodi). Il fondo è il colore segnaposto finché l'immagine non arriva. */
-export function PosterCard({ item, wide = false, to }: { item: Item; wide?: boolean; to?: string }) {
+export function PosterCard({ item, wide = false, to, metaOverride }: { item: Item; wide?: boolean; to?: string; metaOverride?: string }) {
   const { t, duration } = useI18n();
   const src = wide ? item.images.still ?? item.images.backdrop ?? item.images.poster : item.images.poster;
   const progress = item.runtime_ms && item.user_data.position_ms > 0 && !item.user_data.played ? Math.min(1, item.user_data.position_ms / item.runtime_ms) : 0;
@@ -36,7 +36,22 @@ export function PosterCard({ item, wide = false, to }: { item: Item; wide?: bool
         {!item.available && <div className="unavailable">{t("item.unavailable")}</div>}
       </div>
       <div className="pl-poster__title">{title}</div>
-      {meta && <div className="pl-poster__meta">{meta}</div>}
+      {(metaOverride ?? meta) && <div className="pl-poster__meta">{metaOverride ?? meta}</div>}
     </Link>
+  );
+}
+
+/** Segnaposto mentre una riga o una griglia di locandine si carica. */
+export function PosterSkeleton({ count = 8, wide = false }: { count?: number; wide?: boolean }) {
+  return (
+    <>
+      {Array.from({ length: count }, (_, i) => (
+        <div className="pl-poster" key={i} aria-hidden>
+          <div className={`pl-poster__art skeleton${wide ? " wide" : ""}`} />
+          <div className="skeleton skeleton--line" style={{ width: "72%" }} />
+          <div className="skeleton skeleton--line" style={{ width: "40%" }} />
+        </div>
+      ))}
+    </>
   );
 }

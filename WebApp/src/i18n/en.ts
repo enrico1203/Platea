@@ -73,6 +73,13 @@ const en = {
     doneHelp: "The scan has started. Home fills up as metadata arrives.",
     open: "Open Platea",
   },
+  hero: {
+    resume: "You were watching",
+    left: "{time} left",
+    added: "Added {date}",
+    resumeAction: "Resume",
+    details: "Details",
+  },
   home: {
     resume: "Continue watching",
     nextUp: "Next up",
@@ -123,6 +130,11 @@ const en = {
     addTo: "Add to playlist",
     added: { one: "Added {count} item to “{name}”.", other: "Added {count} items to “{name}”." },
   },
+  person: {
+    as: "as {character}",
+    inLibrary: { one: "{count} title in the library", other: "{count} titles in the library" },
+    none: "No titles with this person in the libraries you can see.",
+  },
   search: {
     label: "Search",
     placeholder: "Title of a movie or a show",
@@ -159,6 +171,7 @@ const en = {
     needsReview: "Uncertain match: check that this is the right entry.",
     technical: "Technical details",
     download: "Download the original file",
+    similar: "More like this",
     downloadStarted: "Downloading “{name}”.",
     version: "Version",
     file: "File",
@@ -207,6 +220,9 @@ const en = {
     },
   },
   account: {
+    revokeOthers: "Sign out all others",
+    revokedOthers: { one: "{count} device signed out.", other: "{count} devices signed out." },
+    showAllDevices: "Show all ({count})",
     appearance: "Language and appearance",
     playback: "Playback",
     audioLanguage: "Audio language",

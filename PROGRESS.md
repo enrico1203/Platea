@@ -162,6 +162,25 @@ Trovato e corretto durante il test:
   (`stream::open_library_file`, aperti finché usati + 10 min).
 - mmap di SQLite disattivato: ogni connessione mappava gli stessi 64 MB e la RSS mostrava 600+ MB che erano solo cache.
 - Copie di sicurezza delle migrazioni: si tengono solo le ultime 2 (erano 5, 330 MB).
+### Personalizzazione degli utenti e grafica (2026-11-14, richiesta dell'utente: "guarda Jellyfin e fai le funzioni mancanti")
+
+- [x] `docs/confronto-jellyfin.md`: permessi, preferenze, navigazione, riproduzione, server, con stato e priorità.
+- [x] Permessi (migrazione 0007): download del file originale (`allow_download`), fasce orarie di riproduzione
+  (`access_schedule`, ora locale del server con libc `localtime_r`, fasce oltre la mezzanotte), blocco dei titoli senza
+  classificazione. Download: POST `/items/{id}/download` → link firmato 6 h, riprendibile (Range), permessi ricontrollati a
+  ogni richiesta; Infuse `/Items/{id}/Download` e `Policy.EnableContentDownloading`.
+- [x] Preferenze (`prefs.rs`, GET/PUT `/me/preferences`): lingua audio (scelta della traccia sul server), lingua e modalità
+  dei sottotitoli (predefiniti/intelligenti/sempre/solo forzati/mai; solo tracce di testo), episodio successivo con conto
+  alla rovescia (anche playlist), salti, dimensione e fondo dei sottotitoli, sezioni e librerie della home, già visti nascosti,
+  tema. Esposte anche a Infuse (Configuration).
+- [x] Immagine del profilo (256×256 PNG in `data/avatars`, mai l'originale), iniziali colorate se manca.
+- [x] Pagina della persona con filmografia in libreria; titoli simili (generi in comune, la saga prima).
+- [x] "Scollega tutti gli altri dispositivi"; elenco dispositivi limitato ai 10 più recenti.
+- [x] Grafica: "in scena" in cima alla home (sfondo a tutta larghezza che sfuma nel fondo, logo, un solo Play blu, riga
+  sotto senza doppioni), locandine che reagiscono al passaggio, segnaposto di caricamento, focus visibile.
+- [x] CORRETTI: gli "aggiunti di recente" della home ignoravano il limite d'età; avatar inesistente (`?v=0`) per gli utenti
+  senza immagine (colonna nullable letta come 0).
+
 ### Playlist (2026-11-14)
 
 - [x] API `/api/v1/playlists` (elenco, crea con voci, dettaglio, rinomina, cancella, aggiungi, togli, sposta): una riga per voce;
@@ -228,6 +247,7 @@ Script del benchmark: `scripts/bench_library.py` (genera la libreria sintetica).
 
 ## Registro
 
+- 2026-11-14 — Personalizzazione utenti (download, fasce orarie, preferenze, avatar), persona e simili, home "in scena".
 - 2026-11-14 — Playlist personali.
 - 2026-11-14 — HLS in fMP4: HEVC e AV1 copiati nel browser invece di transcodificati.
 - 2026-11-14 — Backup automatici e ripristino dalla dashboard; voci del piano spuntate.
