@@ -407,3 +407,9 @@ a.person:focus-visible .person__img { outline: 2px solid var(--focus); outline-o
 .back-to-top:hover { background: var(--surface-3); }
 .back-to-top svg { width: 20px; height: 20px; }
 @media (max-width: 900px) { .back-to-top { right: var(--space-4); bottom: calc(76px + env(safe-area-inset-bottom)); } }
+
+/* Casting: il video è sul televisore, qui restano i comandi. */
+.player__casting { position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-3); color: #f3f5f7; text-align: center; pointer-events: none; }
+.player__casting > * { pointer-events: auto; }
+.player__casting svg { width: 48px; height: 48px; color: var(--blue); }
+.player__btn.is-active { color: var(--blue); }

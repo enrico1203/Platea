@@ -201,11 +201,17 @@ async fn fallback(req: Request<Body>) -> Response {
 }
 
 /// CORS con origini consentite dalla dashboard, applicate a caldo.
+/// Flussi di una sessione (file, HLS, sottotitoli): li autorizza il token breve nell'indirizzo, non un cookie
+/// o un'intestazione. Possono leggerli anche player di altre origini, come il ricevitore di Google Cast.
+fn session_media_path(path: &str) -> bool {
+    ["/api/v1/stream/", "/api/v1/hls/", "/api/v1/subtitles/"].iter().any(|p| path.starts_with(p))
+}
+
 async fn cors(State(state): State<Shared>, req: Request<Body>, next: Next) -> Response {
     let origin = req.headers().get(header::ORIGIN).and_then(|o| o.to_str().ok()).map(String::from);
     let allowed = origin.as_deref().is_some_and(|o| {
         let list = &state.settings.get().network.allowed_origins;
-        list.iter().any(|a| a == "*" || a.eq_ignore_ascii_case(o))
+        list.iter().any(|a| a == "*" || a.eq_ignore_ascii_case(o)) || session_media_path(req.uri().path())
     });
     if req.method() == Method::OPTIONS && origin.is_some() {
         let mut r = StatusCode::NO_CONTENT.into_response();

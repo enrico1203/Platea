@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type Hls from "hls.js";
-import { ArrowLeft, Play, Pause, RotateCcw, RotateCw, Maximize, Minimize, Volume2, VolumeX, Captions, Settings2, Info, SkipForward, ListOrdered } from "lucide-react";
-import { api, ApiError, getToken, mediaUrl, serverUrl } from "../api/client";
+import { ArrowLeft, Play, Pause, RotateCcw, RotateCw, Maximize, Minimize, Volume2, VolumeX, Captions, Settings2, Info, SkipForward, ListOrdered, Cast, Airplay } from "lucide-react";
+import { api, ApiError, getToken, imageUrl, mediaUrl, serverUrl } from "../api/client";
+import { castContext, castLoad, castProfile, loadCast } from "../lib/cast";
 import type { ItemDetail, Item, PlaybackInfo, PlaylistDetail } from "../api/types";
 import { buildProfile } from "../lib/profile";
 import { MethodBadge } from "../components/ui";
@@ -55,6 +56,14 @@ export default function Player() {
   const [time, setTime] = useState(0);
   const [buffered, setBuffered] = useState(0);
   const [muted, setMuted] = useState(false);
+  // Casting: AirPlay (Safari) e Google Cast (Chrome). Durante il casting i comandi guidano il televisore.
+  const [airplay, setAirplay] = useState(false);
+  const [castReady, setCastReady] = useState(false);
+  const [casting, setCasting] = useState<string | null>(null);
+  const castingRef = useRef(false);
+  const castSessionRef = useRef<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const remoteRef = useRef<{ player: any; controller: any } | null>(null);
   const [visible, setVisible] = useState(true);
   const [panel, setPanel] = useState<Panel>(null);
   const [fullscreen, setFullscreen] = useState(false);
@@ -109,7 +118,10 @@ export default function Player() {
     } else if (p.hls_url) {
       const url = mediaUrl(p.hls_url)!;
       const { default: HlsLib } = await import("hls.js");
-      if (HlsLib.isSupported()) {
+      // Safari (Mac, iPhone, iPad) ha l'HLS nativo: con quello funzionano AirPlay e lo schermo intero di sistema,
+      // che con hls.js (MediaSource) non vanno.
+      const safariNative = "WebKitPlaybackTargetAvailabilityEvent" in window && video.canPlayType("application/vnd.apple.mpegurl") !== "";
+      if (HlsLib.isSupported() && !safariNative) {
         const hls = new HlsLib({ startPosition: startSec, maxBufferLength: 60, backBufferLength: 60, fragLoadingTimeOut: 70000, fragLoadingMaxRetry: 4 });
         let mediaRecoveries = 0;
         hls.on(HlsLib.Events.ERROR, (_e, d) => {
@@ -178,6 +190,109 @@ export default function Player() {
     }
   }, [attach, id, quality, search, stopSession, t, locale]);
 
+  // AirPlay: Safari dice se c'è un dispositivo nella rete.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || !("WebKitPlaybackTargetAvailabilityEvent" in window)) return;
+    const on = (e: Event) => setAirplay((e as Event & { availability?: string }).availability === "available");
+    v.addEventListener("webkitplaybacktargetavailabilitychanged", on);
+    return () => v.removeEventListener("webkitplaybacktargetavailabilitychanged", on);
+  }, []);
+
+  const showAirplay = () => {
+    const v = videoRef.current as (HTMLVideoElement & { webkitShowPlaybackTargetPicker?: () => void }) | null;
+    v?.webkitShowPlaybackTargetPicker?.();
+  };
+
+  // Google Cast: si apre una sessione del server pensata per il Chromecast e la si manda al televisore.
+  const beginCast = useCallback(async () => {
+    const ctx = castContext();
+    const session = ctx?.getCurrentSession();
+    if (!session || castingRef.current) return;
+    const v = videoRef.current;
+    const pos = v?.currentTime ?? 0;
+    castingRef.current = true;
+    setCasting(session.getCastDevice()?.friendlyName ?? "TV");
+    v?.pause();
+    stopSession(pos * 1000);
+    hlsRef.current?.destroy();
+    hlsRef.current = null;
+    try {
+      const p = await api<PlaybackInfo>("/api/v1/playback/info", {
+        body: { item_id: id, file_id: search.get("file") ?? undefined, profile: castProfile(quality || null), audio_index: info?.audio_index ?? undefined, start_ms: Math.round(pos * 1000), ui_language: locale },
+      });
+      castSessionRef.current = p.session_id;
+      const rel = p.hls_url ?? p.stream_url;
+      if (!rel) throw new Error("no url");
+      const url = new URL(mediaUrl(rel)!, window.location.href).href;
+      let fmp4 = false;
+      if (p.hls_url) fmp4 = (await fetch(url).then((r) => r.text()).catch(() => "")).includes("#EXT-X-MAP");
+      const poster = item?.images.poster ? new URL(imageUrl(item.images.poster, 480)!, window.location.href).href : null;
+      await castLoad({ url, hls: !!p.hls_url, fmp4, container: "mp4", startSec: pos, title: (item?.kind === "episode" ? item.series_title : item?.title) ?? "", subtitle: item?.kind === "episode" ? item.title : item?.year ? String(item.year) : undefined, poster });
+    } catch {
+      setError(t("player.castFailed"));
+      ctx.endCurrentSession(true);
+    }
+  }, [id, info, item, locale, quality, search, stopSession, t]);
+
+  const endCast = useCallback(() => {
+    if (!castingRef.current) return;
+    const r = remoteRef.current;
+    const pos = r?.player.currentTime ?? 0;
+    castingRef.current = false;
+    setCasting(null);
+    const sid = castSessionRef.current;
+    castSessionRef.current = null;
+    if (sid) {
+      fetch(`${serverUrl()}/api/v1/playback/${sid}/stop`, {
+        method: "POST", keepalive: true,
+        headers: { Authorization: `Bearer ${getToken() ?? ""}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ position_ms: Math.round(pos * 1000) }),
+      }).catch(() => undefined);
+    }
+    // Di nuovo qui, dal punto in cui era il televisore.
+    start({ startMs: pos * 1000, audioIndex: info?.audio_index });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [info]);
+
+  const castFns = useRef({ beginCast, endCast });
+  castFns.current = { beginCast, endCast };
+
+  useEffect(() => {
+    let off = () => {};
+    let cancelled = false;
+    loadCast().then((ok) => {
+      if (!ok || cancelled) return;
+      const cf = window.cast.framework;
+      const ctx = castContext();
+      const player = new cf.RemotePlayer();
+      const controller = new cf.RemotePlayerController(player);
+      remoteRef.current = { player, controller };
+      const onState = () => setCastReady(ctx.getCastState() !== cf.CastState.NO_DEVICES_AVAILABLE);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const onSession = (e: any) => {
+        if (e.sessionState === cf.SessionState.SESSION_STARTED || e.sessionState === cf.SessionState.SESSION_RESUMED) castFns.current.beginCast();
+        if (e.sessionState === cf.SessionState.SESSION_ENDED) castFns.current.endCast();
+      };
+      const onTime = () => { if (castingRef.current) setTime(player.currentTime); };
+      const onPaused = () => { if (castingRef.current) setPlaying(!player.isPaused); };
+      ctx.addEventListener(cf.CastContextEventType.CAST_STATE_CHANGED, onState);
+      ctx.addEventListener(cf.CastContextEventType.SESSION_STATE_CHANGED, onSession);
+      controller.addEventListener(cf.RemotePlayerEventType.CURRENT_TIME_CHANGED, onTime);
+      controller.addEventListener(cf.RemotePlayerEventType.IS_PAUSED_CHANGED, onPaused);
+      onState();
+      // Una sessione già aperta (altra scheda, pagina ricaricata): si continua sul televisore.
+      if (ctx.getCurrentSession()) castFns.current.beginCast();
+      off = () => {
+        ctx.removeEventListener(cf.CastContextEventType.CAST_STATE_CHANGED, onState);
+        ctx.removeEventListener(cf.CastContextEventType.SESSION_STATE_CHANGED, onSession);
+        controller.removeEventListener(cf.RemotePlayerEventType.CURRENT_TIME_CHANGED, onTime);
+        controller.removeEventListener(cf.RemotePlayerEventType.IS_PAUSED_CHANGED, onPaused);
+      };
+    });
+    return () => { cancelled = true; off(); };
+  }, []);
+
   // Avvio: dalla posizione salvata.
   useEffect(() => {
     if (!item) return;
@@ -202,6 +317,11 @@ export default function Player() {
   // Posizione al server ogni 10 secondi.
   useEffect(() => {
     const h = window.setInterval(() => {
+      const r = remoteRef.current;
+      if (castingRef.current && r && castSessionRef.current) {
+        api(`/api/v1/playback/${castSessionRef.current}/progress`, { body: { position_ms: Math.round(r.player.currentTime * 1000), paused: r.player.isPaused } }).catch(() => undefined);
+        return;
+      }
       const v = videoRef.current;
       const sid = sessionRef.current;
       if (!v || !sid) return;
@@ -227,6 +347,13 @@ export default function Player() {
   }, []);
 
   const seekTo = useCallback((sec: number) => {
+    const r = remoteRef.current;
+    if (castingRef.current && r) {
+      r.player.currentTime = Math.max(0, Math.min(duration || Infinity, sec));
+      r.controller.seek();
+      setTime(r.player.currentTime);
+      return;
+    }
     const v = videoRef.current;
     if (!v) return;
     v.currentTime = Math.max(0, Math.min(duration || v.duration || 0, sec));
@@ -235,14 +362,21 @@ export default function Player() {
 
   const skip = useCallback((d: number) => {
     const v = videoRef.current;
-    if (!v) return;
-    seekTo(v.currentTime + d);
+    const r = remoteRef.current;
+    if (castingRef.current && r) seekTo(r.player.currentTime + d);
+    else if (!v) return;
+    else seekTo(v.currentTime + d);
     setSeekHint({ side: d < 0 ? "left" : "right", text: `${d > 0 ? "+" : "−"}${Math.abs(d)} s` });
     window.setTimeout(() => setSeekHint(null), 600);
     poke();
   }, [poke, seekTo]);
 
   const togglePlay = useCallback(() => {
+    if (castingRef.current && remoteRef.current) {
+      remoteRef.current.controller.playOrPause();
+      poke();
+      return;
+    }
     const v = videoRef.current;
     if (!v) return;
     if (v.paused) v.play().catch(() => undefined); else v.pause();
@@ -372,7 +506,8 @@ export default function Player() {
 
   const onVideoError = () => {
     // Il browser rifiuta il file nonostante il profilo: si riprova una volta con la transcodifica.
-    if (info?.method === "direct_play" && fallbackRef.current) {
+    // Direct play o HLS nativo di Safari rifiutati: stesso ripiego sulla transcodifica di hls.js.
+    if (info && info.method !== "transcode" && !hlsRef.current && fallbackRef.current) {
       const f = fallbackRef.current;
       fallbackRef.current = null;
       reportClientError(info.session_id, `video element error ${videoRef.current?.error?.code ?? ""} ${videoRef.current?.error?.message ?? ""}`.trim());
@@ -392,6 +527,8 @@ export default function Player() {
       <video
         ref={videoRef}
         playsInline
+        x-webkit-airplay="allow"
+        style={casting ? { visibility: "hidden" } : undefined}
         crossOrigin={serverUrl() ? "anonymous" : undefined}
         onPlay={() => { setPlaying(true); poke(); }}
         onPause={() => { setPlaying(false); setVisible(true); }}
@@ -450,6 +587,10 @@ export default function Player() {
             <button className="player__btn" onClick={() => setPanel(panel === "subs" ? null : "subs")} aria-label={t("player.subtitlesAudio")}><Captions /></button>
             <button className="player__btn" onClick={() => setPanel(panel === "settings" ? null : "settings")} aria-label={t("player.quality")}><Settings2 /></button>
             <button className="player__btn" onClick={() => setPanel(panel === "info" ? null : "info")} aria-label={t("player.info")}><Info /></button>
+            {airplay && <button className="player__btn" onClick={showAirplay} aria-label={t("player.airplay")} title={t("player.airplay")}><Airplay /></button>}
+            {(castReady || casting) && (
+              <button className={`player__btn${casting ? " is-active" : ""}`} onClick={() => castContext()?.requestSession().catch(() => undefined)} aria-label={t("player.cast")} title={t("player.cast")}><Cast /></button>
+            )}
             <button className="player__btn" onClick={toggleFs} aria-label={t("player.fullscreen")}>{fullscreen ? <Minimize /> : <Maximize />}</button>
           </div>
         </div>
@@ -541,6 +682,14 @@ export default function Player() {
             {info.reasons.length > 0 && <div className="t-mono-sm" style={{ color: "#808893" }}>{info.reasons.join(", ")}</div>}
             <div className="t-small" style={{ color: "#a2a9b4" }}>{t(`player.why.${info.method}` as "player.why.remux")}</div>
           </div>
+        </div>
+      )}
+
+      {casting && !error && (
+        <div className="player__casting" role="status">
+          <Cast />
+          <div className="t-h3">{t("player.castingOn", { device: casting })}</div>
+          <button className="pl-btn pl-btn--secondary" onClick={() => castContext()?.endCurrentSession(true)}>{t("player.castStop")}</button>
         </div>
       )}
 
