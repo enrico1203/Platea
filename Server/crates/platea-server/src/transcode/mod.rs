@@ -11,7 +11,7 @@ use command::{Backend, HwProfile, JobSpec};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Stdio;
-use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, RwLock};
 use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, OwnedSemaphorePermit, Semaphore};
@@ -178,6 +178,57 @@ pub struct HlsRuntime {
     done: StdMutex<std::collections::BTreeSet<usize>>,
     /// Backend effettivo, per la riga tecnica della dashboard.
     pub backend_label: StdMutex<String>,
+    /// fMP4: i frammenti (uno per GOP) che compongono ogni segmento completato.
+    gops: StdMutex<std::collections::BTreeMap<usize, Vec<PathBuf>>>,
+    /// fMP4: avvio corrente (numero, primo segmento, esito) per leggere la sua playlist dei frammenti.
+    current_run: StdMutex<Option<RunInfo>>,
+    runs: AtomicU32,
+}
+
+#[derive(Clone)]
+struct RunInfo {
+    run: u32,
+    start_segment: usize,
+    exited: Arc<AtomicBool>,
+    exit_ok: Arc<AtomicBool>,
+}
+
+/// Frammenti di una playlist fMP4 scritta da FFmpeg: (durata in ms, nome del file), in ordine.
+pub fn parse_fragment_list(text: &str) -> Vec<(f64, String)> {
+    let mut out = Vec::new();
+    let mut dur: Option<f64> = None;
+    for line in text.lines() {
+        let line = line.trim();
+        if let Some(d) = line.strip_prefix("#EXTINF:") {
+            dur = d.trim_end_matches(',').split(',').next().and_then(|x| x.parse::<f64>().ok()).map(|s| s * 1000.0);
+        } else if !line.is_empty() && !line.starts_with('#') {
+            if let Some(d) = dur.take() {
+                out.push((d, line.to_string()));
+            }
+        }
+    }
+    out
+}
+
+/// Assegna i frammenti ai segmenti della playlist in base al loro istante d'inizio: l'avvio parte dal
+/// confine `cuts[start]`; un segmento è completo quando è iniziato il successivo (o FFmpeg ha finito).
+pub fn assign_fragments(cuts: &[i64], start: usize, frags: &[(f64, String)], finished: bool) -> Vec<(usize, Vec<String>)> {
+    const TOL: f64 = 50.0;
+    let mut t = cuts.get(start).copied().unwrap_or(0) as f64;
+    let mut groups: Vec<(usize, Vec<String>)> = Vec::new();
+    for (d, name) in frags {
+        let seg = cuts.partition_point(|c| (*c as f64) <= t + TOL).saturating_sub(1).max(start);
+        match groups.last_mut() {
+            Some((s, v)) if *s == seg => v.push(name.clone()),
+            _ => groups.push((seg, vec![name.clone()])),
+        }
+        t += d;
+    }
+    if !finished {
+        // L'ultimo gruppo può essere ancora in corso.
+        groups.pop();
+    }
+    groups
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -208,7 +259,14 @@ impl HlsRuntime {
             stopped: AtomicBool::new(false),
             done: StdMutex::new(Default::default()),
             backend_label: StdMutex::new(label),
+            gops: StdMutex::new(Default::default()),
+            current_run: StdMutex::new(None),
+            runs: AtomicU32::new(0),
         }
+    }
+
+    pub fn is_fmp4(&self) -> bool {
+        self.spec.fmp4
     }
 
     pub fn segment_duration_ms(&self, n: usize) -> i64 {
@@ -221,8 +279,15 @@ impl HlsRuntime {
     pub fn playlist(&self, segment_url: impl Fn(usize) -> String) -> String {
         let max = (0..self.cuts.len()).map(|i| self.segment_duration_ms(i)).max().unwrap_or(6000);
         let mut out = String::with_capacity(self.cuts.len() * 48 + 200);
-        out.push_str("#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-PLAYLIST-TYPE:VOD\n");
+        if self.spec.fmp4 {
+            out.push_str("#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-PLAYLIST-TYPE:VOD\n#EXT-X-INDEPENDENT-SEGMENTS\n");
+        } else {
+            out.push_str("#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-PLAYLIST-TYPE:VOD\n");
+        }
         out.push_str(&format!("#EXT-X-TARGETDURATION:{}\n#EXT-X-MEDIA-SEQUENCE:0\n", (max as f64 / 1000.0).ceil() as i64));
+        if self.spec.fmp4 {
+            out.push_str(&format!("#EXT-X-MAP:URI=\"{}\"\n", segment_url(usize::MAX)));
+        }
         for i in 0..self.cuts.len() {
             out.push_str(&format!("#EXTINF:{:.3},\n{}\n", self.segment_duration_ms(i) as f64 / 1000.0, segment_url(i)));
         }
@@ -236,6 +301,9 @@ impl HlsRuntime {
 
     /// Segmenti completati, dall'elenco scritto da FFmpeg.
     fn completed(&self) -> Vec<usize> {
+        if self.spec.fmp4 {
+            return self.completed_fmp4();
+        }
         let mut done = self.done.lock().unwrap();
         if let Ok(text) = std::fs::read_to_string(self.dir.join("segments.csv")) {
             for n in text
@@ -249,7 +317,59 @@ impl HlsRuntime {
         done.iter().copied().collect()
     }
 
+    fn completed_fmp4(&self) -> Vec<usize> {
+        let info = self.current_run.lock().unwrap().clone();
+        if let Some(r) = info {
+            let finished = r.exited.load(Ordering::SeqCst) && r.exit_ok.load(Ordering::SeqCst);
+            if let Ok(text) = std::fs::read_to_string(self.dir.join(command::fmp4_list_name(r.run))) {
+                let frags = parse_fragment_list(&text);
+                let groups = assign_fragments(&self.cuts, r.start_segment, &frags, finished);
+                let mut gops = self.gops.lock().unwrap();
+                let mut done = self.done.lock().unwrap();
+                for (seg, names) in groups {
+                    if let std::collections::btree_map::Entry::Vacant(e) = gops.entry(seg) {
+                        e.insert(names.iter().map(|n| self.dir.join(n)).collect());
+                        done.insert(seg);
+                    }
+                }
+            }
+        }
+        self.done.lock().unwrap().iter().copied().collect()
+    }
+
+    /// File di un segmento pronto: uno per MPEG-TS, i frammenti in ordine per fMP4.
+    fn segment_files(&self, n: usize) -> Vec<PathBuf> {
+        if self.spec.fmp4 {
+            self.gops.lock().unwrap().get(&n).cloned().unwrap_or_default()
+        } else {
+            vec![self.seg_path(n)]
+        }
+    }
+
+    /// Segmento d'inizializzazione fMP4 (identico tra un avvio e l'altro): attende il primo avvio se serve.
+    pub async fn init_segment(&self) -> Result<PathBuf, HlsError> {
+        let find = || -> Option<PathBuf> {
+            let mut list: Vec<PathBuf> = std::fs::read_dir(&self.dir)
+                .ok()?
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.ends_with("_init.mp4")))
+                .collect();
+            list.sort();
+            list.into_iter().next()
+        };
+        if let Some(p) = find() {
+            return Ok(p);
+        }
+        let n = (self.last_requested.load(Ordering::SeqCst).max(0) as usize).min(self.cuts.len().saturating_sub(1));
+        self.segment(n).await?;
+        find().ok_or_else(|| HlsError::Failed("segmento d'inizializzazione assente".into()))
+    }
+
     fn is_ready(&self, n: usize, completed: &[usize], proc_exited_ok: bool) -> bool {
+        if self.spec.fmp4 {
+            return completed.contains(&n) && self.segment_files(n).iter().all(|p| p.exists());
+        }
         (completed.contains(&n) || (proc_exited_ok && n + 1 == self.cuts.len())) && self.seg_path(n).exists()
     }
 
@@ -271,6 +391,7 @@ impl HlsRuntime {
             None
         };
         let mut spec = self.spec.clone();
+        spec.run = self.runs.fetch_add(1, Ordering::SeqCst);
         spec.start_ms = self.cuts[n];
         spec.start_segment = n as u32;
         spec.cut_points_ms = self.cuts[n + 1..].to_vec();
@@ -315,6 +436,7 @@ impl HlsRuntime {
                 exited.store(true, Ordering::SeqCst);
             });
         }
+        *self.current_run.lock().unwrap() = Some(RunInfo { run: spec.run, start_segment: n, exited: exited.clone(), exit_ok: exit_ok.clone() });
         *guard = Some(Running {
             start_segment: n as u32,
             pid,
@@ -331,7 +453,7 @@ impl HlsRuntime {
     }
 
     /// Restituisce il percorso del segmento `n`, avviando o riposizionando FFmpeg se serve.
-    pub async fn segment(&self, n: usize) -> Result<PathBuf, HlsError> {
+    pub async fn segment(&self, n: usize) -> Result<Vec<PathBuf>, HlsError> {
         if n >= self.cuts.len() {
             return Err(HlsError::OutOfRange);
         }
@@ -347,7 +469,7 @@ impl HlsRuntime {
                 let mut guard = self.proc.lock().await;
                 let exited_ok = guard.as_ref().is_some_and(|r| r.exited.load(Ordering::SeqCst) && r.exit_ok.load(Ordering::SeqCst));
                 if self.is_ready(n, &completed, exited_ok) {
-                    return Ok(self.seg_path(n));
+                    return Ok(self.segment_files(n));
                 }
                 let need_launch = match guard.as_ref() {
                     None => true,
@@ -418,6 +540,10 @@ impl HlsRuntime {
                 }
             }
         }
+        if self.spec.fmp4 {
+            self.cleanup_fmp4(last, keep_behind, ahead_segments);
+            return;
+        }
         // Segmenti già visti: si cancellano, tenendone alcuni dietro per piccoli salti indietro.
         if last > keep_behind {
             let limit = last - keep_behind;
@@ -430,6 +556,37 @@ impl HlsRuntime {
                             self.done.lock().unwrap().remove(&n);
                         }
                     }
+                }
+            }
+        }
+    }
+
+    /// fMP4: via i frammenti dei segmenti già visti e quelli orfani di avvii precedenti (dopo un salto).
+    fn cleanup_fmp4(&self, last: usize, keep_behind: usize, ahead: usize) {
+        let limit = last.saturating_sub(keep_behind);
+        let far = last + ahead * 4 + 50;
+        let mut keep: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
+        {
+            let mut gops = self.gops.lock().unwrap();
+            let mut done = self.done.lock().unwrap();
+            let drop: Vec<usize> = gops.keys().copied().filter(|k| *k < limit || *k > far).collect();
+            for k in drop {
+                for p in gops.remove(&k).unwrap_or_default() {
+                    let _ = std::fs::remove_file(p);
+                }
+                done.remove(&k);
+            }
+            for v in gops.values() {
+                keep.extend(v.iter().cloned());
+            }
+        }
+        let current = self.current_run.lock().unwrap().as_ref().map(|r| format!("r{:04}_", r.run));
+        if let Ok(rd) = std::fs::read_dir(&self.dir) {
+            for e in rd.flatten() {
+                let name = e.file_name().to_string_lossy().to_string();
+                let orphan = name.ends_with(".m4s") && !keep.contains(&e.path()) && current.as_deref().is_none_or(|c| !name.starts_with(c));
+                if orphan {
+                    let _ = std::fs::remove_file(e.path());
                 }
             }
         }
@@ -461,4 +618,27 @@ fn contiguous_frontier(completed: &[usize], start: usize) -> usize {
         f += 1;
     }
     f
+}
+
+#[cfg(test)]
+mod fmp4_tests {
+    use super::*;
+
+    #[test]
+    fn fragments_grouped_by_segment() {
+        let text = "#EXTM3U\n#EXT-X-MAP:URI=\"r0001_init.mp4\"\n#EXTINF:4.980000,\nr0001_000000.m4s\n#EXTINF:4.980000,\nr0001_000001.m4s\n#EXTINF:9.960000,\nr0001_000002.m4s\n#EXTINF:2.000000,\nr0001_000003.m4s\n";
+        let frags = parse_fragment_list(text);
+        assert_eq!(frags.len(), 4);
+        // Segmenti che iniziano a 0, 9.96, 19.92 s; l'avvio parte dal segmento 0.
+        let cuts = vec![0, 9_960, 19_920];
+        let g = assign_fragments(&cuts, 0, &frags, false);
+        assert_eq!(g, vec![(0, vec!["r0001_000000.m4s".to_string(), "r0001_000001.m4s".to_string()]), (1, vec!["r0001_000002.m4s".to_string()])]);
+        // A file finito anche l'ultimo gruppo è completo.
+        let g = assign_fragments(&cuts, 0, &frags, true);
+        assert_eq!(g.last().unwrap(), &(2, vec!["r0001_000003.m4s".to_string()]));
+        // Avvio dopo un salto: i tempi partono dal confine del segmento 1.
+        let g = assign_fragments(&cuts, 1, &frags[2..], true);
+        assert_eq!(g[0].0, 1);
+        assert_eq!(g[1].0, 2);
+    }
 }

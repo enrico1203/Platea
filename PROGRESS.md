@@ -162,6 +162,22 @@ Trovato e corretto durante il test:
   (`stream::open_library_file`, aperti finché usati + 10 min).
 - mmap di SQLite disattivato: ogni connessione mappava gli stessi 64 MB e la RSS mostrava 600+ MB che erano solo cache.
 - Copie di sicurezza delle migrazioni: si tengono solo le ultime 2 (erano 5, 330 MB).
+### HLS in fMP4: HEVC copiato nel browser (2026-11-14)
+
+La libreria cloud è quasi tutta HEVC + AC3 (6.827 film su 7.088): nel browser ogni film andava in transcodifica completa,
+perché hls.js non legge HEVC in MPEG-TS. Ora:
+- [x] Segmenti fMP4 quando il video copiato (o l'uscita) è HEVC o AV1; MPEG-TS resta per H.264 e transcodifica
+  (impostazione `playback.fmp4_always` per usare fMP4 anche con H.264).
+- [x] FFmpeg con muxer `hls` in fMP4, un frammento per GOP (`-hls_time 0.001`), `movflags=+frag_discont` (tfdt assoluto:
+  senza, il tfdt parte da 0 e lo spostamento finisce in un'edit list diversa a ogni avvio), `-tag:v hvc1` per Apple.
+  Il server legge la playlist dei frammenti dell'avvio, assegna ogni frammento al segmento pianificato in base al suo
+  istante d'inizio (tolleranza 50 ms), e serve il segmento concatenando i frammenti; `init.mp4` identico tra gli avvii.
+- [x] Web UI: HEVC/AV1 dichiarati in `hls_video_codecs` se MediaSource li accetta (o con HLS nativo).
+- Verificato: Goldfinger HEVC dal cloud → "HEVC copiato · AC3 5.1 → AAC", tfdt dei segmenti 0, 1, 150, 300, 301 uguali
+  ai tempi previsti dalla playlist (es. 1436,352 s), segmento dopo un salto in 0,5–1,4 s. In Chrome (H.264 in fMP4, perché
+  il Chrome di prova non ha HEVC): avvio, salti a 3000 s e 1200 s, riproduzione corretta, zero errori in console.
+  Da provare dall'utente: un browser con HEVC hardware (Safari, Chrome/Edge su Mac o Windows).
+
 ### Backup e ripristino (2026-11-14)
 
 - [x] `backup.rs`: copie con VACUUM INTO in `data/backups` (automatiche ogni 24 h, ultime 7; manuali), elenco, scaricamento in
@@ -198,7 +214,6 @@ Script del benchmark: `scripts/bench_library.py` (genera la libreria sintetica).
 
 ## Debito tecnico noto (da fare dopo)
 
-- Segmenti HLS in MPEG-TS (non fMP4): HEVC in remux solo se il client lo dichiara in `hls_video_codecs`.
 - Keyframe per MP4 remoti: leggere `stss` dal box moov (ora su remoto senza Cues si transcodifica).
 - `.plexmatch`: righe `ep:` per episodi con nomi non standard. NFO degli episodi (`<episodio>.nfo`) non letti.
 - Chiavi API con ambito limitato: tabella presente, endpoint da fare.
@@ -206,6 +221,7 @@ Script del benchmark: `scripts/bench_library.py` (genera la libreria sintetica).
 
 ## Registro
 
+- 2026-11-14 — HLS in fMP4: HEVC e AV1 copiati nel browser invece di transcodificati.
 - 2026-11-14 — Backup automatici e ripristino dalla dashboard; voci del piano spuntate.
 - 2026-11-14 — Prova di storage lento e mount bloccato: server reattivo, nessuna cancellazione.
 - 2026-11-14 — Test di carico (300 player): corretti limite dei file aperti e descrittori per sessione, mmap SQLite, copie di sicurezza.

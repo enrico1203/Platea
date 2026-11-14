@@ -395,6 +395,12 @@ async fn info(State(state): State<Shared>, user: AuthUser, Json(req): Json<InfoR
             threads: ts.threads,
             sw_preset: ts.sw_preset.clone(),
             sw_crf: ts.sw_crf,
+            // HEVC e AV1 copiati viaggiano solo in fMP4; H.264 e la transcodifica restano in MPEG-TS.
+            fmp4: match &decision.video {
+                VideoAction::Copy => s.playback.fmp4_always || file.media.video.as_ref().is_some_and(|v| v.codec == "hevc" || v.codec == "av1"),
+                VideoAction::Transcode { codec, .. } => codec == "hevc" || codec == "av1",
+            },
+            run: 0,
         };
         tokio::fs::create_dir_all(&spec.out_dir).await.map_err(|e| ApiError::Internal(e.into()))?;
         hls = Some(Arc::new(HlsRuntime::new(spec.out_dir.clone(), cuts, duration_ms, spec, state.ffmpeg.get().ffmpeg.clone(), hw, state.transcoder.clone())));
@@ -593,21 +599,32 @@ async fn hls(State(state): State<Shared>, Path((id, name)): Path<(String, String
     let rt = s.hls.clone().ok_or_else(|| ApiError::BadRequest("Questa sessione è in direct play".into()))?;
     if name == "main.m3u8" {
         let t = s.token.clone();
-        let body = rt.playlist(|i| format!("{i}.ts?t={t}"));
+        let ext = if rt.is_fmp4() { "m4s" } else { "ts" };
+        let body = rt.playlist(|i| if i == usize::MAX { format!("init.mp4?t={t}") } else { format!("{i}.{ext}?t={t}") });
         return Ok(Response::builder()
             .header(header::CONTENT_TYPE, "application/vnd.apple.mpegurl")
             .header(header::CACHE_CONTROL, "no-cache")
             .body(Body::from(body))
             .unwrap());
     }
-    let n: usize = name.strip_suffix(".ts").and_then(|n| n.parse().ok()).ok_or_else(|| ApiError::not_found("Segmento"))?;
+    if name == "init.mp4" && rt.is_fmp4() {
+        let p = rt.init_segment().await.map_err(|e| ApiError::coded(StatusCode::INTERNAL_SERVER_ERROR, "TranscodeFailed", e.to_string()))?;
+        let bytes = tokio::fs::read(&p).await.map_err(|e| ApiError::Internal(e.into()))?;
+        return Ok(Response::builder()
+            .header(header::CONTENT_TYPE, "video/mp4")
+            .header(header::CACHE_CONTROL, "private, max-age=3600")
+            .body(Body::from(bytes))
+            .unwrap());
+    }
+    let ext = if rt.is_fmp4() { ".m4s" } else { ".ts" };
+    let n: usize = name.strip_suffix(ext).and_then(|n| n.parse().ok()).ok_or_else(|| ApiError::not_found("Segmento"))?;
     // La posizione stimata dal segmento richiesto tiene viva la sessione anche senza rapporti dal client.
     if let Some(start) = rt.cuts.get(n) {
         if s.position_ms.load(Ordering::Relaxed) == 0 {
             s.position_ms.store(*start, Ordering::Relaxed);
         }
     }
-    let path = match rt.segment(n).await {
+    let paths = match rt.segment(n).await {
         Ok(p) => p,
         Err(HlsError::OutOfRange) => return Err(ApiError::not_found("Segmento")),
         Err(HlsError::Busy) => {
@@ -617,8 +634,13 @@ async fn hls(State(state): State<Shared>, Path((id, name)): Path<(String, String
         }
         Err(e) => return Err(ApiError::coded(StatusCode::INTERNAL_SERVER_ERROR, "TranscodeFailed", e.to_string())),
     };
-    let bytes = tokio::fs::read(&path).await.map_err(|e| ApiError::Internal(e.into()))?;
-    Ok(Response::builder().header(header::CONTENT_TYPE, "video/mp2t").header(header::CACHE_CONTROL, "private, max-age=3600").body(Body::from(bytes)).unwrap())
+    // fMP4: i frammenti del segmento uno dopo l'altro (più coppie moof/mdat sono un segmento valido).
+    let mut bytes = Vec::new();
+    for p in &paths {
+        bytes.extend(tokio::fs::read(p).await.map_err(|e| ApiError::Internal(e.into()))?);
+    }
+    let ct = if rt.is_fmp4() { "video/mp4" } else { "video/mp2t" };
+    Ok(Response::builder().header(header::CONTENT_TYPE, ct).header(header::CACHE_CONTROL, "private, max-age=3600").body(Body::from(bytes)).unwrap())
 }
 
 /// Sottotitoli di testo in WebVTT: estratti al primo utilizzo, poi in cache.

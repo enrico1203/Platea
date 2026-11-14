@@ -469,6 +469,8 @@ const it = {
       session_idle_seconds: "Chiusura sessione inattiva (s)",
       keep_segments_behind: "Segmenti conservati dietro la visione",
       played_threshold_percent: "Soglia \"visto\" (%)",
+      fmp4_always: "Segmenti fMP4 anche per H.264",
+      fmp4_always_hint: "HEVC e AV1 copiati usano sempre fMP4; con questa opzione anche H.264. MPEG-TS resta per la transcodifica.",
       resume_min_seconds: "Ripresa minima (s)",
     },
     transcode: {

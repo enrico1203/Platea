@@ -95,6 +95,9 @@ pub struct PlaybackSettings {
     /// Sotto questa posizione (s) la ripresa non viene proposta.
     #[schemars(title = "Ripresa minima (s)", range(min = 0, max = 600))]
     pub resume_min_seconds: u32,
+    /// Segmenti fMP4 anche quando il video copiato è H.264 (HEVC e AV1 usano sempre fMP4).
+    #[schemars(title = "fMP4 anche per H.264")]
+    pub fmp4_always: bool,
 }
 
 impl Default for PlaybackSettings {
@@ -106,6 +109,7 @@ impl Default for PlaybackSettings {
             keep_segments_behind: 20,
             played_threshold_percent: 90,
             resume_min_seconds: 30,
+            fmp4_always: false,
         }
     }
 }

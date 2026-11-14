@@ -468,6 +468,8 @@ const en = {
       session_idle_seconds: "Close idle session after (s)",
       keep_segments_behind: "Segments kept behind playback",
       played_threshold_percent: "\"Watched\" threshold (%)",
+      fmp4_always: "fMP4 segments for H.264 too",
+      fmp4_always_hint: "Copied HEVC and AV1 always use fMP4; with this option H.264 does too. MPEG-TS stays for transcoding.",
       resume_min_seconds: "Minimum resume point (s)",
     },
     transcode: {

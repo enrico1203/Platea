@@ -48,6 +48,11 @@ function detect(): DeviceProfile {
   if (hevc10 && window.matchMedia?.("(dynamic-range: high)").matches) hdr.push("hdr10", "hlg");
 
   const hlsAudio = ["aac", "mp3"];
+  // Nei segmenti HLS conta ciò che accetta MediaSource (hls.js); senza MSE (Safari su iPhone) decide il player nativo.
+  const mse = (t: string) => (typeof MediaSource !== "undefined" && MediaSource.isTypeSupported ? MediaSource.isTypeSupported(t) : false);
+  const nativeHls = typeof MediaSource === "undefined";
+  const hlsHevc = hevc && (nativeHls || mse('video/mp4; codecs="hvc1.1.6.L120.90"'));
+  const hlsAv1 = video.some((v) => v.codec === "av1") && (nativeHls || mse('video/mp4; codecs="av01.0.08M.08"'));
   return {
     name: "Platea Web",
     containers,
@@ -58,7 +63,8 @@ function detect(): DeviceProfile {
     hdr,
     max_bitrate: null,
     protocols: ["file", "hls"],
-    hls_video_codecs: ["h264"],
+    // HEVC e AV1 nei segmenti HLS arrivano in fMP4 (copiati dal file, senza transcodifica).
+    hls_video_codecs: ["h264", ...(hlsHevc ? ["hevc"] : []), ...(hlsAv1 ? ["av1"] : [])],
     hls_audio_codecs: hlsAudio,
   };
 }

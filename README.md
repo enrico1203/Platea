@@ -4,6 +4,7 @@ Open source media server
 
 Platea serve il file originale quando il client lo regge, fa remux o transcodifica (anche su GPU Intel, NVIDIA o AMD) solo quando deve, e scansiona librerie anche su storage cloud senza aprire i file. Server in Rust a processo unico, web UI separata, un'API pubblica per tutti i client.
 
+- **Remux leggero anche per HEVC.** Un browser che decodifica HEVC (Safari, Chrome ed Edge con supporto hardware) riceve il video copiato in segmenti fMP4: il server converte solo l'audio.
 - **Direct play prima di tutto.** Il client dichiara cosa sa riprodurre; il server sceglie direct play, poi remux, poi transcodifica, e registra il motivo (`VideoCodecNotSupported`, `ContainerNotSupported`, ...).
 - **Scansioni leggere.** Una scansione legge solo l'elenco delle cartelle, diverse in parallelo: zero file aperti se nulla è cambiato. 8.500 film su un mount rclone in meno di 40 secondi. Sui dischi locali un film copiato compare da solo dopo pochi secondi.
 - **Il mount che cade non cancella nulla.** Radice vuota o illeggibile: la scansione si ferma. Cartella che va in errore: i suoi file restano. Tanti file spariti insieme (mount a metà): nessuna rimozione finché non confermi. I file che cancelli davvero, pochi alla volta, spariscono da soli.

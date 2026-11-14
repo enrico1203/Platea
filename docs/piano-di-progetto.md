@@ -854,7 +854,7 @@ Criterio di uscita: dopo `docker compose up` e la procedura guidata, un film su 
 - [x] Profilo dispositivo generato dalla web UI
 - [x] Funzione di decisione con codici motivo e tabella di test
 - [x] Sessioni di riproduzione e sorveglianza di FFmpeg
-- [ ] HLS con segmenti fMP4 e playlist generata dal server
+- [x] HLS con segmenti fMP4 e playlist generata dal server
 - [x] Remux con indice dei keyframe
 - [x] Conversione del solo audio
 - [x] Transcodifica video software

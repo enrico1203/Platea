@@ -105,6 +105,15 @@ pub struct JobSpec {
     pub threads: u32,
     pub sw_preset: String,
     pub sw_crf: u32,
+    /// Segmenti fMP4 invece di MPEG-TS: serve per copiare HEVC e AV1 (hls.js e Safari non li leggono in TS).
+    pub fmp4: bool,
+    /// Numero dell'avvio di FFmpeg nella sessione: i frammenti fMP4 di ogni avvio hanno nomi propri.
+    pub run: u32,
+}
+
+/// Nome della playlist dei frammenti fMP4 scritta da FFmpeg per un avvio.
+pub fn fmp4_list_name(run: u32) -> String {
+    format!("r{run:04}.m3u8")
 }
 
 fn secs(ms: i64) -> String {
@@ -268,6 +277,24 @@ pub fn build_args(spec: &JobSpec, hw: &HwProfile) -> Vec<String> {
 
     // Uscita: muxer segment con confini espliciti, segmenti MPEG-TS.
     push(&mut a, &["-max_muxing_queue_size", "2048", "-muxdelay", "0", "-muxpreload", "0"]);
+    if spec.fmp4 {
+        // fMP4: il muxer hls conserva i tempi assoluti (tfdt) ma taglia su una griglia cumulativa che dopo un
+        // salto non coincide con i nostri confini. Si fa tagliare a ogni keyframe (un frammento per GOP) e il
+        // server compone ogni segmento della playlist con i frammenti del suo intervallo.
+        if matches!(spec.video_action, VideoAction::Copy) && spec.video.as_ref().is_some_and(|v| v.codec == "hevc") {
+            // Apple vuole l'etichetta hvc1 (parametri nell'init), non hev1.
+            push(&mut a, &["-tag:v", "hvc1"]);
+        }
+        let run = spec.run;
+        push(&mut a, &["-f", "hls", "-hls_segment_type", "fmp4", "-hls_time", "0.001", "-hls_list_size", "0", "-hls_playlist_type", "event"]);
+        // frag_discont: tfdt assoluto in ogni frammento (altrimenti parte da 0 e lo spostamento finisce in un'edit
+        // list dell'init, diversa a ogni avvio). Così l'init è identico tra gli avvii e i tempi tornano dopo un salto.
+        push(&mut a, &["-hls_segment_options", "movflags=+frag_discont"]);
+        push(&mut a, &["-hls_fmp4_init_filename", &format!("r{run:04}_init.mp4"), "-hls_flags", "temp_file+independent_segments"]);
+        push(&mut a, &["-hls_segment_filename", &spec.out_dir.join(format!("r{run:04}_%06d.m4s")).to_string_lossy()]);
+        a.push(spec.out_dir.join(fmp4_list_name(run)).to_string_lossy().to_string());
+        return a;
+    }
     push(&mut a, &["-f", "segment", "-segment_format", "mpegts"]);
     // Il muxer segment misura `segment_times` dal primo pacchetto ricevuto, non in tempo assoluto:
     // con -copyts dopo un salto i tempi assoluti non scatterebbero mai. Si passano relativi all'inizio,
@@ -404,7 +431,26 @@ mod tests {
             threads: 0,
             sw_preset: "veryfast".into(),
             sw_crf: 23,
+            fmp4: false,
+            run: 0,
         }
+    }
+
+    #[test]
+    fn fmp4_copy_hevc() {
+        let mut s = spec(VideoAction::Copy, AudioAction::Transcode { codec: "aac".into(), channels: 2, bitrate: 192_000 });
+        s.fmp4 = true;
+        s.run = 3;
+        s.start_ms = 12_012;
+        let j = joined(&build_args(&s, &HwProfile::software()));
+        assert!(j.contains("-tag:v hvc1"));
+        assert!(j.contains("-f hls -hls_segment_type fmp4 -hls_time 0.001"));
+        assert!(j.contains("-hls_fmp4_init_filename r0003_init.mp4"));
+        assert!(j.contains("-hls_segment_options movflags=+frag_discont"));
+        assert!(j.contains("/transcode/s1/r0003_%06d.m4s"));
+        assert!(j.ends_with("/transcode/s1/r0003.m3u8"));
+        assert!(!j.contains("segment_times"));
+        assert!(j.contains("-ss 12.212"));
     }
 
     fn joined(a: &[String]) -> String {
