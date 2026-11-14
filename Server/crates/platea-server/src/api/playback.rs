@@ -26,6 +26,7 @@ pub fn routes(api: Api) -> Api {
     api.post("/api/v1/playback/info", "Riproduzione", Access::User, "Decisione di riproduzione e apertura della sessione", info)
         .post("/api/v1/playback/{session}/progress", "Riproduzione", Access::User, "Posizione corrente (ogni 10 s)", progress)
         .post("/api/v1/playback/{session}/tracks", "Riproduzione", Access::User, "Tracce scelte nel player: ricordate per il film o per tutta la serie", tracks)
+        .post("/api/v1/playback/{session}/client-error", "Riproduzione", Access::User, "Errore del player (nel log del server, per la diagnosi)", client_error)
         .post("/api/v1/playback/{session}/stop", "Riproduzione", Access::User, "Fine della riproduzione", stop)
         .get("/api/v1/stream/{session}", "Riproduzione", Access::Stream, "Direct play: file originale con richieste Range", direct)
         .get("/api/v1/hls/{session}/{file}", "Riproduzione", Access::Stream, "Playlist HLS (main.m3u8) e segmenti (N.ts)", hls)
@@ -612,6 +613,18 @@ async fn tracks(State(state): State<Shared>, user: AuthUser, Path(id): Path<Stri
     Ok(Json(json!({ "audio_language": audio, "subtitle_language": sub, "subtitle_off": req.subtitle_off })))
 }
 
+#[derive(Deserialize)]
+struct ClientErrorReq {
+    message: String,
+}
+
+async fn client_error(State(state): State<Shared>, user: AuthUser, Path(id): Path<String>, Json(req): Json<ClientErrorReq>) -> ApiResult<Json<Value>> {
+    let s = own_session(&state, &user, &id)?;
+    let msg: String = req.message.chars().filter(|c| !c.is_control()).take(500).collect();
+    tracing::warn!(user = %s.username, client = %s.client, method = s.decision.method.as_str(), chain = %s.chain, error = %msg, "il player non riesce a riprodurre il flusso");
+    Ok(Json(json!({ "ok": true })))
+}
+
 async fn stop(State(state): State<Shared>, user: AuthUser, Path(id): Path<String>, body: Option<Json<ProgressReq>>) -> ApiResult<Json<Value>> {
     let s = own_session(&state, &user, &id)?;
     if let Some(Json(p)) = body {
@@ -748,7 +761,8 @@ async fn subtitle(State(state): State<Shared>, Path((id, name)): Path<(String, S
             } else {
                 info.abs.clone()
             };
-            let tmp = cache.with_extension("tmp.vtt");
+            // Nome temporaneo unico: due richieste dello stesso sottotitolo (due sessioni, un ripiego) non si pestano.
+            let tmp = cache.with_extension(format!("{}.tmp.vtt", crate::util::random_hex(4)));
             let mut cmd = tokio::process::Command::new(&state.ffmpeg.get().ffmpeg);
             cmd.args(["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-i"]).arg(&input);
             if external {
@@ -769,7 +783,12 @@ async fn subtitle(State(state): State<Shared>, Path((id, name)): Path<(String, S
                     format!("Conversione non riuscita: {}", String::from_utf8_lossy(&out.stderr).lines().last().unwrap_or("")),
                 ));
             }
-            tokio::fs::rename(&tmp, &cache).await.map_err(|e| ApiError::Internal(e.into()))?;
+            if let Err(e) = tokio::fs::rename(&tmp, &cache).await {
+                let _ = tokio::fs::remove_file(&tmp).await;
+                if !cache.exists() {
+                    return Err(ApiError::Internal(e.into()));
+                }
+            }
         }
     }
     let body = tokio::fs::read(&cache).await.map_err(|e| ApiError::Internal(e.into()))?;

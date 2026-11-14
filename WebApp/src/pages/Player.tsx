@@ -21,6 +21,16 @@ function readQuality(): number {
 type Panel = null | "subs" | "settings" | "info" | "chapters";
 interface Chapter { start_ms: number; title: string | null }
 
+/** Errore del player nel log del server: aiuta a capire perché un browser rifiuta un flusso. */
+function reportClientError(sessionId: string, message: string) {
+  fetch(`${serverUrl()}/api/v1/playback/${sessionId}/client-error`, {
+    method: "POST",
+    keepalive: true,
+    headers: { Authorization: `Bearer ${getToken() ?? ""}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ message: message.slice(0, 500) }),
+  }).catch(() => undefined);
+}
+
 export default function Player() {
   const { id } = useParams();
   const [search] = useSearchParams();
@@ -38,6 +48,9 @@ export default function Player() {
   const triedFallback = useRef(false);
   const [info, setInfo] = useState<PlaybackInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorDetail, setErrorDetail] = useState<string | null>(null);
+  // Ripiego sulla transcodifica: impostato da start(), usato dai gestori di errore di hls.js e del video.
+  const fallbackRef = useRef<(() => void) | null>(null);
   const [playing, setPlaying] = useState(false);
   const [time, setTime] = useState(0);
   const [buffered, setBuffered] = useState(0);
@@ -98,11 +111,26 @@ export default function Player() {
       const { default: HlsLib } = await import("hls.js");
       if (HlsLib.isSupported()) {
         const hls = new HlsLib({ startPosition: startSec, maxBufferLength: 60, backBufferLength: 60, fragLoadingTimeOut: 70000, fragLoadingMaxRetry: 4 });
+        let mediaRecoveries = 0;
         hls.on(HlsLib.Events.ERROR, (_e, d) => {
-          if (d.fatal) {
-            if (d.type === HlsLib.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
-            else setError(t("player.errorStream"));
+          if (!d.fatal) return;
+          if (d.type === HlsLib.ErrorTypes.MEDIA_ERROR && mediaRecoveries < 2) {
+            mediaRecoveries++;
+            hls.recoverMediaError();
+            return;
           }
+          const code = (d.response as { code?: number } | undefined)?.code;
+          const detail = [d.type, d.details, code ? `HTTP ${code}` : null, d.error?.message].filter(Boolean).join(" · ");
+          reportClientError(p.session_id, detail);
+          // Remux rifiutato dal browser (codec, contenitore): si riprova una volta con la transcodifica.
+          if (p.method !== "transcode" && fallbackRef.current) {
+            const f = fallbackRef.current;
+            fallbackRef.current = null;
+            f();
+            return;
+          }
+          setErrorDetail(detail);
+          setError(t("player.errorStream"));
         });
         hls.loadSource(url);
         hls.attachMedia(video);
@@ -120,6 +148,7 @@ export default function Player() {
 
   const start = useCallback(async (opts: { startMs: number; audioIndex?: number | null; subtitleIndex?: number | null; force?: boolean }) => {
     setError(null);
+    setErrorDetail(null);
     stopSession(videoRef.current ? videoRef.current.currentTime * 1000 : undefined);
     try {
       const p = await api<PlaybackInfo>("/api/v1/playback/info", {
@@ -136,6 +165,11 @@ export default function Player() {
       });
       sessionRef.current = p.session_id;
       setInfo(p);
+      // Un solo ripiego automatico per avvio: dalla posizione corrente, con le stesse tracce.
+      fallbackRef.current = opts.force || p.method === "transcode" ? null : () => {
+        triedFallback.current = true;
+        start({ startMs: (videoRef.current?.currentTime ?? opts.startMs / 1000) * 1000, audioIndex: p.audio_index, subtitleIndex: opts.subtitleIndex, force: true });
+      };
       // Primo avvio: sottotitolo scelto dal server secondo le preferenze dell'utente.
       if (opts.subtitleIndex === undefined && opts.audioIndex === undefined && p.subtitle_default != null) setSubIndex(p.subtitle_default);
       await attach(p, opts.startMs / 1000);
@@ -310,9 +344,11 @@ export default function Player() {
 
   const onVideoError = () => {
     // Il browser rifiuta il file nonostante il profilo: si riprova una volta con la transcodifica.
-    if (info?.method === "direct_play" && !triedFallback.current) {
-      triedFallback.current = true;
-      start({ startMs: (videoRef.current?.currentTime ?? 0) * 1000, audioIndex: info.audio_index, force: true });
+    if (info?.method === "direct_play" && fallbackRef.current) {
+      const f = fallbackRef.current;
+      fallbackRef.current = null;
+      reportClientError(info.session_id, `video element error ${videoRef.current?.error?.code ?? ""} ${videoRef.current?.error?.message ?? ""}`.trim());
+      f();
     } else if (!hlsRef.current) {
       setError(t("player.errorDecode"));
     }
@@ -346,13 +382,13 @@ export default function Player() {
           {info && <MethodBadge method={info.method} reason={reason} />}
         </div>
 
-        <div className="player__center" onPointerUp={onSurfacePointer}>
+        {!error && <div className="player__center" onPointerUp={onSurfacePointer}>
           <button className="player__btn player__btn--big player__hide-sm" onClick={() => skip(-back)} aria-label={t("player.backN", { s: back })}><RotateCcw /></button>
           <button className="pl-btn pl-btn--play" style={{ width: 72, height: 72 }} onClick={togglePlay} aria-label={playing ? t("player.pause") : t("player.play")}>
             {playing ? <Pause fill="currentColor" /> : <Play fill="currentColor" />}
           </button>
           <button className="player__btn player__btn--big player__hide-sm" onClick={() => skip(fwd)} aria-label={t("player.forwardN", { s: fwd })}><RotateCw /></button>
-        </div>
+        </div>}
 
         <div className="player__bottom">
           <div
@@ -484,6 +520,7 @@ export default function Player() {
         <div className="player__msg">
           <div className="t-h3">{t("player.cannotPlay")}</div>
           <div className="t-small" style={{ color: "#a2a9b4" }}>{error}</div>
+          {errorDetail && <div className="t-mono-sm" style={{ color: "#7d8590" }}>{errorDetail}</div>}
           <div className="row" style={{ justifyContent: "center" }}>
             <button className="pl-btn pl-btn--secondary" onClick={() => nav(-1)}>{t("common.back")}</button>
             <button className="pl-btn pl-btn--primary" onClick={() => start({ startMs: time * 1000, force: true })}>{t("player.retry")}</button>
