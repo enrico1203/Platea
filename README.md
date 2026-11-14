@@ -43,6 +43,8 @@ Apri `http://<host>:8080`, inserisci il codice di primo avvio stampato nei log e
 | `./transcode` | Segmenti delle sessioni attive | Sì |
 | Cartelle dei media → `/media/…` | La libreria, in sola lettura: una riga per ognuna nei `volumes` del servizio `server` (es. `/mnt/jottamio:/media/jottamio:ro,rslave`) | — |
 
+**Utente dei container.** Server e web UI non girano come root: il server usa l'utente `platea` (uid e gid 1000), nginx l'utente `nginx`. Le cartelle `data`, `cache` e `transcode` devono appartenere all'uid 1000; aggiornando da una versione precedente: `docker compose down && sudo chown -R 1000:1000 data cache transcode && docker compose up -d`. Se non sono scrivibili, il server si ferma con questo messaggio nei log.
+
 **Password dimenticata.** Da terminale, con il server in funzione: `docker compose exec server platea reset-password <utente>` stampa una password nuova (o `… reset-password <utente> <password>` per sceglierla). L'account torna attivo e tutti i suoi dispositivi vengono scollegati.
 
 Per aggiornare: `git pull && docker compose up -d --build`. Le migrazioni del database partono da sole, dopo una copia di sicurezza.
@@ -53,7 +55,7 @@ Per aggiornare: `git pull && docker compose up -d --build`. Le migrazioni del da
 
 Togli il commento alle righe nel servizio `server` di `docker-compose.yml`:
 
-- Intel (QSV, VA-API) e AMD (VA-API): `devices: - /dev/dri:/dev/dri`
+- Intel (QSV, VA-API) e AMD (VA-API): `devices: - /dev/dri:/dev/dri` e `group_add` con il gruppo che possiede `/dev/dri/renderD128` sull'host (`stat -c %g /dev/dri/renderD128`): il server non gira come root
 - NVIDIA (NVENC): il blocco `deploy` con il runtime NVIDIA
 
 Poi in **Amministrazione → Transcodifica → Prova ora**: il server codifica e decodifica un secondo di video vero per ogni combinazione e mostra la matrice delle capacità. Se la GPU fallisce, la sessione riparte in software da sola.

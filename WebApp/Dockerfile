@@ -9,6 +9,13 @@ COPY . .
 RUN npm run build
 
 FROM nginx:1-alpine
+# Correzioni di sicurezza di Alpine uscite dopo l'immagine base (controllate da Trivy in CI).
+# nginx gira come utente "nginx", non root: pid in /tmp e cartelle scrivibili per lui. La porta 80 resta
+# utilizzabile perché Docker consente le porte basse ai processi non root dentro il container.
+RUN apk upgrade --no-cache \
+ && sed -i -e '/^user /d' -e 's#^pid .*#pid /tmp/nginx.pid;#' /etc/nginx/nginx.conf \
+ && chown -R nginx:nginx /var/cache/nginx /etc/nginx/conf.d
+USER nginx
 # Il template viene completato da nginx all'avvio con PLATEA_SERVER_URL.
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist /usr/share/nginx/html

@@ -84,7 +84,16 @@ fn main() -> anyhow::Result<()> {
 
 async fn run(boot: boot::BootConfig) -> anyhow::Result<()> {
     let t0 = std::time::Instant::now();
-    boot.ensure_dirs()?;
+    if let Err(e) = boot.ensure_dirs() {
+        if e.kind() == std::io::ErrorKind::PermissionDenied {
+            // Cartelle create da una versione che girava come root: messaggio chiaro invece di un errore generico.
+            anyhow::bail!(
+                "le cartelle dei dati non sono scrivibili dall'utente del server (uid {}). Sull'host: sudo chown -R 1000:1000 data cache transcode",
+                unsafe { libc::getuid() }
+            );
+        }
+        return Err(e.into());
+    }
     let secret = boot.load_secret()?;
     let db = db::Db::open(&boot).await?;
     let settings = settings::Settings::load(db.clone()).await?;

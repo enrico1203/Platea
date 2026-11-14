@@ -31,9 +31,12 @@ services:
     # Transcodifiche brevi e frequenti: i segmenti possono stare in RAM.
     # tmpfs:
     #   - /transcode:size=4g
-    # GPU Intel o AMD: togliere il commento
+    # GPU Intel o AMD: togliere il commento. Il server non gira come root: serve anche il gruppo che possiede
+    # /dev/dri/renderD128 sull'host (il suo numero: stat -c %g /dev/dri/renderD128).
     # devices:
     #   - /dev/dri:/dev/dri
+    # group_add:
+    #   - "993"
     # GPU NVIDIA: togliere il commento
     # deploy:
     #   resources:

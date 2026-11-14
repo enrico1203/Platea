@@ -46,3 +46,42 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker compose build
+      - name: Upload images for the security scan
+        run: docker save platea-server:latest platea-web:latest -o images.tar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: images
+          path: images.tar
+          retention-days: 1
+
+  # Trivy (immagine ufficiale con versione fissa, nessuna action di terze parti):
+  # - dipendenze Rust e npm e segreti nel codice: qualunque HIGH/CRITICAL fa fallire;
+  # - Dockerfile e compose: configurazioni rischiose HIGH/CRITICAL (es. container come root);
+  # - immagini: falliscono le HIGH/CRITICAL che hanno già una correzione; quelle che la distribuzione
+  #   non ha ancora corretto si elencano nel log senza bloccare.
+  security:
+    name: Security (Trivy)
+    runs-on: ubuntu-latest
+    needs: [images]
+    env:
+      TRIVY: docker run --rm -v ${{ github.workspace }}:/src:ro -v trivy-cache:/root/.cache -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.76.1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: images
+      - run: docker load -i images.tar
+      - name: Dependencies and secrets
+        run: $TRIVY fs --quiet --exit-code 1 --scanners vuln,secret --severity HIGH,CRITICAL /src
+      - name: Dockerfile and compose
+        run: |
+          $TRIVY config --quiet --exit-code 1 --severity HIGH,CRITICAL /src/Server
+          $TRIVY config --quiet --exit-code 1 --severity HIGH,CRITICAL /src/WebApp
+      - name: Images (fixable)
+        run: |
+          $TRIVY image --quiet --exit-code 1 --ignore-unfixed --scanners vuln --severity HIGH,CRITICAL platea-server:latest
+          $TRIVY image --quiet --exit-code 1 --ignore-unfixed --scanners vuln --severity HIGH,CRITICAL platea-web:latest
+      - name: Images (not yet fixed upstream, report only)
+        run: |
+          $TRIVY image --quiet --scanners vuln --severity HIGH,CRITICAL platea-server:latest
+          $TRIVY image --quiet --scanners vuln --severity HIGH,CRITICAL platea-web:latest
