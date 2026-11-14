@@ -134,6 +134,113 @@ async fn sessions(State(state): State<Shared>, _a: AdminUser) -> ApiResult<Json<
     Ok(Json(json!({ "items": out })))
 }
 
+fn id_list(ids: &std::collections::BTreeSet<i64>) -> String {
+    ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",")
+}
+
+/// Titolo leggibile di un elemento: "Film (2019)", "Serie · S01E02 · Titolo", "Serie · Stagione 2".
+fn item_label(kind: &str, title: &str, year: Option<i64>, season: Option<i64>, episode: Option<i64>, series: Option<&str>) -> String {
+    match kind {
+        "episode" => format!("{} · S{:02}E{:02} · {}", series.unwrap_or(""), season.unwrap_or(0), episode.unwrap_or(0), title),
+        "season" => format!("{} · {}", series.unwrap_or(""), title),
+        _ => match year {
+            Some(y) => format!("{title} ({y})"),
+            None => title.to_string(),
+        },
+    }
+}
+
+/// Aggiunge ai lavori il loro soggetto, con poche query per tutta la pagina (non una per lavoro).
+async fn describe_jobs(state: &Shared, jobs: &mut [crate::jobs::JobView]) -> ApiResult<()> {
+    use std::collections::{BTreeSet, HashMap};
+    let num = |v: &Value, k: &str| v.get(k).and_then(|x| x.as_i64());
+    let (mut item_ids, mut file_ids, mut image_ids, mut lib_ids) = (BTreeSet::new(), BTreeSet::new(), BTreeSet::new(), BTreeSet::new());
+    for j in jobs.iter() {
+        if let Some(i) = num(&j.payload, "item_id") {
+            item_ids.insert(i);
+        }
+        if let Some(i) = num(&j.payload, "file_id") {
+            file_ids.insert(i);
+        }
+        if let Some(i) = num(&j.payload, "image_id") {
+            image_ids.insert(i);
+        }
+        if let Some(i) = num(&j.payload, "library_id") {
+            lib_ids.insert(i);
+        }
+    }
+    let mut files: HashMap<i64, (Option<i64>, String)> = HashMap::new();
+    if !file_ids.is_empty() {
+        let rows: Vec<(i64, Option<i64>, String)> =
+            sqlx::query_as(&format!("SELECT id, item_id, relative_path FROM media_files WHERE id IN ({})", id_list(&file_ids)))
+                .fetch_all(&state.db.read)
+                .await?;
+        for (id, item, path) in rows {
+            if let Some(i) = item {
+                item_ids.insert(i);
+            }
+            files.insert(id, (item, path));
+        }
+    }
+    let mut images: HashMap<i64, (Option<i64>, Option<i64>, String)> = HashMap::new();
+    let mut person_ids = BTreeSet::new();
+    if !image_ids.is_empty() {
+        let rows: Vec<(i64, Option<i64>, Option<i64>, String)> =
+            sqlx::query_as(&format!("SELECT id, item_id, person_id, kind FROM images WHERE id IN ({})", id_list(&image_ids))).fetch_all(&state.db.read).await?;
+        for (id, item, person, kind) in rows {
+            if let Some(i) = item {
+                item_ids.insert(i);
+            }
+            if let Some(p) = person {
+                person_ids.insert(p);
+            }
+            images.insert(id, (item, person, kind));
+        }
+    }
+    let mut labels: HashMap<i64, String> = HashMap::new();
+    if !item_ids.is_empty() {
+        let rows: Vec<(i64, String, String, Option<i64>, Option<i64>, Option<i64>, Option<String>)> = sqlx::query_as(&format!(
+            "SELECT i.id, i.kind, i.title, i.year, i.parent_index_number, i.index_number, s.title FROM items i LEFT JOIN items s ON s.id = i.series_id WHERE i.id IN ({})",
+            id_list(&item_ids)
+        ))
+        .fetch_all(&state.db.read)
+        .await?;
+        for (id, kind, title, year, season, episode, series) in rows {
+            labels.insert(id, item_label(&kind, &title, year, season, episode, series.as_deref()));
+        }
+    }
+    let mut people: HashMap<i64, String> = HashMap::new();
+    if !person_ids.is_empty() {
+        let rows: Vec<(i64, String)> =
+            sqlx::query_as(&format!("SELECT id, name FROM people WHERE id IN ({})", id_list(&person_ids))).fetch_all(&state.db.read).await?;
+        people.extend(rows);
+    }
+    let mut libs: HashMap<i64, String> = HashMap::new();
+    if !lib_ids.is_empty() {
+        let rows: Vec<(i64, String)> =
+            sqlx::query_as(&format!("SELECT id, name FROM libraries WHERE id IN ({})", id_list(&lib_ids))).fetch_all(&state.db.read).await?;
+        libs.extend(rows);
+    }
+    for j in jobs.iter_mut() {
+        let p = &j.payload;
+        let file_name = |path: &str| path.rsplit('/').next().unwrap_or(path).to_string();
+        let subject = if let Some(f) = num(p, "file_id").and_then(|f| files.get(&f)) {
+            Some((f.0.and_then(|i| labels.get(&i).cloned()).unwrap_or_else(|| file_name(&f.1)), Some(file_name(&f.1)), f.0))
+        } else if let Some(im) = num(p, "image_id").and_then(|i| images.get(&i)) {
+            let who = im.0.and_then(|i| labels.get(&i).cloned()).or_else(|| im.1.and_then(|x| people.get(&x).cloned()));
+            who.map(|w| (w, Some(im.2.clone()), im.0))
+        } else if let Some(i) = num(p, "item_id") {
+            labels.get(&i).map(|l| (l.clone(), None, Some(i)))
+        } else if let Some(l) = num(p, "library_id") {
+            libs.get(&l).map(|name| (name.clone(), p.get("subpath").and_then(|s| s.as_str()).map(String::from), None))
+        } else {
+            None
+        };
+        j.subject = subject.map(|(title, detail, item)| json!({ "title": title, "detail": detail, "item_id": item.map(|i| state.ids.encode(i)) }));
+    }
+    Ok(())
+}
+
 async fn kill_session(State(state): State<Shared>, AdminUser(admin): AdminUser, Path(id): Path<String>) -> ApiResult<Json<Value>> {
     let s = crate::sessions::stop_session(&state, &id).await.ok_or_else(|| ApiError::not_found("Sessione"))?;
     state.events.to_user(s.user_id, "playback.stopped", json!({ "session_id": id, "by": "admin" }));
@@ -177,8 +284,11 @@ async fn jobs(State(state): State<Shared>, _a: AdminUser, Query(q): Query<JobQue
             started_at,
             finished_at,
             error,
+            subject: None,
         })
         .collect();
+    let mut items = items;
+    describe_jobs(&state, &mut items).await?;
     let counts: Vec<(String, i64)> = sqlx::query_as("SELECT state, COUNT(*) FROM jobs GROUP BY state").fetch_all(&state.db.read).await?;
     Ok(Json(json!({ "items": items, "counts": counts.into_iter().collect::<std::collections::HashMap<_, _>>() })))
 }

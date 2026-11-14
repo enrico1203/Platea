@@ -55,10 +55,8 @@ async fn reset_password(boot: &BootConfig, username: Option<&str>, password: Opt
         .await
         .context("apertura del database")?;
 
-    let user: Option<(i64, String)> = sqlx::query_as("SELECT id, username FROM users WHERE username_lower = ?")
-        .bind(username.to_lowercase())
-        .fetch_optional(&mut conn)
-        .await?;
+    let user: Option<(i64, String)> =
+        sqlx::query_as("SELECT id, username FROM users WHERE username_lower = ?").bind(username.to_lowercase()).fetch_optional(&mut conn).await?;
     let Some((id, name)) = user else {
         let all: Vec<String> = sqlx::query_scalar("SELECT username FROM users ORDER BY id").fetch_all(&mut conn).await?;
         bail!("l'utente \"{username}\" non esiste. Utenti: {}", if all.is_empty() { "nessuno".into() } else { all.join(", ") });

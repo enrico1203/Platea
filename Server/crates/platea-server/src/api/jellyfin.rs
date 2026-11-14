@@ -503,10 +503,8 @@ async fn genre_names(state: &Shared, user: &AuthUser) -> ApiResult<Vec<String>> 
 
 async fn genres_list(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<Value>> {
     let names = genre_names(&state, &user).await?;
-    let items: Vec<Value> = names
-        .iter()
-        .map(|n| json!({ "Name": n, "Id": format!("{:x}", md5_like(n)), "Type": "Genre", "ServerId": state.server_id, "ImageTags": {} }))
-        .collect();
+    let items: Vec<Value> =
+        names.iter().map(|n| json!({ "Name": n, "Id": format!("{:x}", md5_like(n)), "Type": "Genre", "ServerId": state.server_id, "ImageTags": {} })).collect();
     let n = items.len();
     Ok(Json(json!({ "Items": items, "TotalRecordCount": n, "StartIndex": 0 })))
 }
@@ -540,7 +538,7 @@ async fn filters(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<
 async fn counts(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<Value>> {
     let rows: Vec<(String, i64)> =
         sqlx::query_as(&format!("SELECT i.kind, COUNT(*) FROM items i WHERE 1 {} GROUP BY i.kind", user.library_filter("i.library_id")))
-                    .fetch_all(&state.db.read)
+            .fetch_all(&state.db.read)
             .await?;
     let get = |k: &str| rows.iter().find(|(x, _)| x == k).map(|(_, n)| *n).unwrap_or(0);
     Ok(Json(json!({
@@ -552,9 +550,8 @@ async fn counts(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<V
 /// Cartelle delle librerie, nella forma di Jellyfin (alcuni client le leggono anche senza essere amministratori).
 /// Librerie che si possono raggruppare nelle viste (Infuse le chiede subito dopo l'accesso).
 async fn grouping_options(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<Value>> {
-    let libs: Vec<(i64, String)> = sqlx::query_as(&format!("SELECT id, name FROM libraries i WHERE 1 {} ORDER BY name", user.library_filter("i.id")))
-        .fetch_all(&state.db.read)
-        .await?;
+    let libs: Vec<(i64, String)> =
+        sqlx::query_as(&format!("SELECT id, name FROM libraries i WHERE 1 {} ORDER BY name", user.library_filter("i.id"))).fetch_all(&state.db.read).await?;
     Ok(Json(json!(libs.into_iter().map(|(id, name)| json!({ "Name": name, "Id": guid(&state, NS_LIBRARY, id) })).collect::<Vec<_>>())))
 }
 
@@ -565,7 +562,7 @@ async fn grouping_options_u(state: State<Shared>, user: AuthUser, Path(_u): Path
 async fn virtual_folders(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<Value>> {
     let libs: Vec<(i64, String, String)> =
         sqlx::query_as(&format!("SELECT id, name, kind FROM libraries i WHERE 1 {} ORDER BY name", user.library_filter("i.id")))
-                    .fetch_all(&state.db.read)
+            .fetch_all(&state.db.read)
             .await?;
     let out: Vec<Value> = libs
         .into_iter()
@@ -925,7 +922,8 @@ async fn list_fields(state: &Shared, r: &Row, v: &mut Value, fields: &str) -> Ap
         o.insert("Genres".into(), json!(genres));
     }
     if has("ProviderIds") {
-        let ext: Vec<(String, String)> = sqlx::query_as("SELECT provider, value FROM external_ids WHERE item_id = ?").bind(r.id).fetch_all(&state.db.read).await?;
+        let ext: Vec<(String, String)> =
+            sqlx::query_as("SELECT provider, value FROM external_ids WHERE item_id = ?").bind(r.id).fetch_all(&state.db.read).await?;
         o.insert("ProviderIds".into(), provider_ids(ext));
     }
     if (has("MediaSources") || has("Path") || has("MediaStreams")) && (r.kind == "movie" || r.kind == "episode") {
@@ -1289,10 +1287,15 @@ fn log_query(uri: &Uri) {
     if !tracing::enabled!(tracing::Level::DEBUG) {
         return;
     }
-    let q: Vec<&str> = uri.query().unwrap_or("").split('&').filter(|p| {
-        let k = p.split('=').next().unwrap_or("").to_ascii_lowercase();
-        !(k.contains("key") || k.contains("token"))
-    }).collect();
+    let q: Vec<&str> = uri
+        .query()
+        .unwrap_or("")
+        .split('&')
+        .filter(|p| {
+            let k = p.split('=').next().unwrap_or("").to_ascii_lowercase();
+            !(k.contains("key") || k.contains("token"))
+        })
+        .collect();
     tracing::debug!(path = uri.path(), query = %q.join("&"), "richiesta di elenco Jellyfin");
 }
 

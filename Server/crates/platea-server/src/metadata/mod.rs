@@ -176,7 +176,9 @@ fn candidates_from(results: &Value, movie: bool, title: &str, year: Option<i64>,
 }
 
 fn sort_candidates(c: &mut [Candidate]) {
-    c.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal).then(b.popularity.partial_cmp(&a.popularity).unwrap_or(std::cmp::Ordering::Equal)));
+    c.sort_by(|a, b| {
+        b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal).then(b.popularity.partial_cmp(&a.popularity).unwrap_or(std::cmp::Ordering::Equal))
+    });
 }
 
 /// Stessi risultati in un'altra lingua: per ogni candidato il titolo tradotto che somiglia di più al nome.
@@ -846,7 +848,9 @@ mod tests {
         // "L Odissea" (apostrofo perso nel nome del file) = "L'Odissea".
         assert!(title_match("L Odissea", "L'Odissea") > 0.99);
         // Un sequel con un altro anno resta sotto la soglia.
-        assert!(score_candidate("Scream", Some(1996), "Scream 2", None, Some(1997), 30.0) < score_candidate("Scream", Some(1996), "Scream", None, Some(1996), 30.0));
+        assert!(
+            score_candidate("Scream", Some(1996), "Scream 2", None, Some(1997), 30.0) < score_candidate("Scream", Some(1996), "Scream", None, Some(1996), 30.0)
+        );
         assert!(score_candidate("The Matrix", Some(1999), "The Matrix Resurrections", None, Some(2021), 80.0) < 0.6);
         // Titolo italiano seguito dall'originale.
         assert!(title_match("Asino Per Sempre Jackass Forever", "Jackass Forever") >= 0.9);

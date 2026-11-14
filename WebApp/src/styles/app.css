@@ -413,3 +413,9 @@ a.person:focus-visible .person__img { outline: 2px solid var(--focus); outline-o
 .player__casting > * { pointer-events: auto; }
 .player__casting svg { width: 48px; height: 48px; color: var(--blue); }
 .player__btn.is-active { color: var(--blue); }
+
+/* Lavori: soggetto leggibile, il file sotto in piccolo. */
+.job-subject { max-width: 560px; }
+.job-subject__title { font: 500 14px/20px var(--font-sans); color: var(--ink); }
+.job-subject__title a { color: inherit; }
+.job-subject__detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 560px; }

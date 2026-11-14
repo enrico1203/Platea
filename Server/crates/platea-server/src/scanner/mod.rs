@@ -889,10 +889,7 @@ pub mod rclone {
             rclone_mount_path: "/media/jotta2".into(),
             ..Default::default()
         };
-        assert_eq!(
-            mounts(&sc),
-            vec![("/media/film".to_string(), "http://h:8573".to_string()), ("/media/jotta2".to_string(), "http://h:6470".to_string())]
-        );
+        assert_eq!(mounts(&sc), vec![("/media/film".to_string(), "http://h:8573".to_string()), ("/media/jotta2".to_string(), "http://h:6470".to_string())]);
     }
 
     #[cfg(test)]

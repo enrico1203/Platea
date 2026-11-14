@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { RotateCcw } from "lucide-react";
 import { api } from "../../api/client";
 import type { Job } from "../../api/types";
@@ -34,7 +35,17 @@ export default function Jobs() {
               {data?.items.map((j) => (
                 <tr key={j.id}>
                   <td className="t-label" style={{ whiteSpace: "nowrap" }}>{t(`admin.jobs.kinds.${j.kind}` as MessageKey)}</td>
-                  <td className="t-mono-sm subtle">{Object.entries(j.payload).filter(([k]) => k !== "kind").map(([k, v]) => `${k}=${v ?? ""}`).join(" ")}{j.error && <div className="danger-text" style={{ marginTop: 4 }}>{j.error}</div>}</td>
+                  <td className="job-subject">
+                    {j.subject ? (
+                      <>
+                        <div className="job-subject__title">{j.subject.item_id ? <Link to={`/item/${j.subject.item_id}`}>{j.subject.title}</Link> : j.subject.title}</div>
+                        {j.subject.detail && <div className="t-mono-sm subtle job-subject__detail" title={j.subject.detail}>{j.subject.detail}</div>}
+                      </>
+                    ) : (
+                      <span className="t-mono-sm subtle">{Object.entries(j.payload).filter(([k]) => k !== "kind").map(([k, v]) => `${k}=${v ?? ""}`).join(" ")}</span>
+                    )}
+                    {j.error && <div className="danger-text" style={{ marginTop: 4 }}>{j.error}</div>}
+                  </td>
                   <td><Badge tone={j.state === "failed" ? "danger" : j.state === "done" ? "direct" : undefined}>{t(`admin.jobs.state.${j.state}` as MessageKey)}</Badge>{j.attempts > 1 && <span className="t-small subtle"> ×{j.attempts}</span>}</td>
                   <td className="t-small muted" style={{ whiteSpace: "nowrap" }}>{relative(j.finished_at ?? j.started_at ?? j.run_after)}</td>
                   <td>{j.state === "failed" && <button className="icon-btn" aria-label={t("admin.jobs.retry")} title={t("admin.jobs.retry")} onClick={async () => { await api(`/api/v1/admin/jobs/${j.id}/retry`, { method: "POST" }); qc.invalidateQueries({ queryKey: ["admin", "jobs"] }); }}><RotateCcw /></button>}</td>

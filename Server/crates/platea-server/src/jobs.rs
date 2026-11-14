@@ -489,6 +489,9 @@ pub struct JobView {
     pub started_at: Option<i64>,
     pub finished_at: Option<i64>,
     pub error: Option<String>,
+    /// Su cosa lavora: titolo leggibile (film, episodio con serie, persona, libreria) e dettaglio (file, immagine).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subject: Option<Value>,
 }
 
 #[cfg(test)]
