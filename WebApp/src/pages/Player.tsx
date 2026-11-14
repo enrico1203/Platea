@@ -249,17 +249,39 @@ export default function Player() {
     poke();
   }, [poke]);
 
+  // Schermo intero in tre modi: standard; iPad e Safari vecchi con il prefisso webkit; iPhone, dove una pagina
+  // non può andare a schermo intero e si usa il player nativo del video (con i suoi comandi e sottotitoli).
   const toggleFs = useCallback(() => {
-    if (document.fullscreenElement) document.exitFullscreen().catch(() => undefined);
-    else document.documentElement.requestFullscreen?.().catch(() => {
-      // iPhone: schermo intero nativo dell'elemento video.
-      (videoRef.current as unknown as { webkitEnterFullscreen?: () => void })?.webkitEnterFullscreen?.();
-    });
+    const d = document as Document & { webkitFullscreenElement?: Element; webkitExitFullscreen?: () => void };
+    const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => void };
+    const video = videoRef.current as (HTMLVideoElement & { webkitEnterFullscreen?: () => void; webkitDisplayingFullscreen?: boolean }) | null;
+    const nativeVideo = () => {
+      try { video?.webkitEnterFullscreen?.(); } catch { /* video senza metadati: si riprova al prossimo tocco */ }
+    };
+    if (d.fullscreenElement || d.webkitFullscreenElement) {
+      if (d.exitFullscreen) d.exitFullscreen().catch(() => undefined);
+      else d.webkitExitFullscreen?.();
+      return;
+    }
+    if (typeof el.requestFullscreen === "function") {
+      el.requestFullscreen().catch(nativeVideo);
+    } else if (typeof el.webkitRequestFullscreen === "function") {
+      el.webkitRequestFullscreen();
+    } else {
+      nativeVideo();
+    }
   }, []);
 
   useEffect(() => {
-    const onFs = () => setFullscreen(!!document.fullscreenElement);
+    const onFs = () => setFullscreen(!!(document.fullscreenElement || (document as Document & { webkitFullscreenElement?: Element }).webkitFullscreenElement));
     document.addEventListener("fullscreenchange", onFs);
+    document.addEventListener("webkitfullscreenchange", onFs);
+    // iPhone: schermo intero nativo del video.
+    const v = videoRef.current;
+    const onBegin = () => setFullscreen(true);
+    const onEnd = () => setFullscreen(false);
+    v?.addEventListener("webkitbeginfullscreen", onBegin);
+    v?.addEventListener("webkitendfullscreen", onEnd);
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.tagName === "INPUT") return;
       if (e.key === " " || e.key === "k") { e.preventDefault(); togglePlay(); }
@@ -271,7 +293,13 @@ export default function Player() {
       poke();
     };
     window.addEventListener("keydown", onKey);
-    return () => { document.removeEventListener("fullscreenchange", onFs); window.removeEventListener("keydown", onKey); };
+    return () => {
+      document.removeEventListener("fullscreenchange", onFs);
+      document.removeEventListener("webkitfullscreenchange", onFs);
+      v?.removeEventListener("webkitbeginfullscreen", onBegin);
+      v?.removeEventListener("webkitendfullscreen", onEnd);
+      window.removeEventListener("keydown", onKey);
+    };
   }, [nav, poke, skip, toggleFs, togglePlay]);
 
   // Doppio tocco a sinistra o a destra per saltare; tocco singolo mostra o nasconde i controlli.
