@@ -233,6 +233,8 @@ const it = {
     },
   },
   account: {
+    rememberTracks: "Ricorda le tracce scelte",
+    rememberTracksHint: "Audio e sottotitoli scelti nel player valgono per quel film, o per tutti gli episodi della serie.",
     revokeOthers: "Scollega tutti gli altri",
     revokedOthers: { one: "{count} dispositivo scollegato.", other: "{count} dispositivi scollegati." },
     showAllDevices: "Mostra tutti ({count})",

@@ -89,6 +89,7 @@ export default function Account() {
           <SelectField label={t("account.subtitleSize")} value={prefs.subtitle_size} onChange={(v) => update({ subtitle_size: v as UserPrefs["subtitle_size"] })} options={(["s", "m", "l", "xl"] as const).map((s) => ({ value: s, label: t(`account.sizes.${s}` as "account.sizes.m") }))} />
           <div style={{ alignSelf: "end" }}><Switch checked={prefs.subtitle_background} onChange={(v) => update({ subtitle_background: v })} label={t("account.subtitleBackground")} /></div>
         </div>
+        <Switch checked={prefs.remember_tracks} onChange={(v) => update({ remember_tracks: v })} label={t("account.rememberTracks")} hint={t("account.rememberTracksHint")} />
         <Switch checked={prefs.autoplay_next} onChange={(v) => update({ autoplay_next: v })} label={t("account.autoplay")} hint={t("account.autoplayHint")} />
         <div className="form-grid">
           <SelectField label={t("account.countdown")} value={String(prefs.autoplay_countdown_seconds)} onChange={(v) => update({ autoplay_countdown_seconds: Number(v) })} options={[0, 5, 10, 15, 20, 30].map((s) => ({ value: String(s), label: s === 0 ? t("account.immediately") : t("account.seconds", { s }) }))} />

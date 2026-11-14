@@ -189,6 +189,9 @@ Trovato e corretto durante il test:
   prima, letti dall'intestazione alla prima richiesta e salvati. Titoli generici o orari (mkvmerge) scartati. Player: tacche
   sulla barra e pannello per saltare.
 - [x] Locandina, sfondo e logo caricati dall'amministratore (dialogo Modifica), campo bloccato; "Ripristina" torna ai metadati.
+- [x] Tracce ricordate (migrazione 0009 `track_choices`): le scelte nel player si salvano come lingue sul film o sulla
+  serie e vincono sulle preferenze generali alla riproduzione successiva; "sottotitoli spenti" compreso. Preferenza
+  `remember_tracks`.
 - [x] CORRETTO: un'immagine cambiata (anche da TMDB) teneva lo stesso identificativo, o SQLite lo riusava dopo una
   cancellazione: con la cache "immutable" i browser mostravano la vecchia. Ora riga nuova inserita prima di togliere la vecchia.
 

@@ -25,6 +25,7 @@ use std::time::Duration;
 pub fn routes(api: Api) -> Api {
     api.post("/api/v1/playback/info", "Riproduzione", Access::User, "Decisione di riproduzione e apertura della sessione", info)
         .post("/api/v1/playback/{session}/progress", "Riproduzione", Access::User, "Posizione corrente (ogni 10 s)", progress)
+        .post("/api/v1/playback/{session}/tracks", "Riproduzione", Access::User, "Tracce scelte nel player: ricordate per il film o per tutta la serie", tracks)
         .post("/api/v1/playback/{session}/stop", "Riproduzione", Access::User, "Fine della riproduzione", stop)
         .get("/api/v1/stream/{session}", "Riproduzione", Access::Stream, "Direct play: file originale con richieste Range", direct)
         .get("/api/v1/hls/{session}/{file}", "Riproduzione", Access::Stream, "Playlist HLS (main.m3u8) e segmenti (N.ts)", hls)
@@ -308,7 +309,29 @@ async fn info(State(state): State<Shared>, user: AuthUser, Json(req): Json<InfoR
     };
 
     // Preferenze dell'utente: lingua audio (per file, gli indici cambiano tra versioni) e sottotitoli suggeriti.
-    let prefs = crate::prefs::load(&state, user.user_id).await;
+    // Le tracce scelte l'ultima volta per questo film o per questa serie vincono sulle preferenze generali.
+    let mut prefs = crate::prefs::load(&state, user.user_id).await;
+    let mut subtitles_off = false;
+    if prefs.remember_tracks {
+        let key = if item.kind == "episode" { item.series_id.unwrap_or(item_id) } else { item_id };
+        let choice: Option<(Option<String>, Option<String>, i64)> =
+            sqlx::query_as("SELECT audio_language, subtitle_language, subtitle_off FROM track_choices WHERE user_id = ? AND item_id = ?")
+                .bind(user.user_id)
+                .bind(key)
+                .fetch_optional(&state.db.read)
+                .await?;
+        if let Some((audio, sub, off)) = choice {
+            if let Some(a) = audio.filter(|a| !a.is_empty()) {
+                prefs.audio_language = a;
+            }
+            if off != 0 {
+                subtitles_off = true;
+            } else if let Some(s) = sub.filter(|s| !s.is_empty()) {
+                prefs.subtitle_language = s;
+                prefs.subtitle_mode = crate::prefs::SubtitleMode::Always;
+            }
+        }
+    }
     // Più versioni: si preferisce quella riproducibile in direct play, poi in remux.
     let mut best: Option<(FileInfo, pb::Decision)> = None;
     let mut last_err = None;
@@ -510,7 +533,7 @@ async fn info(State(state): State<Shared>, user: AuthUser, Json(req): Json<InfoR
         "audio_index": decision.audio_index,
         "subtitle": decision.subtitle,
         // Sottotitolo di testo da attivare all'avvio secondo le preferenze (solo alla prima richiesta: dopo sceglie l'utente).
-        "subtitle_default": if req.subtitle_index.is_none() && req.audio_index.is_none() {
+        "subtitle_default": if req.subtitle_index.is_none() && req.audio_index.is_none() && !subtitles_off {
             let audio_lang = decision.audio_index.and_then(|i| file.media.audio.iter().find(|a| a.index == i)).and_then(|a| a.language.clone());
             crate::prefs::pick_subtitle(&file.media.subtitles, audio_lang.as_deref(), &prefs, req.ui_language.as_deref().unwrap_or("it"))
         } else {
@@ -556,6 +579,41 @@ async fn progress(State(state): State<Shared>, user: AuthUser, Path(id): Path<St
     s.touch();
     state.sessions.record_progress(s.user_id, s.item_id, pos, s.duration_ms);
     Ok(Json(json!({ "ok": true })))
+}
+
+#[derive(Deserialize)]
+struct TracksReq {
+    audio_index: Option<u32>,
+    subtitle_index: Option<u32>,
+    #[serde(default)]
+    subtitle_off: bool,
+}
+
+/// Tracce scelte nel player: si salvano come lingue sul film o sulla serie, per la prossima riproduzione.
+async fn tracks(State(state): State<Shared>, user: AuthUser, Path(id): Path<String>, Json(req): Json<TracksReq>) -> ApiResult<Json<Value>> {
+    let s = own_session(&state, &user, &id)?;
+    let info = load_file(&state, s.file_id).await?;
+    let audio = req.audio_index.and_then(|i| info.media.audio.iter().find(|a| a.index == i)).and_then(|a| a.language.clone());
+    let sub = req.subtitle_index.and_then(|i| info.media.subtitles.iter().find(|x| x.index == i)).and_then(|x| x.language.clone());
+    let (kind, series): (String, Option<i64>) =
+        sqlx::query_as("SELECT kind, series_id FROM items WHERE id = ?").bind(s.item_id).fetch_one(&state.db.read).await?;
+    let key = if kind == "episode" { series.unwrap_or(s.item_id) } else { s.item_id };
+    sqlx::query(
+        "INSERT INTO track_choices (user_id, item_id, audio_language, subtitle_language, subtitle_off, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(user_id, item_id) DO UPDATE SET
+           audio_language = COALESCE(excluded.audio_language, track_choices.audio_language),
+           subtitle_language = CASE WHEN excluded.subtitle_off = 1 THEN track_choices.subtitle_language ELSE COALESCE(excluded.subtitle_language, track_choices.subtitle_language) END,
+           subtitle_off = excluded.subtitle_off, updated_at = excluded.updated_at",
+    )
+    .bind(user.user_id)
+    .bind(key)
+    .bind(&audio)
+    .bind(&sub)
+    .bind(req.subtitle_off as i64)
+    .bind(crate::util::now_ms())
+    .execute(&state.db.write)
+    .await?;
+    Ok(Json(json!({ "audio_language": audio, "subtitle_language": sub, "subtitle_off": req.subtitle_off })))
 }
 
 async fn stop(State(state): State<Shared>, user: AuthUser, Path(id): Path<String>, body: Option<Json<ProgressReq>>) -> ApiResult<Json<Value>> {

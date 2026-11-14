@@ -66,6 +66,6 @@ export interface UserPrefs {
   audio_language: string; subtitle_language: string; subtitle_mode: SubtitleMode;
   autoplay_next: boolean; autoplay_countdown_seconds: number; skip_back_seconds: number; skip_forward_seconds: number;
   subtitle_size: "s" | "m" | "l" | "xl"; subtitle_background: boolean;
-  home_sections: string[]; home_hidden_libraries: string[]; hide_played_in_recent: boolean; theme: string;
+  home_sections: string[]; home_hidden_libraries: string[]; hide_played_in_recent: boolean; theme: string; remember_tracks: boolean;
 }
 export interface PersonDetail { id: string; name: string; image: string | null; tmdb_id: number | null; items: (Item & { roles: { role: string; character: string | null }[] })[] }

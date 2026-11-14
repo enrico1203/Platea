@@ -46,6 +46,8 @@ pub struct UserPrefs {
     pub hide_played_in_recent: bool,
     /// Tema: "auto", "dark", "light".
     pub theme: String,
+    /// Ricordare per ogni film e serie le tracce scelte nel player.
+    pub remember_tracks: bool,
 }
 
 pub const HOME_SECTIONS: &[&str] = &["resume", "next_up", "recent"];
@@ -66,6 +68,7 @@ impl Default for UserPrefs {
             home_hidden_libraries: vec![],
             hide_played_in_recent: false,
             theme: "auto".into(),
+            remember_tracks: true,
         }
     }
 }

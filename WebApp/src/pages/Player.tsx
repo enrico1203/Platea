@@ -301,6 +301,13 @@ export default function Player() {
   }, [upNext, nav]);
   useEffect(() => setUpNext(null), [id]);
 
+  // Le tracce scelte valgono anche per la prossima volta (per il film, o per tutta la serie).
+  const rememberTracks = (audio: number | null, sub: number | null) => {
+    const sid = sessionRef.current;
+    if (!sid || !prefs.remember_tracks) return;
+    api(`/api/v1/playback/${sid}/tracks`, { body: { audio_index: audio ?? undefined, subtitle_index: sub ?? undefined, subtitle_off: sub === null } }).catch(() => undefined);
+  };
+
   const onVideoError = () => {
     // Il browser rifiuta il file nonostante il profilo: si riprova una volta con la transcodifica.
     if (info?.method === "direct_play" && !triedFallback.current) {
@@ -415,13 +422,14 @@ export default function Player() {
       {panel === "subs" && info && (
         <div className="player__panel">
           <h4>{t("item.subtitles")}</h4>
-          <button className={subIndex === null ? "active" : ""} onClick={() => setSubIndex(null)}>{t("player.off")}</button>
+          <button className={subIndex === null ? "active" : ""} onClick={() => { setSubIndex(null); rememberTracks(info.audio_index, null); }}>{t("player.off")}</button>
           {info.subtitles.map((s) => (
             <button
               key={s.index}
               className={subIndex === s.index ? "active" : ""}
               onClick={() => {
                 setSubIndex(s.index);
+                rememberTracks(info.audio_index, s.index);
                 // Un sottotitolo a immagine va impresso nel video: serve una nuova decisione.
                 if (s.image) start({ startMs: (videoRef.current?.currentTime ?? 0) * 1000, audioIndex: info.audio_index, subtitleIndex: s.index });
               }}
@@ -434,7 +442,7 @@ export default function Player() {
             <>
               <h4>{t("item.audio")}</h4>
               {info.audio_tracks.map((a) => (
-                <button key={a.index} className={info.audio_index === a.index ? "active" : ""} onClick={() => start({ startMs: (videoRef.current?.currentTime ?? 0) * 1000, audioIndex: a.index })}>
+                <button key={a.index} className={info.audio_index === a.index ? "active" : ""} onClick={() => { rememberTracks(a.index, subIndex); start({ startMs: (videoRef.current?.currentTime ?? 0) * 1000, audioIndex: a.index }); }}>
                   <span>{a.language?.toUpperCase() ?? `#${a.index}`}</span>
                   <span className="t-mono-sm" style={{ color: "#808893" }}>{a.codec.toUpperCase()} {a.channels > 2 ? `${a.channels - 1}.1` : `${a.channels}.0`}</span>
                 </button>

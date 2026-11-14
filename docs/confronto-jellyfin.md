@@ -34,7 +34,7 @@ La colonna **Priorità** indica l'ordine di lavoro: **A** subito, **B** dopo, **
 | Lingua dell'interfaccia | ✅ | ✅ (it, en) | — |
 | **Lingua audio preferita** | ✅ | ✅ | — |
 | **Lingua e modalità dei sottotitoli** (predefiniti, sempre, solo forzati, nessuno, intelligente) | ✅ | ✅ (sottotitoli di testo) | — |
-| Ricordare le tracce scelte | ✅ | 🟡 (lingue preferite sì, scelta per serie no) | B |
+| Ricordare le tracce scelte | ✅ | ✅ (per film e per serie, come lingue) | — |
 | **Episodio successivo automatico** (con conto alla rovescia) | ✅ | ✅ (anche nelle playlist) | — |
 | Salto avanti/indietro configurabile | ✅ | ✅ | — |
 | Aspetto dei sottotitoli (dimensione, sfondo) | ✅ | ✅ | — |

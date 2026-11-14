@@ -232,6 +232,8 @@ const en = {
     },
   },
   account: {
+    rememberTracks: "Remember chosen tracks",
+    rememberTracksHint: "Audio and subtitles picked in the player apply to that movie, or to every episode of the show.",
     revokeOthers: "Sign out all others",
     revokedOthers: { one: "{count} device signed out.", other: "{count} devices signed out." },
     showAllDevices: "Show all ({count})",
