@@ -1,0 +1,12 @@
+# Rust
+Server/target/
+# Node
+WebApp/node_modules/
+WebApp/dist/
+# Dati locali del compose
+data/
+cache/
+transcode/
+media/
+.env
+*.log
