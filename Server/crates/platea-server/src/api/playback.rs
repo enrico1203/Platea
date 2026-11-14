@@ -12,7 +12,7 @@ use crate::util::now_ms;
 use axum::body::Body;
 use axum::extract::{Path, Query, State};
 use axum::http::{header, HeaderMap, Method, StatusCode};
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
 use axum::Json;
 use platea_playback::{self as pb, AudioInfo, DecisionError, DeviceProfile, MediaInfo, PlaybackRequest, SubtitleInfo, VideoAction, VideoInfo};
 use serde::Deserialize;
@@ -242,6 +242,10 @@ async fn info(State(state): State<Shared>, user: AuthUser, Json(req): Json<InfoR
     if item.kind != "movie" && item.kind != "episode" {
         return Err(ApiError::BadRequest("Si riproducono film ed episodi".into()));
     }
+    // Un dispositivo riproduce una cosa alla volta: le sessioni precedenti liberano subito FFmpeg e i posti.
+    for old in state.sessions.by_device(user.token_id) {
+        stop_session(&state, &old).await;
+    }
     if let Some(max) = user.perms.max_streams {
         if state.sessions.user_count(user.user_id) as i64 >= max {
             return Err(ApiError::coded(StatusCode::TOO_MANY_REQUESTS, "TooManyStreams", format!("Questo account può avere al massimo {max} riproduzioni contemporanee")));
@@ -407,6 +411,7 @@ async fn info(State(state): State<Shared>, user: AuthUser, Json(req): Json<InfoR
         id: session_id.clone(),
         token: token.clone(),
         user_id: user.user_id,
+        token_id: user.token_id,
         username: user.username.clone(),
         item_id,
         file_id: file.id,
@@ -594,7 +599,11 @@ async fn hls(State(state): State<Shared>, Path((id, name)): Path<(String, String
     let path = match rt.segment(n).await {
         Ok(p) => p,
         Err(HlsError::OutOfRange) => return Err(ApiError::not_found("Segmento")),
-        Err(HlsError::Busy) => return Err(ApiError::coded(StatusCode::SERVICE_UNAVAILABLE, "TranscodeBusy", HlsError::Busy.to_string())),
+        Err(HlsError::Busy) => {
+            let mut r = ApiError::coded(StatusCode::SERVICE_UNAVAILABLE, "TranscodeBusy", HlsError::Busy.to_string()).into_response();
+            r.headers_mut().insert(header::RETRY_AFTER, axum::http::HeaderValue::from_static("2"));
+            return Ok(r);
+        }
         Err(e) => return Err(ApiError::coded(StatusCode::INTERNAL_SERVER_ERROR, "TranscodeFailed", e.to_string())),
     };
     let bytes = tokio::fs::read(&path).await.map_err(|e| ApiError::Internal(e.into()))?;

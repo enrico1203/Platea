@@ -23,7 +23,7 @@ function resolve(s: Schema, root: Schema): Schema {
  * in mancanza si usa il titolo dello schema.
  */
 function GroupForm({ group, schema, values, onSaved }: { group: string; schema: Schema; values: Record<string, unknown>; onSaved: () => void }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [draft, setDraft] = useState<Record<string, unknown>>({});
   const [error, setError] = useState<string | null>(null);
   useEffect(() => setDraft({}), [group, values]);
@@ -35,7 +35,8 @@ function GroupForm({ group, schema, values, onSaved }: { group: string; schema: 
   const hint = (field: string, s: Schema) => {
     const k = `settings.${group}.${field}_hint` as MessageKey;
     const v = t(k);
-    return v === k ? s.description : v;
+    // Le descrizioni dello schema arrivano dal server in italiano: in altre lingue si usano solo le traduzioni.
+    return v === k ? (locale === "it" ? s.description : undefined) : v;
   };
   const val = (f: string) => (f in draft ? draft[f] : values[f]);
   const set = (f: string, v: unknown) => setDraft({ ...draft, [f]: v });

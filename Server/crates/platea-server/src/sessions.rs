@@ -18,6 +18,8 @@ pub struct PlaySession {
     pub id: String,
     pub token: String,
     pub user_id: i64,
+    /// Token del dispositivo: una nuova riproduzione dallo stesso dispositivo chiude la precedente.
+    pub token_id: i64,
     pub username: String,
     pub item_id: i64,
     pub file_id: i64,
@@ -96,6 +98,10 @@ impl SessionManager {
 
     pub fn active_count(&self) -> usize {
         self.by_id.read().unwrap().len()
+    }
+
+    pub fn by_device(&self, token_id: i64) -> Vec<String> {
+        self.by_id.read().unwrap().values().filter(|s| s.token_id == token_id).map(|s| s.id.clone()).collect()
     }
 
     pub fn user_count(&self, user_id: i64) -> usize {

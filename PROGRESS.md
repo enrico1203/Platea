@@ -43,15 +43,23 @@ Se la sessione si interrompe, alla ripresa ("continua") si riparte da qui: legge
 - [x] Test end-to-end manuale (2026-11-14): setup con codice, librerie, scansione (5 ms), analisi, direct play 206,
   remux MKV+AC3 → HLS con AAC, transcodifica HEVC 10 bit → H.264 con riavvio sul salto, timestamp segmenti allineati,
   WebVTT da .srt esterno, stato di visione e "prossimi episodi", ricerca FTS5, WebSocket 101. RAM server ~60 MB.
-- [ ] WebApp React
-- [ ] docker-compose.yml root, README
+- [x] WebApp React + Vite + TS (`WebApp/`): i18n it/en scalabile, brand completo (token, componenti pl-*, marchio SVG 16:9,
+  icone PWA), procedura guidata, home, librerie, dettaglio, ricerca, player (hls.js/nativo, doppio tocco, tracce, qualità,
+  ripresa, prossimo episodio, ripiego automatico), account, informazioni (attribuzione TMDB), dashboard admin in pacchetti
+  separati (panoramica, librerie, utenti, lavori, da verificare, transcodifica, impostazioni da schema, attività, sistema)
+- [x] Dockerfile WebApp (node:22-alpine → nginx:1-alpine, proxy /api senza buffering)
+- [x] docker-compose.yml root (server 8096, web 8080), `.env.example`, README con "App compatibili"
+- [x] Test nel browser (Playwright + Google Chrome in Docker, script in scratchpad non versionato): procedura guidata,
+  direct play, remux, transcodifica con salto: tutti riproducono; zero errori in console; telefono e inglese verificati.
+  Nota: il Chromium di Playwright non ha H.264/AAC, serve `channel: "chrome"`.
 - [ ] Strato compatibile Jellyfin per Infuse (`api/jellyfin.rs` è uno stub)
 
 ## Prossimi passi
 
-1. Dockerfile server, prova end-to-end (setup, libreria, scan, probe, direct play, remux, transcodifica).
-2. WebApp (React + Vite + TS) con brand, wizard, home, dettaglio, player hls.js, dashboard admin.
-3. Compose root, README, poi strato Jellyfin per Infuse.
+1. Strato compatibile Jellyfin per Infuse (`Server/crates/platea-server/src/api/jellyfin.rs`), poi segnare Infuse OK nel README.
+2. Fase 3: verificare QSV/VA-API/NVENC su hardware reale (qui non c'è GPU: solo software testato).
+3. Fase 4: log in tempo reale, chiavi API con ambito, notify per dischi locali.
+4. Fase 5: test di carico, libreria sintetica da 100.000 file, CI GitHub Actions.
 
 ## Debito tecnico noto (da fare dopo)
 
@@ -63,4 +71,4 @@ Se la sessione si interrompe, alla ripresa ("continua") si riparte da qui: legge
 
 ## Registro
 
-- 2026-11-14 — Avvio del progetto.
+- 2026-11-14 — Avvio del progetto. Server, WebApp, compose, README. Fasi 0 e 1 complete, fase 2 quasi (manca Infuse).

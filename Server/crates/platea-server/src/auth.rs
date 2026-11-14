@@ -278,7 +278,6 @@ impl FromRequestParts<Shared> for AdminUser {
 
 pub struct NewToken {
     pub token: String,
-    pub token_id: i64,
 }
 
 pub async fn issue_token(
@@ -316,7 +315,8 @@ pub async fn issue_token(
     .last_insert_rowid();
     sqlx::query("UPDATE users SET last_login_at = ? WHERE id = ?").bind(now).bind(user_id).execute(&state.db.write).await?;
     state.token_cache.clear();
-    Ok(NewToken { token, token_id: id })
+    let _ = id;
+    Ok(NewToken { token })
 }
 
 /// Limite ai tentativi di login per indirizzo IP e per utente, con attesa crescente.

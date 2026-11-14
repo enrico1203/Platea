@@ -140,6 +140,13 @@ export default function Player() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item?.id]);
 
+  // Chiusura della scheda o navigazione completa: React non smonta, quindi lo stop parte da qui.
+  useEffect(() => {
+    const onHide = () => stopSession(videoRef.current ? videoRef.current.currentTime * 1000 : undefined);
+    window.addEventListener("pagehide", onHide);
+    return () => window.removeEventListener("pagehide", onHide);
+  }, [stopSession]);
+
   // Posizione al server ogni 10 secondi.
   useEffect(() => {
     const h = window.setInterval(() => {

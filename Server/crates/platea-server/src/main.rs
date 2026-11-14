@@ -55,6 +55,7 @@ fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::try_new(&boot.log).unwrap_or_else(|_| EnvFilter::new("info")))
         .with_target(false)
+        .with_ansi(std::io::IsTerminal::is_terminal(&std::io::stdout()))
         .compact()
         .init();
 
