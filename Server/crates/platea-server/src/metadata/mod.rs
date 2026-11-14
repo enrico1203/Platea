@@ -187,25 +187,27 @@ pub async fn match_item(state: &Shared, item_id: i64) -> anyhow::Result<()> {
     // 1. Identificativo esplicito.
     let ids: Vec<(String, String)> =
         sqlx::query_as("SELECT provider, value FROM external_ids WHERE item_id = ?").bind(item_id).fetch_all(&state.db.read).await?;
-    let mut tmdb_id: Option<i64> = ids.iter().find(|(p, _)| p == "tmdb").and_then(|(_, v)| v.parse().ok());
-    if tmdb_id.is_none() {
-        for (p, v) in &ids {
-            let source = match p.as_str() {
-                "imdb" => "imdb_id",
-                "tvdb" => "tvdb_id",
-                _ => continue,
-            };
-            let r = state.tmdb.get(&key, rps, &format!("/find/{v}"), &[("external_source", source.to_string())], "", 30 * DAY).await?;
-            let list = if movie { &r["movie_results"] } else { &r["tv_results"] };
-            if let Some(id) = list.as_array().and_then(|a| a.first()).and_then(|x| x["id"].as_i64()) {
-                tmdb_id = Some(id);
-                break;
-            }
+    // Un identificativo TMDB scritto nell'NFO può essere stato cancellato o unito su TMDB (404):
+    // si prova con IMDb/TVDB e poi con la ricerca, invece di fallire.
+    if let Some(id) = ids.iter().find(|(p, _)| p == "tmdb").and_then(|(_, v)| v.parse::<i64>().ok()) {
+        match apply_tmdb(state, item_id, id, 1.0, "matched").await {
+            Ok(()) => return Ok(()),
+            Err(e) if tmdb::is_not_found(&e) => tracing::info!(item = item_id, tmdb = id, "identificativo TMDB non più valido: ricerca alternativa"),
+            Err(e) => return Err(e),
         }
     }
-    if let Some(id) = tmdb_id {
-        apply_tmdb(state, item_id, id, 1.0, "matched").await?;
-        return Ok(());
+    for (p, v) in &ids {
+        let source = match p.as_str() {
+            "imdb" => "imdb_id",
+            "tvdb" => "tvdb_id",
+            _ => continue,
+        };
+        let r = state.tmdb.get(&key, rps, &format!("/find/{v}"), &[("external_source", source.to_string())], "", 30 * DAY).await?;
+        let list = if movie { &r["movie_results"] } else { &r["tv_results"] };
+        if let Some(id) = list.as_array().and_then(|a| a.first()).and_then(|x| x["id"].as_i64()) {
+            apply_tmdb(state, item_id, id, 1.0, "matched").await?;
+            return Ok(());
+        }
     }
 
     // 2. Ricerca con punteggio.

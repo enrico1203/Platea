@@ -665,6 +665,18 @@ async fn direct(State(state): State<Shared>, Path(id): Path<String>, Query(q): Q
     crate::stream::serve_file(file, info.size as u64, info.mtime, ct, &method, &headers)
 }
 
+/// Un segmento sparito mentre la richiesta aspettava: la sessione è stata chiusa (nuova riproduzione,
+/// stop, salto che ha riavviato la transcodifica) e la sua cartella cancellata. Non è un errore del server.
+async fn read_segment(p: &std::path::Path) -> ApiResult<Vec<u8>> {
+    tokio::fs::read(p).await.map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            ApiError::coded(StatusCode::GONE, "SessionEnded", "La sessione di riproduzione è terminata")
+        } else {
+            ApiError::Internal(e.into())
+        }
+    })
+}
+
 async fn hls(State(state): State<Shared>, Path((id, name)): Path<(String, String)>, Query(q): Query<TokenQuery>) -> ApiResult<Response> {
     let s = session_by_token(&state, &id, q.t.as_deref())?;
     let rt = s.hls.clone().ok_or_else(|| ApiError::BadRequest("Questa sessione è in direct play".into()))?;
@@ -680,7 +692,7 @@ async fn hls(State(state): State<Shared>, Path((id, name)): Path<(String, String
     }
     if name == "init.mp4" && rt.is_fmp4() {
         let p = rt.init_segment().await.map_err(|e| ApiError::coded(StatusCode::INTERNAL_SERVER_ERROR, "TranscodeFailed", e.to_string()))?;
-        let bytes = tokio::fs::read(&p).await.map_err(|e| ApiError::Internal(e.into()))?;
+        let bytes = read_segment(&p).await?;
         return Ok(Response::builder()
             .header(header::CONTENT_TYPE, "video/mp4")
             .header(header::CACHE_CONTROL, "private, max-age=3600")
@@ -708,7 +720,7 @@ async fn hls(State(state): State<Shared>, Path((id, name)): Path<(String, String
     // fMP4: i frammenti del segmento uno dopo l'altro (più coppie moof/mdat sono un segmento valido).
     let mut bytes = Vec::new();
     for p in &paths {
-        bytes.extend(tokio::fs::read(p).await.map_err(|e| ApiError::Internal(e.into()))?);
+        bytes.extend(read_segment(p).await?);
     }
     let ct = if rt.is_fmp4() { "video/mp4" } else { "video/mp2t" };
     Ok(Response::builder().header(header::CONTENT_TYPE, ct).header(header::CACHE_CONTROL, "private, max-age=3600").body(Body::from(bytes)).unwrap())

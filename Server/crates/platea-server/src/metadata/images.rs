@@ -23,6 +23,16 @@ pub fn variant_path(state: &Shared, image_id: i64, width: u32) -> PathBuf {
     state.boot.images_dir().join(shard).join(format!("{image_id}_w{width}.jpg"))
 }
 
+/// Indirizzo da scaricare. I loghi TMDB in SVG non si possono decodificare: TMDB li fornisce anche
+/// in PNG, con lo stesso nome e l'estensione cambiata.
+pub fn fetch_url(url: &str) -> String {
+    let tmdb = url.starts_with(crate::metadata::tmdb::IMAGE_BASE.as_str()) || url.contains("://image.tmdb.org/");
+    match url.strip_suffix(".svg") {
+        Some(stem) if tmdb => format!("{stem}.png"),
+        _ => url.to_string(),
+    }
+}
+
 pub async fn download_image(state: &Shared, image_id: i64) -> anyhow::Result<()> {
     let row: Option<(String, String)> =
         sqlx::query_as("SELECT source_url, state FROM images WHERE id = ?").bind(image_id).fetch_optional(&state.db.read).await?;
@@ -31,7 +41,7 @@ pub async fn download_image(state: &Shared, image_id: i64) -> anyhow::Result<()>
         return Ok(());
     }
     let _permit = state.image_downloads.acquire().await?;
-    let resp = state.http.get(&url).timeout(Duration::from_secs(30)).send().await.context("download dell'immagine")?;
+    let resp = state.http.get(fetch_url(&url)).timeout(Duration::from_secs(30)).send().await.context("download dell'immagine")?;
     if !resp.status().is_success() {
         sqlx::query("UPDATE images SET state = 'failed' WHERE id = ?").bind(image_id).execute(&state.db.write).await?;
         bail!("immagine non disponibile: {}", resp.status());
@@ -43,7 +53,7 @@ pub async fn download_image(state: &Shared, image_id: i64) -> anyhow::Result<()>
     let path = original_path(state, image_id);
     let b = bytes.to_vec();
     let p = path.clone();
-    let (w, h, color) = tokio::task::spawn_blocking(move || -> anyhow::Result<(u32, u32, String)> {
+    let decoded = tokio::task::spawn_blocking(move || -> anyhow::Result<(u32, u32, String)> {
         let img = image::load_from_memory(&b).context("immagine non leggibile")?;
         let color = average_color(&img);
         if let Some(dir) = p.parent() {
@@ -54,7 +64,15 @@ pub async fn download_image(state: &Shared, image_id: i64) -> anyhow::Result<()>
         std::fs::rename(&tmp, &p)?;
         Ok((img.width(), img.height(), color))
     })
-    .await??;
+    .await?;
+    let (w, h, color) = match decoded {
+        Ok(v) => v,
+        Err(e) => {
+            // Un file che non è un'immagine non lo diventa riprovando.
+            sqlx::query("UPDATE images SET state = 'failed' WHERE id = ?").bind(image_id).execute(&state.db.write).await?;
+            return Err(e);
+        }
+    };
     sqlx::query("UPDATE images SET local_path = ?, width = ?, height = ?, placeholder_color = ?, state = 'ready' WHERE id = ?")
         .bind(path.to_string_lossy().to_string())
         .bind(w as i64)
@@ -168,4 +186,16 @@ pub async fn serve_path(state: &Shared, image_id: i64, width: Option<u32>) -> an
     })
     .await??;
     Ok(variant)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tmdb_svg_logos_as_png() {
+        assert_eq!(fetch_url("https://image.tmdb.org/t/p/w500/abc.svg"), "https://image.tmdb.org/t/p/w500/abc.png");
+        assert_eq!(fetch_url("https://image.tmdb.org/t/p/w500/abc.png"), "https://image.tmdb.org/t/p/w500/abc.png");
+        assert_eq!(fetch_url("https://altro.example/logo.svg"), "https://altro.example/logo.svg");
+    }
 }

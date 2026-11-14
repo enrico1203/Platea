@@ -13,6 +13,11 @@ const BASE: &str = "https://api.themoviedb.org/3";
 pub static IMAGE_BASE: once_cell::sync::Lazy<String> =
     once_cell::sync::Lazy::new(|| std::env::var("PLATEA_TMDB_IMAGE_BASE").unwrap_or_else(|_| "https://image.tmdb.org/t/p".to_string()));
 
+/// L'errore è un 404 di TMDB (titolo cancellato o unito a un altro).
+pub fn is_not_found(e: &anyhow::Error) -> bool {
+    e.chain().any(|c| c.to_string().starts_with("TMDB: risorsa non trovata"))
+}
+
 #[derive(Clone)]
 pub struct Tmdb {
     http: reqwest::Client,
