@@ -88,6 +88,40 @@ pub fn router() -> Router<Shared> {
         .route("/UserFavoriteItems/{item}", post(fav_add).delete(fav_del))
         .route("/DisplayPreferences/{id}", get(display_prefs))
         .route("/Branding/Configuration", get(branding))
+        .layer(axum::middleware::map_response(omit_nulls))
+}
+
+/// Jellyfin omette i campi nulli e alcuni client (Infuse) non accettano `null` dove si aspettano un numero
+/// o un testo: le risposte JSON di questa API escono senza campi nulli. Video e immagini passano intatti.
+async fn omit_nulls(resp: Response) -> Response {
+    let is_json = resp.headers().get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).is_some_and(|v| v.starts_with("application/json"));
+    if !is_json {
+        return resp;
+    }
+    let (mut parts, body) = resp.into_parts();
+    let Ok(bytes) = axum::body::to_bytes(body, 64 * 1024 * 1024).await else {
+        return Response::from_parts(parts, Body::empty());
+    };
+    let out = match serde_json::from_slice::<Value>(&bytes) {
+        Ok(mut v) => {
+            strip_nulls(&mut v);
+            serde_json::to_vec(&v).unwrap_or_else(|_| bytes.to_vec())
+        }
+        Err(_) => bytes.to_vec(),
+    };
+    parts.headers.remove(header::CONTENT_LENGTH);
+    Response::from_parts(parts, Body::from(out))
+}
+
+fn strip_nulls(v: &mut Value) {
+    match v {
+        Value::Object(m) => {
+            m.retain(|_, x| !x.is_null());
+            m.values_mut().for_each(strip_nulls);
+        }
+        Value::Array(a) => a.iter_mut().for_each(strip_nulls),
+        _ => {}
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1195,11 +1229,25 @@ async fn query_items(state: &Shared, user: &AuthUser, q: ItemsQuery) -> ApiResul
     Ok(Json(json!({ "Items": items, "TotalRecordCount": total, "StartIndex": start })))
 }
 
+/// Parametri delle richieste di elenco dei client Jellyfin, al livello debug, senza chiavi o token.
+fn log_query(uri: &Uri) {
+    if !tracing::enabled!(tracing::Level::DEBUG) {
+        return;
+    }
+    let q: Vec<&str> = uri.query().unwrap_or("").split('&').filter(|p| {
+        let k = p.split('=').next().unwrap_or("").to_ascii_lowercase();
+        !(k.contains("key") || k.contains("token"))
+    }).collect();
+    tracing::debug!(path = uri.path(), query = %q.join("&"), "richiesta di elenco Jellyfin");
+}
+
 async fn items_u(State(state): State<Shared>, user: AuthUser, Path(_u): Path<String>, uri: Uri) -> ApiResult<Json<Value>> {
+    log_query(&uri);
     query_items(&state, &user, normalize_query(&uri)).await
 }
 
 async fn items_q(State(state): State<Shared>, user: AuthUser, uri: Uri) -> ApiResult<Json<Value>> {
+    log_query(&uri);
     query_items(&state, &user, normalize_query(&uri)).await
 }
 
@@ -1675,6 +1723,13 @@ async fn fav_del(State(s): State<Shared>, u: AuthUser, Path(i): Path<String>) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn strip_nulls_recursive() {
+        let mut v = json!({ "a": null, "b": 1, "c": { "d": null, "e": [ { "f": null, "g": "x" } ] } });
+        strip_nulls(&mut v);
+        assert_eq!(v, json!({ "b": 1, "c": { "e": [ { "g": "x" } ] } }));
+    }
     #[test]
     fn iso_dates() {
         assert_eq!(iso(0), "1970-01-01T00:00:00.0000000Z");
