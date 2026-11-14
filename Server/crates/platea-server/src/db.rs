@@ -28,8 +28,9 @@ impl Db {
             .foreign_keys(true)
             .busy_timeout(Duration::from_secs(10))
             .pragma("temp_store", "memory")
-            .pragma("cache_size", "-32000")
-            .pragma("mmap_size", "268435456");
+            // 8 MB di cache per connessione e 64 MB di mmap: memoria contenuta anche con librerie grandi.
+            .pragma("cache_size", "-8000")
+            .pragma("mmap_size", "67108864");
 
         let write = SqlitePoolOptions::new()
             .max_connections(1)
@@ -54,10 +55,12 @@ impl Db {
         }
         MIGRATOR.run(&write).await.context("migrazioni del database")?;
 
-        let readers = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).clamp(4, 16) as u32;
+        let readers = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).clamp(2, 8) as u32;
         let read = SqlitePoolOptions::new()
             .max_connections(readers)
             .min_connections(1)
+            // I lettori inattivi si chiudono: la loro cache torna al sistema.
+            .idle_timeout(Duration::from_secs(60))
             .acquire_timeout(Duration::from_secs(10))
             .connect_with(base.read_only(true))
             .await

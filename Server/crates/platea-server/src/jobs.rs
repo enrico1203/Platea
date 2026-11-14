@@ -148,6 +148,37 @@ pub async fn enqueue_with(pool: &sqlx::SqlitePool, queue: &JobQueue, job: JobKin
     Ok(())
 }
 
+/// Accoda molti lavori in una sola transazione (scansioni con migliaia di file nuovi).
+pub async fn enqueue_batch(state: &Shared, jobs: Vec<(JobKind, i64, Option<i64>)>) -> anyhow::Result<()> {
+    if jobs.is_empty() {
+        return Ok(());
+    }
+    let now = now_ms();
+    for chunk in jobs.chunks(2000) {
+        let mut tx = state.db.write.begin().await?;
+        for (job, priority, library_id) in chunk {
+            sqlx::query(
+                "INSERT INTO jobs (kind, payload, library_id, priority, state, run_after, dedupe_key, created_at)
+                 VALUES (?, ?, ?, ?, 'queued', ?, ?, ?)
+                 ON CONFLICT (dedupe_key) WHERE state IN ('queued', 'running') AND dedupe_key IS NOT NULL
+                 DO UPDATE SET priority = MIN(priority, excluded.priority)",
+            )
+            .bind(job.name())
+            .bind(serde_json::to_string(job)?)
+            .bind(library_id)
+            .bind(priority)
+            .bind(now)
+            .bind(job.dedupe_key())
+            .bind(now)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+    }
+    state.jobs.wake();
+    Ok(())
+}
+
 #[derive(sqlx::FromRow)]
 struct JobRow {
     id: i64,

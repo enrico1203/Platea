@@ -58,6 +58,24 @@ Se la sessione si interrompe, alla ripresa ("continua") si riparte da qui: legge
   ID GUID a 32 cifre con prefisso di tipo; percorsi senza distinzione maiuscole/minuscole e prefisso /emby.
   Verificato con richieste simulate (curl) come le fa Infuse. NON ancora provato con l'app Infuse reale.
 
+## Benchmark (2026-11-14, 8 CPU, disco locale, libreria sintetica da 100.000 file vuoti)
+
+| Misura | Obiettivo del piano | Misurato |
+| --- | --- | --- |
+| Prima scansione 40.000 film + 60.000 episodi (inserimento e identificazione) | — | 22 s |
+| Scansione senza modifiche di 100.000 file | < 60 s | 0,9–1,5 s, zero file aperti (solo read_dir + stat) |
+| Nomi non riconosciuti | — | 0 su 100.000 |
+| Pagina di libreria da 60 elementi | < 50 ms | 20 ms |
+| Ricerca FTS5 | — | 19 ms |
+| Home | — | 4 ms |
+| Avvio del server con 100.000 elementi | < 2 s | 38 ms |
+| Memoria a riposo con 100.000 elementi | < 100 MB | 44 MB all'avvio, 66 MB dopo una scansione |
+| Memoria con libreria piccola | — | 24 MB |
+
+Ottimizzazioni che hanno portato la memoria da 315 MB a 66 MB: mimalloc, cache SQLite 8 MB per connessione,
+lettori inattivi chiusi dopo 60 s, mmap 64 MB, accodamento dei lavori a lotti.
+Script del benchmark: `scripts/bench_library.py` (genera la libreria sintetica).
+
 ## Prossimi passi
 
 1. Provare Infuse reale contro il server (serve un dispositivo Apple: chiedere all'utente) e correggere le differenze.

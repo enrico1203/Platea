@@ -1,6 +1,10 @@
 #![allow(clippy::type_complexity, clippy::too_many_arguments)]
 //! Platea: open source media server.
 
+/// mimalloc: allocazioni più veloci e memoria restituita al sistema dopo i picchi (scansioni grandi).
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 mod api;
 mod auth;
 mod boot;

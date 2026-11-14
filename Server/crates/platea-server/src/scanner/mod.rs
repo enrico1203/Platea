@@ -410,12 +410,10 @@ async fn apply_listing(state: &Shared, library_id: i64, kind: &str, path_id: i64
     // Sottotitoli esterni accanto ai video.
     sync_external_subtitles(state, path_id, &listing.subtitles, &listing.videos).await?;
 
-    for id in probe_ids {
-        jobs::enqueue(state, JobKind::ProbeFile { file_id: id }, priority::PROBE, Some(library_id)).await?;
-    }
-    for id in match_ids {
-        jobs::enqueue(state, JobKind::MatchItem { item_id: id }, priority::METADATA, Some(library_id)).await?;
-    }
+    let mut batch: Vec<(JobKind, i64, Option<i64>)> = Vec::with_capacity(probe_ids.len() + match_ids.len());
+    batch.extend(match_ids.into_iter().map(|id| (JobKind::MatchItem { item_id: id }, priority::METADATA, Some(library_id))));
+    batch.extend(probe_ids.into_iter().map(|id| (JobKind::ProbeFile { file_id: id }, priority::PROBE, Some(library_id))));
+    jobs::enqueue_batch(state, batch).await?;
     Ok(stats)
 }
 
