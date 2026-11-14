@@ -2,7 +2,13 @@
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); }
 /* Niente effetto elastico della pagina a fine scorrimento: con la barra laterale fissa sembrerebbe muoversi anche lei. */
-html { overscroll-behavior-y: none; }
+html { overscroll-behavior-y: none; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+/* REGOLA: iOS Safari ingrandisce la pagina quando si tocca un campo con testo sotto i 16px.
+   Sui dispositivi touch ogni campo di testo è almeno 16px, qualunque classe abbia (anche mono, anche futuri).
+   Non si blocca lo zoom con maximum-scale/user-scalable: serve all'accessibilità. */
+@media (pointer: coarse), (max-width: 900px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), select, textarea, [contenteditable="true"] { font-size: 16px !important; }
+}
 body { font: 400 15px/22px var(--font-sans); -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; }
 #root { min-height: 100dvh; }
 a { color: var(--blue-text); text-decoration: none; }

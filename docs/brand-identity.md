@@ -220,6 +220,7 @@ Struttura: `label.pl-field` › `.pl-field__label`, `.pl-field__control` (con `i
 - `is-mono` sul controllo per percorsi, chiavi, URL e numeri tecnici: li scrive in `mono`.
 - `is-error` sul campo: bordo e aiuto in `danger`. Il messaggio dice cosa è successo e cosa fare, non "Valore non valido".
 - I segreti (chiave TMDB) si scrivono ma non si rileggono: dopo il salvataggio il campo mostra "Impostata" e un pulsante Sostituisci.
+- **Mai zoom al tocco su iOS.** Safari ingrandisce la pagina quando si tocca un campo con testo sotto i 16px. Su dispositivi touch e sotto i 900px ogni `input`, `select`, `textarea` ha `font-size` di almeno **16px**, qualunque sia la sua classe (anche `is-mono`): la regola globale in `app.css` lo impone con `!important`. Su desktop resta 14px (13px mono). Lo zoom non si blocca mai con `maximum-scale` o `user-scalable=no`: serve all'accessibilità.
 
 **Il consumatore fornisce**: etichetta, segnaposto di esempio, aiuto quando il formato non è ovvio.
 
