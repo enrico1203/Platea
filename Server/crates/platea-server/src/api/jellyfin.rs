@@ -40,6 +40,8 @@ pub fn router() -> Router<Shared> {
         .route("/Sessions/Logout", post(logout))
         .route("/Users/Me", get(me))
         .route("/Users/{user}", get(user_by_id))
+        .route("/UserViews/GroupingOptions", get(grouping_options))
+        .route("/Users/{user}/GroupingOptions", get(grouping_options_u))
         .route("/Genres", get(genres_list))
         .route("/Studios", get(empty_items))
         .route("/Persons", get(empty_items))
@@ -514,6 +516,18 @@ async fn counts(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<V
 }
 
 /// Cartelle delle librerie, nella forma di Jellyfin (alcuni client le leggono anche senza essere amministratori).
+/// Librerie che si possono raggruppare nelle viste (Infuse le chiede subito dopo l'accesso).
+async fn grouping_options(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<Value>> {
+    let libs: Vec<(i64, String)> = sqlx::query_as(&format!("SELECT id, name FROM libraries i WHERE 1 {} ORDER BY name", user.library_filter("i.id")))
+        .fetch_all(&state.db.read)
+        .await?;
+    Ok(Json(json!(libs.into_iter().map(|(id, name)| json!({ "Name": name, "Id": guid(&state, NS_LIBRARY, id) })).collect::<Vec<_>>())))
+}
+
+async fn grouping_options_u(state: State<Shared>, user: AuthUser, Path(_u): Path<String>) -> ApiResult<Json<Value>> {
+    grouping_options(state, user).await
+}
+
 async fn virtual_folders(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<Value>> {
     let libs: Vec<(i64, String, String)> =
         sqlx::query_as(&format!("SELECT id, name, kind FROM libraries i WHERE 1 {} ORDER BY name", user.library_filter("i.id")))
