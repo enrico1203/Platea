@@ -911,6 +911,53 @@ async fn media_sources(state: &Shared, item: i64) -> ApiResult<Vec<Value>> {
     Ok(out)
 }
 
+/// Campi chiesti con `Fields` negli elenchi. Infuse sincronizza la libreria a pagine di 50 e vuole le
+/// sorgenti (percorso, contenitore, flussi) e gli identificativi esterni già nell'elenco.
+async fn list_fields(state: &Shared, r: &Row, v: &mut Value, fields: &str) -> ApiResult<()> {
+    let has = |name: &str| fields.split(',').any(|f| f.trim().eq_ignore_ascii_case(name));
+    let Some(o) = v.as_object_mut() else { return Ok(()) };
+    let meta_id = if r.kind == "season" || r.kind == "episode" { r.series_id.unwrap_or(r.id) } else { r.id };
+    if has("Genres") {
+        let genres: Vec<String> = sqlx::query_scalar("SELECT g.name FROM item_genres ig JOIN genres g ON g.id = ig.genre_id WHERE ig.item_id = ?")
+            .bind(meta_id)
+            .fetch_all(&state.db.read)
+            .await?;
+        o.insert("Genres".into(), json!(genres));
+    }
+    if has("ProviderIds") {
+        let ext: Vec<(String, String)> = sqlx::query_as("SELECT provider, value FROM external_ids WHERE item_id = ?").bind(r.id).fetch_all(&state.db.read).await?;
+        o.insert("ProviderIds".into(), provider_ids(ext));
+    }
+    if (has("MediaSources") || has("Path") || has("MediaStreams")) && (r.kind == "movie" || r.kind == "episode") {
+        let sources = media_sources(state, r.id).await?;
+        if let Some(first) = sources.first() {
+            o.insert("Container".into(), first["Container"].clone());
+            o.insert("Path".into(), first["Path"].clone());
+            if has("MediaStreams") || has("MediaSources") {
+                o.insert("MediaStreams".into(), first["MediaStreams"].clone());
+            }
+        }
+        if has("MediaSources") {
+            o.insert("MediaSources".into(), json!(sources));
+        }
+    }
+    Ok(())
+}
+
+fn provider_ids(ext: Vec<(String, String)>) -> Value {
+    let mut provider = serde_json::Map::new();
+    for (p, val) in ext {
+        let key = match p.as_str() {
+            "tmdb" => "Tmdb",
+            "imdb" => "Imdb",
+            "tvdb" => "Tvdb",
+            other => other,
+        };
+        provider.insert(key.to_string(), json!(val));
+    }
+    Value::Object(provider)
+}
+
 async fn detail_dto(state: &Shared, user: &AuthUser, id: i64) -> ApiResult<Value> {
     let sql = format!("{SELECT} WHERE i.id = ?2");
     let r: Row = sqlx::query_as(&sql).bind(user.user_id).bind(id).fetch_optional(&state.db.read).await?.ok_or_else(|| ApiError::not_found("Elemento"))?;
@@ -1024,6 +1071,8 @@ struct ItemsQuery {
     season_id: Option<String>,
     #[serde(alias = "searchTerm")]
     search_term_lc: Option<String>,
+    /// Campi in più richiesti dal client (MediaSources, Path, ProviderIds, Genres…).
+    fields: Option<String>,
 }
 
 /// Parametri della query: Jellyfin accetta sia PascalCase sia camelCase.
@@ -1059,6 +1108,7 @@ fn normalize_query(uri: &Uri) -> ItemsQuery {
         user_id: s("userid"),
         season_id: s("seasonid"),
         search_term_lc: None,
+        fields: s("fields"),
     }
 }
 
@@ -1225,7 +1275,12 @@ async fn query_items(state: &Shared, user: &AuthUser, q: ItemsQuery) -> ApiResul
         };
     }
     let total = cq.fetch_one(&state.db.read).await?;
-    let items: Vec<Value> = rows.iter().map(|r| dto(state, r)).collect();
+    let mut items: Vec<Value> = rows.iter().map(|r| dto(state, r)).collect();
+    if let Some(f) = q.fields.as_deref() {
+        for (r, v) in rows.iter().zip(items.iter_mut()) {
+            list_fields(state, r, v, f).await?;
+        }
+    }
     Ok(Json(json!({ "Items": items, "TotalRecordCount": total, "StartIndex": start })))
 }
 
