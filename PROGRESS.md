@@ -143,6 +143,28 @@ Libreria "Film cloud" (profilo Remoto) creata nel compose locale.
 | Memoria a riposo con 100.000 elementi | < 100 MB | 44 MB all'avvio, 66 MB dopo una scansione |
 | Memoria con libreria piccola | — | 24 MB |
 
+### Test di carico (2026-11-14, `scripts/loadtest/loadtest.py`, client e server sulla stessa macchina a 8 CPU)
+
+300 player in direct play (richieste Range da 512 KB, 10% salti casuali, pause 0,2–1 s) + 20 navigatori sull'API
+(liste della libreria da 8.500 film, home, ricerca), 3 processi client da 100 player:
+
+| Misura | Risultato |
+| --- | --- |
+| Richieste Range | ~490/s, 2 Gb/s, 0 errori |
+| Latenza Range | p50 1,0 ms · p95 2,9 ms · p99 12–43 ms · max < 100 ms |
+| Latenza API durante il carico | p50 7 ms · p95 17 ms · p99 22–29 ms |
+| 900 sessioni accumulate (3 giri) | 0 errori, 33 descrittori aperti |
+| Memoria dopo il carico | ~230–290 MB anonimi (trattenuti dall'allocatore, stabili tra i giri: nessuna perdita) |
+
+Trovato e corretto durante il test:
+- Limite di file aperti del container (1024) raggiunto con ~900 sessioni → 409 "File non leggibile". Ora il server alza il
+  proprio limite soft al massimo (524.288 nel container) e i descrittori sono condivisi per file tra sessioni e Infuse
+  (`stream::open_library_file`, aperti finché usati + 10 min).
+- mmap di SQLite disattivato: ogni connessione mappava gli stessi 64 MB e la RSS mostrava 600+ MB che erano solo cache.
+- Copie di sicurezza delle migrazioni: si tengono solo le ultime 2 (erano 5, 330 MB).
+Nota: un solo processo client Python satura sopra ~500 Range/s; con un solo processo il p99 misurato sale a 60–120 ms
+per colpa del client, non del server.
+
 Ottimizzazioni che hanno portato la memoria da 315 MB a 66 MB: mimalloc, cache SQLite 8 MB per connessione,
 lettori inattivi chiusi dopo 60 s, mmap 64 MB, accodamento dei lavori a lotti.
 Script del benchmark: `scripts/bench_library.py` (genera la libreria sintetica).
@@ -153,7 +175,7 @@ Script del benchmark: `scripts/bench_library.py` (genera la libreria sintetica).
 1. Provare Infuse reale contro il server (serve un dispositivo Apple: chiedere all'utente) e correggere le differenze.
 2. Fase 3: verificare QSV/VA-API/NVENC su hardware reale (qui non c'è GPU: solo software testato).
 3. Fase 4: fatto (log in tempo reale, chiavi API, notify per dischi locali).
-4. Fase 5: test di carico, libreria sintetica da 100.000 file, CI GitHub Actions.
+4. Fase 5: fatti test di carico, libreria sintetica, CI. Restano: file system con latenza artificiale (mount bloccato simulato).
 
 ## Debito tecnico noto (da fare dopo)
 
@@ -165,6 +187,7 @@ Script del benchmark: `scripts/bench_library.py` (genera la libreria sintetica).
 
 ## Registro
 
+- 2026-11-14 — Test di carico (300 player): corretti limite dei file aperti e descrittori per sessione, mmap SQLite, copie di sicurezza.
 - 2026-11-14 — Notifiche sui dischi locali, collezioni in Infuse (BoxSet), corretto l'ordinamento per data in Infuse.
 - 2026-11-14 — Collezioni automatiche, limite per età applicato ovunque, rinnovo metadati per libreria, ricerca nell'indirizzo.
 - 2026-11-14 — Prova sulla libreria cloud reale: NFO, .plexmatch, Cues MKV, scansione parallela, rclone rc, protezione del mount,

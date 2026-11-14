@@ -69,6 +69,7 @@ fn main() -> anyhow::Result<()> {
         tracing_subscriber::registry().with(filter).with(fmt).with(logs::DashboardLayer).init();
     }
 
+    raise_open_files_limit();
     // Pool di thread bloccanti ampio: ogni mount lento consuma i propri thread, non il runtime.
     let rt = tokio::runtime::Builder::new_multi_thread().enable_all().max_blocking_threads(256).thread_name("platea").build()?;
     rt.block_on(run(boot))
@@ -183,4 +184,18 @@ async fn shutdown(state: Shared) {
         sessions::stop_session(&state, &s.id).await;
     }
     let _ = sessions::flush_progress(&state).await;
+}
+
+/// Centinaia di riproduzioni e connessioni contemporanee: il limite di file aperti predefinito (spesso 1024)
+/// non basta. Si alza il limite "soft" fino al massimo consentito ("hard") del container.
+fn raise_open_files_limit() {
+    #[cfg(unix)]
+    unsafe {
+        let mut lim = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+        if libc::getrlimit(libc::RLIMIT_NOFILE, &mut lim) == 0 && lim.rlim_cur < lim.rlim_max {
+            let want = lim.rlim_max.min(1_048_576);
+            lim.rlim_cur = want;
+            let _ = libc::setrlimit(libc::RLIMIT_NOFILE, &lim);
+        }
+    }
 }

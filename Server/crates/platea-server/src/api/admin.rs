@@ -101,7 +101,7 @@ async fn overview(State(state): State<Shared>, _a: AdminUser) -> ApiResult<Json<
         "transcode_slots": { "hw_used": hw_used, "hw_max": hw_max, "sw_used": sw_used, "sw_max": sw_max },
         "jobs": { "queued": queued, "running": running, "failed": failed },
         "library": { "movies": movies, "series": series, "episodes": episodes, "files": files, "review": review },
-        "system": { "memory_rss_bytes": mem, "load_1m": load, "cpus": std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1), "uptime_ms": now_ms() - state.started_at },
+        "system": { "memory_rss_bytes": mem, "load_1m": load, "cpus": std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1), "uptime_ms": now_ms() - state.started_at, "open_files": crate::stream::open_files_count() },
         "alerts": alerts,
     })))
 }

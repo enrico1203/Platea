@@ -13,6 +13,51 @@ use std::sync::Arc;
 
 const CHUNK: usize = 256 * 1024;
 
+/// Descrittori aperti per file, condivisi da tutte le riproduzioni dello stesso file (web, Infuse, più utenti).
+/// Restano aperti finché usati e 10 minuti dopo: su un mount cloud riaprire un file costa secondi,
+/// e centinaia di sessioni sullo stesso film non consumano centinaia di descrittori.
+static OPEN_FILES: once_cell::sync::Lazy<std::sync::Mutex<std::collections::HashMap<i64, (Arc<File>, std::time::Instant)>>> =
+    once_cell::sync::Lazy::new(Default::default);
+const OPEN_IDLE: std::time::Duration = std::time::Duration::from_secs(600);
+
+/// Apre (o riusa) il file di una libreria, verificando che il percorso resti sotto la radice.
+pub async fn open_library_file(file_id: i64, abs: &Path, root: &Path, timeout: std::time::Duration) -> ApiResult<Arc<File>> {
+    {
+        let mut map = OPEN_FILES.lock().unwrap();
+        map.retain(|_, (f, t)| t.elapsed() < OPEN_IDLE || Arc::strong_count(f) > 1);
+        if let Some((f, t)) = map.get_mut(&file_id) {
+            *t = std::time::Instant::now();
+            return Ok(f.clone());
+        }
+    }
+    let (p, root) = (abs.to_path_buf(), root.to_path_buf());
+    let opened = tokio::time::timeout(
+        timeout,
+        tokio::task::spawn_blocking(move || -> std::io::Result<File> {
+            // Il percorso viene dal database e deve restare sotto la radice della libreria.
+            let canon = std::fs::canonicalize(&p)?;
+            if !canon.starts_with(std::fs::canonicalize(&root)?) {
+                return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "fuori dalla libreria"));
+            }
+            File::open(canon)
+        }),
+    )
+    .await
+    .map_err(|_| ApiError::coded(StatusCode::GATEWAY_TIMEOUT, "StorageTimeout", "Lo storage non risponde"))?
+    .map_err(|e| ApiError::Internal(e.into()))?
+    .map_err(|e| ApiError::coded(StatusCode::CONFLICT, "FileUnavailable", format!("File non leggibile: {e}")))?;
+    let f = Arc::new(opened);
+    // Due richieste in gara possono aprire lo stesso file: vince la prima, l'altro descrittore si chiude.
+    let mut map = OPEN_FILES.lock().unwrap();
+    let entry = map.entry(file_id).or_insert_with(|| (f.clone(), std::time::Instant::now()));
+    Ok(entry.0.clone())
+}
+
+/// Descrittori di file della libreria attualmente aperti (per la dashboard e i test).
+pub fn open_files_count() -> usize {
+    OPEN_FILES.lock().unwrap().len()
+}
+
 pub fn content_type_for(container: &str, path: &Path) -> &'static str {
     match container {
         "mp4" | "m4v" => "video/mp4",

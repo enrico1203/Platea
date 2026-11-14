@@ -24,7 +24,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 /// Versione di Jellyfin dichiarata: Infuse legge nome e versione al collegamento.
 const JELLYFIN_VERSION: &str = "10.11.0";
@@ -1267,37 +1267,10 @@ async fn playback_info(State(state): State<Shared>, user: AuthUser, Path(item): 
     Ok(Json(json!({ "MediaSources": sources, "PlaySessionId": crate::util::random_hex(16) })))
 }
 
-/// Descrittori aperti per file, riusati dalle richieste Range della stessa riproduzione.
-static OPEN_FILES: Lazy<Mutex<HashMap<i64, (Arc<std::fs::File>, Instant)>>> = Lazy::new(|| Mutex::new(HashMap::new()));
-
 async fn open_cached(state: &Shared, file_id: i64) -> ApiResult<(Arc<std::fs::File>, crate::api::playback::FileInfo)> {
     let info = crate::api::playback::load_file(state, file_id).await?;
-    {
-        let mut map = OPEN_FILES.lock().unwrap();
-        map.retain(|_, (_, t)| t.elapsed() < Duration::from_secs(600));
-        if let Some((f, t)) = map.get_mut(&file_id) {
-            *t = Instant::now();
-            return Ok((f.clone(), info));
-        }
-    }
-    let p = info.abs.clone();
-    let root = info.root.clone();
-    let f = tokio::time::timeout(
-        Duration::from_secs(state.settings.get().scanner.fs_timeout_seconds as u64),
-        tokio::task::spawn_blocking(move || -> std::io::Result<std::fs::File> {
-            let canon = std::fs::canonicalize(&p)?;
-            if !canon.starts_with(std::fs::canonicalize(&root)?) {
-                return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "fuori dalla libreria"));
-            }
-            std::fs::File::open(canon)
-        }),
-    )
-    .await
-    .map_err(|_| ApiError::coded(StatusCode::GATEWAY_TIMEOUT, "StorageTimeout", "Lo storage non risponde"))?
-    .map_err(|e| ApiError::Internal(e.into()))?
-    .map_err(|e| ApiError::coded(StatusCode::CONFLICT, "FileUnavailable", format!("File non leggibile: {e}")))?;
-    let f = Arc::new(f);
-    OPEN_FILES.lock().unwrap().insert(file_id, (f.clone(), Instant::now()));
+    let timeout = Duration::from_secs(state.settings.get().scanner.fs_timeout_seconds as u64);
+    let f = crate::stream::open_library_file(file_id, &info.abs, &info.root, timeout).await?;
     Ok((f, info))
 }
 

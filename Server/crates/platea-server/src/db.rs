@@ -28,9 +28,11 @@ impl Db {
             .foreign_keys(true)
             .busy_timeout(Duration::from_secs(10))
             .pragma("temp_store", "memory")
-            // 8 MB di cache per connessione e 64 MB di mmap: memoria contenuta anche con librerie grandi.
+            // 8 MB di cache per connessione, niente mmap: ogni connessione mapperebbe le stesse pagine
+            // e la RSS mostrerebbe centinaia di MB che sono solo cache del sistema. Le letture passano dalla
+            // cache di pagina del kernel, condivisa, e le misure di memoria restano oneste.
             .pragma("cache_size", "-8000")
-            .pragma("mmap_size", "67108864");
+            .pragma("mmap_size", "0");
 
         let write = SqlitePoolOptions::new()
             .max_connections(1)
@@ -51,6 +53,7 @@ impl Db {
                     .await
                     .context("copia di sicurezza prima della migrazione")?;
                 tracing::info!(file = %backup.display(), "copia di sicurezza del database prima della migrazione");
+                prune_backups(&boot.data_dir, 2);
             }
         }
         MIGRATOR.run(&write).await.context("migrazioni del database")?;
@@ -103,5 +106,40 @@ impl Db {
         if let Err(e) = r {
             tracing::warn!(error = %e, "scrittura del registro attività non riuscita");
         }
+    }
+}
+
+/// Tiene solo le ultime `keep` copie di sicurezza delle migrazioni (`platea.db.bak-<ms>`).
+fn prune_backups(dir: &std::path::Path, keep: usize) {
+    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    let mut list: Vec<(i64, std::path::PathBuf)> = rd
+        .flatten()
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            let ts = name.strip_prefix("platea.db.bak-")?.parse::<i64>().ok()?;
+            Some((ts, e.path()))
+        })
+        .collect();
+    list.sort_by_key(|e| std::cmp::Reverse(e.0));
+    for (_, p) in list.into_iter().skip(keep) {
+        if std::fs::remove_file(&p).is_ok() {
+            tracing::info!(file = %p.display(), "copia di sicurezza vecchia rimossa");
+        }
+    }
+}
+
+#[cfg(test)]
+mod backup_tests {
+    #[test]
+    fn keeps_latest_backups() {
+        let d = tempfile::tempdir().unwrap();
+        for ts in [100, 300, 200, 400] {
+            std::fs::write(d.path().join(format!("platea.db.bak-{ts}")), b"x").unwrap();
+        }
+        std::fs::write(d.path().join("platea.db"), b"x").unwrap();
+        super::prune_backups(d.path(), 2);
+        let mut left: Vec<String> = std::fs::read_dir(d.path()).unwrap().flatten().map(|e| e.file_name().to_string_lossy().to_string()).collect();
+        left.sort();
+        assert_eq!(left, vec!["platea.db", "platea.db.bak-300", "platea.db.bak-400"]);
     }
 }

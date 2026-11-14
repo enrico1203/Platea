@@ -578,25 +578,8 @@ async fn direct(State(state): State<Shared>, Path(id): Path<String>, Query(q): Q
     let file = match existing {
         Some(f) => f,
         None => {
-            let p = info.abs.clone();
-            let root = info.root.clone();
-            let opened = tokio::time::timeout(
-                Duration::from_secs(state.settings.get().scanner.fs_timeout_seconds as u64),
-                tokio::task::spawn_blocking(move || -> std::io::Result<std::fs::File> {
-                    // Il percorso viene dal database e deve restare sotto la radice della libreria.
-                    let canon = std::fs::canonicalize(&p)?;
-                    let root = std::fs::canonicalize(&root)?;
-                    if !canon.starts_with(&root) {
-                        return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "fuori dalla libreria"));
-                    }
-                    std::fs::File::open(canon)
-                }),
-            )
-            .await
-            .map_err(|_| ApiError::coded(StatusCode::GATEWAY_TIMEOUT, "StorageTimeout", "Lo storage non risponde"))?
-            .map_err(|e| ApiError::Internal(e.into()))?
-            .map_err(|e| ApiError::coded(StatusCode::CONFLICT, "FileUnavailable", format!("File non leggibile: {e}")))?;
-            let f = Arc::new(opened);
+            let timeout = Duration::from_secs(state.settings.get().scanner.fs_timeout_seconds as u64);
+            let f = crate::stream::open_library_file(s.file_id, &info.abs, &info.root, timeout).await?;
             *s.file.lock().unwrap() = Some(f.clone());
             f
         }
