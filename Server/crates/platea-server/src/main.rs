@@ -9,6 +9,7 @@ mod api;
 mod auth;
 mod backup;
 mod boot;
+mod cli;
 mod db;
 mod error;
 mod events;
@@ -62,6 +63,9 @@ fn main() -> anyhow::Result<()> {
     if std::env::args().any(|a| a == "--version") {
         println!("platea {}", state::VERSION);
         return Ok(());
+    }
+    if let Some(code) = cli::dispatch(&boot) {
+        std::process::exit(code);
     }
     {
         use tracing_subscriber::layer::SubscriberExt;

@@ -43,6 +43,8 @@ Apri `http://<host>:8080`, inserisci il codice di primo avvio stampato nei log e
 | `./transcode` | Segmenti delle sessioni attive | Sì |
 | Cartelle dei media → `/media/…` | La libreria, in sola lettura: una riga per ognuna nei `volumes` del servizio `server` (es. `/mnt/jottamio:/media/jottamio:ro,rslave`) | — |
 
+**Password dimenticata.** Da terminale, con il server in funzione: `docker compose exec server platea reset-password <utente>` stampa una password nuova (o `… reset-password <utente> <password>` per sceglierla). L'account torna attivo e tutti i suoi dispositivi vengono scollegati.
+
 Per aggiornare: `git pull && docker compose up -d --build`. Le migrazioni del database partono da sole, dopo una copia di sicurezza.
 
 **Backup.** Ogni 24 ore il server copia il database in `./data/backups` (le ultime 7; intervallo e numero in Impostazioni → Generali). Da **Amministrazione → Sistema** si crea una copia al volo, la si scarica, o si ripristina il database da una copia o da un file: il server si riavvia da solo e il database precedente resta in `./data` come `platea.db.before-restore-…`.
