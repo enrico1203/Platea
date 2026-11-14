@@ -908,6 +908,17 @@ async fn media_sources(state: &Shared, item: i64) -> ApiResult<Vec<Value>> {
     Ok(out)
 }
 
+/// DTO di un elenco con i campi chiesti in `Fields` (stagioni, episodi, prossimi, ultimi, da riprendere).
+async fn dtos(state: &Shared, rows: &[Row], uri: &Uri) -> ApiResult<Vec<Value>> {
+    let mut out: Vec<Value> = rows.iter().map(|r| dto(state, r)).collect();
+    if let Some(f) = normalize_query(uri).fields {
+        for (r, v) in rows.iter().zip(out.iter_mut()) {
+            list_fields(state, r, v, &f).await?;
+        }
+    }
+    Ok(out)
+}
+
 /// Campi chiesti con `Fields` negli elenchi. Infuse sincronizza la libreria a pagine di 50 e vuole le
 /// sorgenti (percorso, contenitore, flussi) e gli identificativi esterni già nell'elenco.
 async fn list_fields(state: &Shared, r: &Row, v: &mut Value, fields: &str) -> ApiResult<()> {
@@ -1339,7 +1350,7 @@ async fn latest_list(state: &Shared, user: &AuthUser, uri: &Uri) -> ApiResult<Js
     sql.push_str(&format!(" ORDER BY i.added_at DESC LIMIT {limit}"));
     let rows: Vec<Row> = sqlx::query_as(&sql).bind(user.user_id).fetch_all(&state.db.read).await?;
     // Latest restituisce un array semplice.
-    Ok(Json(json!(rows.iter().map(|r| dto(state, r)).collect::<Vec<_>>())))
+    Ok(Json(json!(dtos(state, &rows, uri).await?)))
 }
 
 async fn latest_u(State(state): State<Shared>, user: AuthUser, Path(_u): Path<String>, uri: Uri) -> ApiResult<Json<Value>> {
@@ -1350,7 +1361,7 @@ async fn latest_q(State(state): State<Shared>, user: AuthUser, uri: Uri) -> ApiR
     latest_list(&state, &user, &uri).await
 }
 
-async fn next_up(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<Value>> {
+async fn next_up(State(state): State<Shared>, user: AuthUser, uri: Uri) -> ApiResult<Json<Value>> {
     let api_user = user.clone();
     let series: Vec<i64> = sqlx::query_scalar(&format!(
         "SELECT i.id FROM items i JOIN user_item_data u ON u.item_id = i.id AND u.user_id = ?1 WHERE i.kind = 'series' AND u.last_played_at IS NOT NULL {} ORDER BY u.last_played_at DESC LIMIT 20",
@@ -1359,7 +1370,7 @@ async fn next_up(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<
     .bind(user.user_id)
     .fetch_all(&state.db.read)
     .await?;
-    let mut out = Vec::new();
+    let mut found: Vec<Row> = Vec::new();
     for sid in series {
         let last: Option<i64> = sqlx::query_scalar(
             "SELECT e.id FROM items e JOIN user_item_data u ON u.item_id = e.id AND u.user_id = ?1 WHERE e.series_id = ?2 AND e.kind = 'episode' AND u.played = 1 AND COALESCE(e.parent_index_number,0) > 0
@@ -1374,25 +1385,27 @@ async fn next_up(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<
                 if n.played.unwrap_or(0) == 0 {
                     let sql = format!("{SELECT} WHERE i.id = ?2");
                     if let Some(r) = sqlx::query_as::<_, Row>(&sql).bind(user.user_id).bind(n.id).fetch_optional(&state.db.read).await? {
-                        out.push(dto(&state, &r));
+                        found.push(r);
                     }
                 }
             }
         }
     }
+    let out = dtos(&state, &found, &uri).await?;
     let n = out.len();
     Ok(Json(json!({ "Items": out, "TotalRecordCount": n, "StartIndex": 0 })))
 }
 
-async fn seasons(State(state): State<Shared>, user: AuthUser, Path(series): Path<String>) -> ApiResult<Json<Value>> {
+async fn seasons(State(state): State<Shared>, user: AuthUser, Path(series): Path<String>, uri: Uri) -> ApiResult<Json<Value>> {
     let sid = item_id(&state, &series)?;
     let sql = format!("{SELECT} WHERE i.parent_id = ?2 AND i.kind = 'season' {} ORDER BY COALESCE(i.index_number, 0)", user.library_filter("i.library_id"));
     let rows: Vec<Row> = sqlx::query_as(&sql).bind(user.user_id).bind(sid).fetch_all(&state.db.read).await?;
     let n = rows.len();
-    Ok(Json(json!({ "Items": rows.iter().map(|r| dto(&state, r)).collect::<Vec<_>>(), "TotalRecordCount": n, "StartIndex": 0 })))
+    Ok(Json(json!({ "Items": dtos(&state, &rows, &uri).await?, "TotalRecordCount": n, "StartIndex": 0 })))
 }
 
 async fn episodes(State(state): State<Shared>, user: AuthUser, Path(series): Path<String>, uri: Uri) -> ApiResult<Json<Value>> {
+    log_query(&uri);
     let sid = item_id(&state, &series)?;
     let q = normalize_query(&uri);
     let mut sql = format!("{SELECT} WHERE i.series_id = ?2 AND i.kind = 'episode' {}", user.library_filter("i.library_id"));
@@ -1402,7 +1415,7 @@ async fn episodes(State(state): State<Shared>, user: AuthUser, Path(series): Pat
     sql.push_str(" ORDER BY COALESCE(i.parent_index_number, 0), COALESCE(i.index_number, 0)");
     let rows: Vec<Row> = sqlx::query_as(&sql).bind(user.user_id).bind(sid).fetch_all(&state.db.read).await?;
     let n = rows.len();
-    Ok(Json(json!({ "Items": rows.iter().map(|r| dto(&state, r)).collect::<Vec<_>>(), "TotalRecordCount": n, "StartIndex": 0 })))
+    Ok(Json(json!({ "Items": dtos(&state, &rows, &uri).await?, "TotalRecordCount": n, "StartIndex": 0 })))
 }
 
 async fn search_hints(State(state): State<Shared>, user: AuthUser, uri: Uri) -> ApiResult<Json<Value>> {
