@@ -84,12 +84,16 @@ export function Switch({ checked, onChange, label, hint, disabled }: { checked: 
 export function Dialog({ title, onClose, children, footer }: { title: ReactNode; onClose: () => void; children: ReactNode; footer?: ReactNode }) {
   const t = useT();
   const ref = useRef<HTMLDivElement>(null);
+  // onClose arriva spesso come funzione nuova a ogni render: in un ref, così l'effetto gira una volta sola
+  // e il focus va sulla finestra solo all'apertura (non a ogni tasto premuto in un campo).
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
-    const k = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const k = (e: KeyboardEvent) => e.key === "Escape" && closeRef.current();
     window.addEventListener("keydown", k);
     ref.current?.focus();
     return () => window.removeEventListener("keydown", k);
-  }, [onClose]);
+  }, []);
   return (
     <div className="dialog-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="dialog" role="dialog" aria-modal="true" tabIndex={-1} ref={ref}>
