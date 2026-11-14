@@ -181,6 +181,17 @@ Trovato e corretto durante il test:
 - [x] CORRETTI: gli "aggiunti di recente" della home ignoravano il limite d'età; avatar inesistente (`?v=0`) per gli utenti
   senza immagine (colonna nullable letta come 0).
 
+### Priorità B: filtri, capitoli, immagini (2026-11-14)
+
+- [x] Filtri della libreria per decennio e qualità video (4K, 1080p, 720p, SD, HDR): un'unica passata sulle tracce video,
+  ~25 ms su 8.500 film (la prima versione con sottoquery per elemento impiegava fino a 9 s).
+- [x] Capitoli (migrazione 0008 `media_files.chapters`): letti con `-show_chapters` durante l'analisi; per i file analizzati
+  prima, letti dall'intestazione alla prima richiesta e salvati. Titoli generici o orari (mkvmerge) scartati. Player: tacche
+  sulla barra e pannello per saltare.
+- [x] Locandina, sfondo e logo caricati dall'amministratore (dialogo Modifica), campo bloccato; "Ripristina" torna ai metadati.
+- [x] CORRETTO: un'immagine cambiata (anche da TMDB) teneva lo stesso identificativo, o SQLite lo riusava dopo una
+  cancellazione: con la cache "immutable" i browser mostravano la vecchia. Ora riga nuova inserita prima di togliere la vecchia.
+
 ### Playlist (2026-11-14)
 
 - [x] API `/api/v1/playlists` (elenco, crea con voci, dettaglio, rinomina, cancella, aggiungi, togli, sposta): una riga per voce;
@@ -247,6 +258,7 @@ Script del benchmark: `scripts/bench_library.py` (genera la libreria sintetica).
 
 ## Registro
 
+- 2026-11-14 — Filtri per decennio e qualità, capitoli nel player, immagini caricate a mano; corretto il riuso degli ID immagine.
 - 2026-11-14 — Personalizzazione utenti (download, fasce orarie, preferenze, avatar), persona e simili, home "in scena".
 - 2026-11-14 — Playlist personali.
 - 2026-11-14 — HLS in fMP4: HEVC e AV1 copiati nel browser invece di transcodificati.

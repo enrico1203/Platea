@@ -570,8 +570,17 @@ async fn set_image_url(tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>, item_id: i6
         sqlx::query_as("SELECT id, source_url FROM images WHERE item_id = ? AND kind = ?").bind(item_id).bind(kind).fetch_optional(&mut **tx).await?;
     match existing {
         Some((_, u)) if u == url => Ok(None),
-        Some((id, _)) => {
-            sqlx::query("UPDATE images SET source_url = ?, state = 'pending', local_path = NULL WHERE id = ?").bind(url).bind(id).execute(&mut **tx).await?;
+        Some((old, _)) => {
+            // Immagine cambiata: riga nuova inserita PRIMA di togliere la vecchia, così l'identificativo (e l'indirizzo,
+            // tenuto in cache dai browser come immutabile) non si ripete mai.
+            let id = sqlx::query("INSERT INTO images (item_id, kind, source_url, state) VALUES (?, ?, ?, 'pending')")
+                .bind(item_id)
+                .bind(kind)
+                .bind(url)
+                .execute(&mut **tx)
+                .await?
+                .last_insert_rowid();
+            sqlx::query("DELETE FROM images WHERE id = ?").bind(old).execute(&mut **tx).await?;
             Ok(Some(id))
         }
         None => {

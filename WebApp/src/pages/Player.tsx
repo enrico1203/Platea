@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type Hls from "hls.js";
-import { ArrowLeft, Play, Pause, RotateCcw, RotateCw, Maximize, Minimize, Volume2, VolumeX, Captions, Settings2, Info, SkipForward } from "lucide-react";
+import { ArrowLeft, Play, Pause, RotateCcw, RotateCw, Maximize, Minimize, Volume2, VolumeX, Captions, Settings2, Info, SkipForward, ListOrdered } from "lucide-react";
 import { api, ApiError, getToken, mediaUrl, serverUrl } from "../api/client";
 import type { ItemDetail, Item, PlaybackInfo, PlaylistDetail } from "../api/types";
 import { buildProfile } from "../lib/profile";
@@ -18,7 +18,8 @@ function readQuality(): number {
   try { return Number(localStorage.getItem(K_QUALITY) ?? 0) || 0; } catch { return 0; }
 }
 
-type Panel = null | "subs" | "settings" | "info";
+type Panel = null | "subs" | "settings" | "info" | "chapters";
+interface Chapter { start_ms: number; title: string | null }
 
 export default function Player() {
   const { id } = useParams();
@@ -50,6 +51,12 @@ export default function Player() {
   const [dragging, setDragging] = useState<number | null>(null);
   const hideTimer = useRef<number | undefined>(undefined);
 
+  const fileParam = search.get("file");
+  const { data: chapters } = useQuery({
+    queryKey: ["chapters", id, fileParam],
+    queryFn: () => api<{ items: Chapter[] }>(`/api/v1/items/${id}/chapters${fileParam ? `?file_id=${fileParam}` : ""}`).then((r) => r.items),
+    staleTime: Infinity,
+  });
   const { data: item } = useQuery({ queryKey: ["item", id], queryFn: () => api<ItemDetail>(`/api/v1/items/${id}`) });
   const duration = (info?.duration_ms ?? 0) / 1000;
 
@@ -357,6 +364,9 @@ export default function Player() {
             <div className="player__track">
               <div className="player__buffer" style={{ width: `${duration ? (buffered / duration) * 100 : 0}%` }} />
               <div className="player__progress" style={{ width: `${duration ? (shown / duration) * 100 : 0}%` }} />
+              {duration > 0 && chapters && chapters.length > 1 && chapters.slice(1).map((c) => (
+                <span key={c.start_ms} className="player__chapter" style={{ left: `${(c.start_ms / 1000 / duration) * 100}%` }} />
+              ))}
             </div>
             <div className="player__thumb" style={{ left: `${duration ? (shown / duration) * 100 : 0}%` }} />
           </div>
@@ -365,6 +375,7 @@ export default function Player() {
             <span className="spacer" />
             <button className="player__btn" onClick={() => { const v = videoRef.current; if (v) { v.muted = !v.muted; setMuted(v.muted); } }} aria-label={muted ? t("player.unmute") : t("player.mute")}>{muted ? <VolumeX /> : <Volume2 />}</button>
             {(item?.kind === "episode" || playlistId) && <button className="player__btn" onClick={goNext} aria-label={t("player.next")}><SkipForward /></button>}
+            {chapters && chapters.length > 1 && <button className="player__btn" onClick={() => setPanel(panel === "chapters" ? null : "chapters")} aria-label={t("player.chapters")}><ListOrdered /></button>}
             <button className="player__btn" onClick={() => setPanel(panel === "subs" ? null : "subs")} aria-label={t("player.subtitlesAudio")}><Captions /></button>
             <button className="player__btn" onClick={() => setPanel(panel === "settings" ? null : "settings")} aria-label={t("player.quality")}><Settings2 /></button>
             <button className="player__btn" onClick={() => setPanel(panel === "info" ? null : "info")} aria-label={t("player.info")}><Info /></button>
@@ -384,6 +395,22 @@ export default function Player() {
         </div>
       )}
       {seekHint && <div className="player__seek-hint" style={seekHint.side === "left" ? { left: "15%" } : { right: "15%" }}>{seekHint.text}</div>}
+
+      {panel === "chapters" && chapters && (
+        <div className="player__panel">
+          <h4>{t("player.chapters")}</h4>
+          {chapters.map((c, i) => {
+            const next = chapters[i + 1]?.start_ms ?? (duration * 1000);
+            const current = shown * 1000 >= c.start_ms && shown * 1000 < next;
+            return (
+              <button key={c.start_ms} className={current ? "active" : ""} onClick={() => { seekTo(c.start_ms / 1000); setPanel(null); }}>
+                <span>{c.title ?? t("player.chapterN", { n: i + 1 })}</span>
+                <span className="t-mono-sm" style={{ color: "#808893" }}>{clock(c.start_ms)}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {panel === "subs" && info && (
         <div className="player__panel">

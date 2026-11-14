@@ -52,7 +52,7 @@ La colonna **Priorità** indica l'ordine di lavoro: **A** subito, **B** dopo, **
 | Continua a guardare, prossimi episodi, aggiunti di recente | ✅ | ✅ | — |
 | Preferiti, visto/non visto, intere serie | ✅ | ✅ | — |
 | Filtri per genere, lettera, visti, preferiti | ✅ | ✅ | — |
-| Filtri per anno, risoluzione (4K), HDR | ✅ | ❌ | B |
+| Filtri per anno, risoluzione (4K), HDR | ✅ | ✅ (decennio, 4K/1080p/720p/SD, HDR) | — |
 | **Pagina della persona** (filmografia) | ✅ | ✅ | — |
 | **Titoli simili** | ✅ | ✅ (la saga per prima) | — |
 | Pagine per genere e studio | ✅ | 🟡 (filtro per genere) | B |
@@ -71,7 +71,7 @@ La colonna **Priorità** indica l'ordine di lavoro: **A** subito, **B** dopo, **
 | Direct play, remux, transcodifica, motivo della scelta | ✅ | ✅ (con il motivo sempre visibile) | — |
 | Transcodifica hardware con ripiego | ✅ | ✅ | — |
 | HLS fMP4, HEVC copiato | ✅ | ✅ | — |
-| Capitoli (navigazione) | ✅ | ❌ | B |
+| Capitoli (navigazione) | ✅ | ✅ (tacche sulla barra e pannello) | — |
 | Miniature sulla barra di avanzamento (trickplay) | ✅ | ❌ | B |
 | Salto della sigla e dei titoli di coda | 🟡 (plugin, segmenti 10.10) | ❌ | C |
 | Sottotitoli esterni e interni, conversione in WebVTT | ✅ | ✅ | — |
@@ -89,7 +89,7 @@ La colonna **Priorità** indica l'ordine di lavoro: **A** subito, **B** dopo, **
 | Notifiche dei file locali | ✅ | ✅ | — |
 | NFO locali | ✅ | ✅ (+ .plexmatch) | — |
 | Modifica dei metadati, identifica | ✅ | ✅ | — |
-| Scelta o caricamento delle immagini | ✅ | ❌ | B |
+| Scelta o caricamento delle immagini | ✅ | 🟡 (caricamento sì; scelta tra le alternative di TMDB no) | C |
 | Accesso con codice da un altro dispositivo (Quick Connect) | ✅ | ❌ | B (serve alle app TV) |
 | Messaggio o avviso sulla pagina di accesso, CSS personalizzato | ✅ | ❌ | C |
 | Webhook e notifiche esterne | 🟡 (plugin) | ❌ | C |

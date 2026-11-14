@@ -83,6 +83,57 @@ fn average_color(img: &image::DynamicImage) -> String {
 }
 
 /// Restituisce il percorso del file da servire per la larghezza richiesta, generandolo se serve.
+/// Toglie un'immagine e i suoi file (originale e varianti).
+pub async fn remove_image(state: &Shared, image_id: i64) -> anyhow::Result<()> {
+    let orig = original_path(state, image_id);
+    if let Some(dir) = orig.parent() {
+        if let Ok(rd) = std::fs::read_dir(dir) {
+            let prefix = format!("{image_id}_w");
+            for e in rd.flatten() {
+                if e.file_name().to_string_lossy().starts_with(&prefix) {
+                    let _ = std::fs::remove_file(e.path());
+                }
+            }
+        }
+    }
+    let _ = std::fs::remove_file(orig);
+    sqlx::query("DELETE FROM images WHERE id = ?").bind(image_id).execute(&state.db.write).await?;
+    Ok(())
+}
+
+/// Immagine caricata dall'amministratore (locandina, sfondo, logo): nuovo identificativo, così la cache lunga dei
+/// browser non mostra quella vecchia. Il file resta nella cache del server, mai nelle cartelle dei media.
+pub async fn store_upload(state: &Shared, item_id: i64, kind: &str, bytes: Vec<u8>) -> anyhow::Result<i64> {
+    let (w, h, color, b) = tokio::task::spawn_blocking(move || -> anyhow::Result<(u32, u32, String, Vec<u8>)> {
+        let img = image::load_from_memory(&bytes).context("immagine non leggibile")?;
+        Ok((img.width(), img.height(), average_color(&img), bytes))
+    })
+    .await??;
+    let old: Vec<i64> = sqlx::query_scalar("SELECT id FROM images WHERE item_id = ? AND kind = ?").bind(item_id).bind(kind).fetch_all(&state.db.read).await?;
+    // La nuova riga prima di togliere le vecchie: identificativo sempre nuovo (vedi set_image_url).
+    let id = sqlx::query(
+        "INSERT INTO images (item_id, kind, source, source_url, state, width, height, placeholder_color) VALUES (?, ?, 'upload', 'upload', 'ready', ?, ?, ?)",
+    )
+    .bind(item_id)
+    .bind(kind)
+    .bind(w as i64)
+    .bind(h as i64)
+    .bind(&color)
+    .execute(&state.db.write)
+    .await?
+    .last_insert_rowid();
+    let path = original_path(state, id);
+    if let Some(d) = path.parent() {
+        tokio::fs::create_dir_all(d).await?;
+    }
+    tokio::fs::write(&path, &b).await?;
+    for o in old {
+        remove_image(state, o).await?;
+    }
+    sqlx::query("UPDATE images SET local_path = ? WHERE id = ?").bind(path.to_string_lossy().to_string()).bind(id).execute(&state.db.write).await?;
+    Ok(id)
+}
+
 pub async fn serve_path(state: &Shared, image_id: i64, width: Option<u32>) -> anyhow::Result<PathBuf> {
     let orig = original_path(state, image_id);
     if !orig.exists() {

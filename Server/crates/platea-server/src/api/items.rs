@@ -21,6 +21,9 @@ pub fn routes(api: Api) -> Api {
         .get("/api/v1/items/{id}", "Libreria", Access::User, "Dettaglio di un elemento con file, tracce, persone", detail)
         .get("/api/v1/items/{id}/children", "Libreria", Access::User, "Stagioni di una serie o episodi di una stagione", children)
         .get("/api/v1/items/{id}/next", "Libreria", Access::User, "Episodio successivo", next_episode)
+        .post("/api/v1/items/{id}/images/{kind}", "Metadati", Access::Admin, "Carica locandina, sfondo o logo (il campo resta bloccato)", upload_image)
+        .delete("/api/v1/items/{id}/images/{kind}", "Metadati", Access::Admin, "Torna all'immagine dei metadati", reset_image)
+        .get("/api/v1/items/{id}/chapters", "Libreria", Access::User, "Capitoli del file (letti dall'intestazione la prima volta)", chapters)
         .get("/api/v1/items/{id}/similar", "Libreria", Access::User, "Titoli simili: stesso tipo, generi in comune, poi voto", similar)
         .get("/api/v1/people/{id}", "Libreria", Access::User, "Una persona con i titoli della libreria in cui compare", person)
         .get("/api/v1/home", "Libreria", Access::User, "Continua a guardare, prossimi episodi, aggiunti di recente", home)
@@ -158,6 +161,10 @@ struct ListQuery {
     played: Option<bool>,
     favorite: Option<bool>,
     letter: Option<String>,
+    /// Decennio: 1990 = 1990–1999; 1940 comprende anche gli anni precedenti.
+    decade: Option<i64>,
+    /// Qualità video: 4k, 1080, 720, sd, hdr.
+    video: Option<String>,
     cursor: Option<String>,
     limit: Option<i64>,
 }
@@ -218,6 +225,26 @@ async fn list(State(state): State<Shared>, user: AuthUser, Query(q): Query<ListQ
     }
     if q.favorite == Some(true) {
         sql.push_str(" AND COALESCE(u.favorite, 0) = 1");
+    }
+    if let Some(d) = q.decade.filter(|d| (1800..2200).contains(d)) {
+        let from = if d <= 1940 { 0 } else { d };
+        sql.push_str(&format!(" AND i.year BETWEEN {from} AND {}", d + 9));
+    }
+    if let Some(v) = q.video.as_deref() {
+        // Sui film i loro file; sulle serie basta un episodio con quella qualità. Solo interi e testo fisso nell'SQL.
+        let cond = match v {
+            "4k" => "v.width >= 3200 OR v.height >= 2000",
+            "1080" => "(v.width >= 1800 OR v.height >= 1000) AND v.width < 3200 AND COALESCE(v.height, 0) < 2000",
+            "720" => "(v.width >= 1200 OR v.height >= 700) AND v.width < 1800 AND COALESCE(v.height, 0) < 1000",
+            "sd" => "v.width < 1200 AND COALESCE(v.height, 0) < 700",
+            "hdr" => "v.hdr IS NOT NULL AND v.hdr <> ''",
+            other => return Err(ApiError::BadRequest(format!("video: 4k, 1080, 720, sd, hdr (non {other})"))),
+        };
+        // Un'unica passata sulle tracce video: gli elementi (film, o la serie dell'episodio) che hanno quella qualità.
+        sql.push_str(&format!(
+            " AND i.id IN (SELECT COALESCE(e.series_id, e.id) FROM media_streams v JOIN media_files f ON f.id = v.file_id JOIN items e ON e.id = f.item_id
+                 WHERE v.kind = 'video' AND f.state = 'present' AND ({cond}))"
+        ));
     }
     if let Some(letter) = q.letter.as_deref().and_then(|l| l.chars().next()) {
         if letter == '#' {
@@ -456,6 +483,104 @@ async fn children(State(state): State<Shared>, user: AuthUser, Path(id): Path<St
     };
     let rows: Vec<ItemRow> = sqlx::query_as(&sql).bind(user.user_id).bind(iid).fetch_all(&state.db.read).await?;
     Ok(Json(json!({ "items": rows.iter().map(|r| item_json(&state, r)).collect::<Vec<_>>() })))
+}
+
+fn image_kind(kind: &str) -> ApiResult<&'static str> {
+    match kind {
+        "poster" => Ok("poster"),
+        "backdrop" => Ok("backdrop"),
+        "logo" => Ok("logo"),
+        _ => Err(ApiError::BadRequest("Tipo d'immagine: poster, backdrop o logo".into())),
+    }
+}
+
+async fn set_locked(state: &Shared, item_id: i64, field: &str, on: bool) -> ApiResult<()> {
+    let lf: String = sqlx::query_scalar("SELECT locked_fields FROM items WHERE id = ?").bind(item_id).fetch_one(&state.db.read).await?;
+    let mut list: Vec<String> = lf.split(',').filter(|s| !s.is_empty() && *s != field).map(String::from).collect();
+    if on {
+        list.push(field.to_string());
+    }
+    sqlx::query("UPDATE items SET locked_fields = ?, updated_at = ? WHERE id = ?")
+        .bind(list.join(","))
+        .bind(now_ms())
+        .bind(item_id)
+        .execute(&state.db.write)
+        .await?;
+    Ok(())
+}
+
+async fn upload_image(State(state): State<Shared>, _a: AdminUser, Path((id, kind)): Path<(String, String)>, body: axum::body::Bytes) -> ApiResult<Json<Value>> {
+    let iid = decode(&state, &id)?;
+    let kind = image_kind(&kind)?;
+    if body.is_empty() || body.len() > 15 * 1024 * 1024 {
+        return Err(ApiError::BadRequest("Immagine vuota o troppo grande (massimo 15 MB)".into()));
+    }
+    let img = crate::metadata::images::store_upload(&state, iid, kind, body.to_vec()).await.map_err(|e| ApiError::BadRequest(format!("{e:#}")))?;
+    set_locked(&state, iid, kind, true).await?;
+    state.events.publish("item.updated", json!({ "item_id": state.ids.encode(iid) }));
+    Ok(Json(json!({ "image": image_url(&state, Some(img)) })))
+}
+
+async fn reset_image(State(state): State<Shared>, _a: AdminUser, Path((id, kind)): Path<(String, String)>) -> ApiResult<Json<Value>> {
+    let iid = decode(&state, &id)?;
+    let kind = image_kind(&kind)?;
+    let ids: Vec<i64> =
+        sqlx::query_scalar("SELECT id FROM images WHERE item_id = ? AND kind = ? AND source = 'upload'").bind(iid).bind(kind).fetch_all(&state.db.read).await?;
+    // La riga resta fino al prossimo aggiornamento, che ne crea una nuova (con un identificativo nuovo):
+    // cancellarla ora permetterebbe a SQLite di riusarne l'identificativo e ai browser di mostrare la vecchia.
+    for img in ids {
+        sqlx::query("UPDATE images SET source = 'tmdb', source_url = '', state = 'failed' WHERE id = ?").bind(img).execute(&state.db.write).await?;
+    }
+    set_locked(&state, iid, kind, false).await?;
+    // Il prossimo aggiornamento rimette l'immagine dei metadati (TMDB o NFO).
+    let lib: i64 = sqlx::query_scalar("SELECT library_id FROM items WHERE id = ?").bind(iid).fetch_one(&state.db.read).await?;
+    jobs::enqueue(&state, JobKind::RefreshMetadata { item_id: iid }, priority::INTERACTIVE, Some(lib)).await?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct ChaptersQuery {
+    file_id: Option<String>,
+}
+
+/// Capitoli di un film o episodio. Per i file analizzati prima che si salvassero si leggono ora dall'intestazione
+/// (poche letture anche sul cloud) e si conservano; con lo storage che non risponde si restituisce un elenco vuoto.
+async fn chapters(State(state): State<Shared>, user: AuthUser, Path(id): Path<String>, Query(q): Query<ChaptersQuery>) -> ApiResult<Json<Value>> {
+    let iid = decode(&state, &id)?;
+    load_item(&state, &user, iid).await?;
+    let wanted = q.file_id.as_deref().and_then(|f| state.ids.decode(f));
+    let fid = super::download::choose_file(&state, iid, wanted).await?;
+    let stored: Option<String> =
+        sqlx::query_scalar::<_, Option<String>>("SELECT chapters FROM media_files WHERE id = ?").bind(fid).fetch_optional(&state.db.read).await?.flatten();
+    let json_text = match stored {
+        Some(s) => s,
+        None => {
+            let info = super::playback::load_file(&state, fid).await?;
+            let ffprobe = state.ffmpeg.get().ffprobe.clone();
+            let timeout = std::time::Duration::from_secs(state.settings.get().scanner.fs_timeout_seconds.max(5) as u64);
+            match crate::probe::read_chapters(&ffprobe, &info.abs, timeout).await {
+                Ok(s) => {
+                    sqlx::query("UPDATE media_files SET chapters = ? WHERE id = ?").bind(&s).bind(fid).execute(&state.db.write).await?;
+                    s
+                }
+                Err(e) => {
+                    tracing::debug!(file = fid, error = %e, "capitoli non leggibili");
+                    "[]".into()
+                }
+            }
+        }
+    };
+    let mut list: Value = serde_json::from_str(&json_text).unwrap_or(json!([]));
+    // Le stesse regole dell'analisi anche sui capitoli salvati prima: un titolo che è solo un orario non dice nulla.
+    if let Some(arr) = list.as_array_mut() {
+        for c in arr {
+            if c["title"].as_str().is_some_and(|t| t.chars().all(|ch| ch.is_ascii_digit() || ch == ':' || ch == '.')) {
+                c["title"] = Value::Null;
+            }
+        }
+    }
+    Ok(Json(json!({ "items": list })))
 }
 
 /// Titoli simili: stesso tipo (film o serie), ordinati per generi in comune, poi per voto.

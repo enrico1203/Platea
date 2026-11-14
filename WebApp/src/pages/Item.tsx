@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Play, Check, Heart, SearchCheck, RefreshCw, Pencil, ListPlus, Download } from "lucide-react";
+import { Play, Check, Heart, SearchCheck, RefreshCw, Pencil, ListPlus, Download, Upload } from "lucide-react";
 import { AddToPlaylist } from "./Playlists";
-import { api, ApiError, imageUrl, mediaUrl } from "../api/client";
+import { api, ApiError, getToken, imageUrl, mediaUrl, serverUrl } from "../api/client";
 import type { Candidate, Item as ItemT, ItemDetail, MediaFile, Page } from "../api/types";
 import { PosterCard } from "../components/PosterCard";
 import { Alert, Badge, Dialog, TextField, toast } from "../components/ui";
@@ -97,7 +97,46 @@ function EditDialog({ item, onClose }: { item: ItemDetail; onClose: () => void }
       <TextField label={t("item.title")} value={title} onChange={(e) => setTitle(e.target.value)} />
       <TextField label={t("item.year")} inputMode="numeric" value={year} onChange={(e) => setYear(e.target.value)} />
       <label className="pl-field"><span className="pl-field__label">{t("item.overview")}</span><span className="pl-field__control is-area"><textarea rows={5} value={overview} onChange={(e) => setOverview(e.target.value)} /></span></label>
+      <span className="pl-eyebrow">{t("item.images")}</span>
+      <div className="image-slots">
+        {(["poster", "backdrop", "logo"] as const).map((k) => <ImageSlot key={k} item={item} kind={k} />)}
+      </div>
     </Dialog>
+  );
+}
+
+/** Una delle immagini dell'elemento: si sostituisce caricando un file, si torna a quella dei metadati. */
+function ImageSlot({ item, kind }: { item: ItemDetail; kind: "poster" | "backdrop" | "logo" }) {
+  const { t } = useI18n();
+  const qc = useQueryClient();
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const src = kind === "poster" ? item.images.poster : kind === "backdrop" ? item.images.backdrop : item.images.logo;
+  const custom = item.locked_fields?.includes(kind);
+  return (
+    <div className={`image-slot image-slot--${kind}`}>
+      <div className="image-slot__art">{src ? <img src={imageUrl(src, 300)} alt="" /> : <span className="t-small subtle">{t("item.noImage")}</span>}</div>
+      <div className="t-label">{t(`item.imageKind.${kind}` as "item.imageKind.poster")}</div>
+      <div className="row" style={{ gap: 4 }}>
+        <button type="button" className="pl-btn pl-btn--secondary pl-btn--sm" disabled={busy} onClick={() => input.current?.click()}><Upload />{t("item.uploadImage")}</button>
+        {custom && <button type="button" className="pl-btn pl-btn--ghost pl-btn--sm" disabled={busy} onClick={async () => {
+          await api(`/api/v1/items/${item.id}/images/${kind}`, { method: "DELETE" });
+          qc.invalidateQueries();
+          toast(t("item.imageReset"));
+        }}>{t("item.resetImage")}</button>}
+      </div>
+      <input ref={input} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={async (e) => {
+        const f = e.target.files?.[0];
+        e.target.value = "";
+        if (!f) return;
+        setBusy(true);
+        try {
+          const res = await fetch(serverUrl() + `/api/v1/items/${item.id}/images/${kind}`, { method: "POST", headers: { Authorization: `Bearer ${getToken() ?? ""}` }, body: f });
+          if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { message?: string }).message ?? res.statusText);
+          qc.invalidateQueries();
+        } catch (err) { toast((err as Error).message); } finally { setBusy(false); }
+      }} />
+    </div>
   );
 }
 

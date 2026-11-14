@@ -18,6 +18,49 @@ pub struct ProbeOutput {
     pub streams: Vec<ProbeStream>,
     #[serde(default)]
     pub format: ProbeFormat,
+    #[serde(default)]
+    pub chapters: Vec<ProbeChapter>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct ProbeChapter {
+    pub start_time: Option<String>,
+    #[serde(default)]
+    pub tags: HashMap<String, String>,
+}
+
+/// Capitoli in JSON compatto per il database: inizio in ms e titolo (i titoli generici "Chapter 01" restano vuoti).
+pub fn chapters_json(chapters: &[ProbeChapter]) -> String {
+    let list: Vec<serde_json::Value> = chapters
+        .iter()
+        .filter_map(|c| {
+            let start = c.start_time.as_deref()?.parse::<f64>().ok()?;
+            // Titoli generici ("Chapter 01", "Capitolo 3", "00:03:19.199" di mkvmerge) non dicono nulla: restano vuoti.
+            let title = c.tags.get("title").map(|t| t.trim().to_string()).filter(|t| {
+                let l = t.to_lowercase();
+                let generic = l.split_whitespace().count() <= 2 && (l.starts_with("chapter") || l.starts_with("capitolo") || l.starts_with("chapitre"));
+                let timestamp = t.chars().all(|c| c.is_ascii_digit() || c == ':' || c == '.');
+                !t.is_empty() && !generic && !timestamp
+            });
+            Some(serde_json::json!({ "start_ms": (start * 1000.0).round() as i64, "title": title }))
+        })
+        .collect();
+    serde_json::to_string(&list).unwrap_or_else(|_| "[]".into())
+}
+
+/// Solo i capitoli (lettura dell'intestazione): per i file analizzati prima che si salvassero.
+pub async fn read_chapters(ffprobe: &PathBuf, path: &PathBuf, timeout: Duration) -> anyhow::Result<String> {
+    let mut cmd = Command::new(ffprobe);
+    cmd.args(["-v", "error", "-hide_banner", "-print_format", "json", "-show_chapters"])
+        .arg(path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .kill_on_drop(true);
+    let child = cmd.spawn().context("avvio di ffprobe")?;
+    let out = tokio::time::timeout(timeout, child.wait_with_output()).await.context("ffprobe oltre il tempo limite")??;
+    let parsed: ProbeOutput = serde_json::from_slice(&out.stdout).unwrap_or_default();
+    Ok(chapters_json(&parsed.chapters))
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -141,7 +184,7 @@ pub fn normalize_container(ext: &str, format_name: &str) -> String {
 pub async fn run_ffprobe(ffprobe: &PathBuf, path: &PathBuf, timeout: Duration) -> anyhow::Result<ProbeOutput> {
     let mut cmd = Command::new(ffprobe);
     cmd.args(["-v", "error", "-hide_banner", "-probesize", "20M", "-analyzeduration", "10M"])
-        .args(["-print_format", "json", "-show_format", "-show_streams"])
+        .args(["-print_format", "json", "-show_format", "-show_streams", "-show_chapters"])
         .arg(path)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -268,10 +311,11 @@ pub async fn save_probe(state: &Shared, file_id: i64, rel: &str, out: &ProbeOutp
         .execute(&mut *tx)
         .await?;
     }
-    sqlx::query("UPDATE media_files SET container = ?, duration_ms = ?, bitrate = ?, probe_state = 'done', probe_error = NULL, probed_at = ? WHERE id = ?")
+    sqlx::query("UPDATE media_files SET container = ?, duration_ms = ?, bitrate = ?, chapters = ?, probe_state = 'done', probe_error = NULL, probed_at = ? WHERE id = ?")
         .bind(&container)
         .bind(duration_ms)
         .bind(bitrate)
+        .bind(chapters_json(&out.chapters))
         .bind(now)
         .bind(file_id)
         .execute(&mut *tx)
@@ -413,5 +457,21 @@ mod tests {
         assert_eq!(s.hdr().as_deref(), Some("dovi"));
         let s = ProbeStream { pix_fmt: Some("yuv420p10le".into()), ..Default::default() };
         assert_eq!(s.bit_depth(), Some(10));
+    }
+}
+
+#[cfg(test)]
+mod chapter_tests {
+    use super::*;
+
+    #[test]
+    fn generic_chapter_titles_are_dropped() {
+        let ch = |t: &str, s: &str| ProbeChapter { start_time: Some(s.into()), tags: [("title".to_string(), t.to_string())].into_iter().collect() };
+        let j = chapters_json(&[ch("00:03:19.199", "199.241"), ch("Chapter 02", "300"), ch("La rapina a Fort Knox", "600.5")]);
+        let v: Vec<serde_json::Value> = serde_json::from_str(&j).unwrap();
+        assert_eq!(v[0]["title"], serde_json::Value::Null);
+        assert_eq!(v[0]["start_ms"], 199241);
+        assert_eq!(v[1]["title"], serde_json::Value::Null);
+        assert_eq!(v[2]["title"], "La rapina a Fort Knox");
     }
 }
