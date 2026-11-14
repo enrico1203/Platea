@@ -40,7 +40,7 @@ Apri `http://<host>:8080`, inserisci il codice di primo avvio stampato nei log e
 | `./data` | Database e segreto dell'installazione | No: va nel backup |
 | `./cache` | Immagini ridimensionate, sottotitoli estratti | Sì |
 | `./transcode` | Segmenti delle sessioni attive | Sì |
-| `MEDIA_DIR` → `/media` | La libreria, in sola lettura | — |
+| `MEDIA_DIR` → `/media` | La libreria, in sola lettura. Più cartelle: una riga per ognuna nei `volumes` del servizio `server` (es. `/mnt/jottamio:/media/jottamio:ro,rslave`) | — |
 
 Per aggiornare: `git pull && docker compose up -d --build`. Le migrazioni del database partono da sole, dopo una copia di sicurezza.
 

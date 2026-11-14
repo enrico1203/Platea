@@ -22,8 +22,12 @@ services:
       - ./data:/data
       - ./cache:/cache
       - ./transcode:/transcode
-      # La libreria, in sola lettura. rslave: il container vede anche un mount rclone fatto dopo l'avvio.
+      # Le cartelle dei media, sempre in sola lettura (:ro). rslave: il container vede anche un mount
+      # rclone fatto dopo l'avvio. Aggiungi una riga per ogni cartella: cartella dell'host → percorso nel
+      # container. Sotto /media il selettore delle cartelle in Amministrazione → Librerie le trova subito.
       - ${MEDIA_DIR:-./media}:/media:ro,rslave
+      # - /mnt/jottamio:/media/jottamio:ro,rslave
+      # - /mnt/nas/Serie:/media/serie:ro,rslave
     # Transcodifiche brevi e frequenti: i segmenti possono stare in RAM.
     # tmpfs:
     #   - /transcode:size=4g
