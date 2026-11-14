@@ -162,6 +162,15 @@ Trovato e corretto durante il test:
   (`stream::open_library_file`, aperti finché usati + 10 min).
 - mmap di SQLite disattivato: ogni connessione mappava gli stessi 64 MB e la RSS mostrava 600+ MB che erano solo cache.
 - Copie di sicurezza delle migrazioni: si tengono solo le ultime 2 (erano 5, 330 MB).
+### Storage lento e mount bloccato (2026-11-14, `scripts/stuck-mount-test.sh`)
+
+Mount rclone di prova (separato da quello dell'utente) a 300 KB/s, poi congelato con SIGSTOP:
+- Storage lento: analisi completate (l'MKV si legge solo nell'intestazione), API max 12 ms.
+- Mount bloccato: API max 11 ms su 94 richieste; scansione fermata con "mount bloccato?" (nessuna cancellazione);
+  direct play dal mount bloccato → 504 StorageTimeout dopo 30 s (`fs_timeout_seconds`), le altre richieste non ne risentono.
+- Durante il test di carico prima della correzione dei descrittori, una scansione pianificata aveva trovato "Too many open
+  files": fermata come mount assente, nessun file tolto (la protezione ha funzionato).
+
 Nota: un solo processo client Python satura sopra ~500 Range/s; con un solo processo il p99 misurato sale a 60–120 ms
 per colpa del client, non del server.
 
@@ -175,7 +184,7 @@ Script del benchmark: `scripts/bench_library.py` (genera la libreria sintetica).
 1. Provare Infuse reale contro il server (serve un dispositivo Apple: chiedere all'utente) e correggere le differenze.
 2. Fase 3: verificare QSV/VA-API/NVENC su hardware reale (qui non c'è GPU: solo software testato).
 3. Fase 4: fatto (log in tempo reale, chiavi API, notify per dischi locali).
-4. Fase 5: fatti test di carico, libreria sintetica, CI. Restano: file system con latenza artificiale (mount bloccato simulato).
+4. Fase 5: fatti test di carico, libreria sintetica, CI, storage lento e mount bloccato.
 
 ## Debito tecnico noto (da fare dopo)
 
@@ -187,6 +196,7 @@ Script del benchmark: `scripts/bench_library.py` (genera la libreria sintetica).
 
 ## Registro
 
+- 2026-11-14 — Prova di storage lento e mount bloccato: server reattivo, nessuna cancellazione.
 - 2026-11-14 — Test di carico (300 player): corretti limite dei file aperti e descrittori per sessione, mmap SQLite, copie di sicurezza.
 - 2026-11-14 — Notifiche sui dischi locali, collezioni in Infuse (BoxSet), corretto l'ordinamento per data in Infuse.
 - 2026-11-14 — Collezioni automatiche, limite per età applicato ovunque, rinnovo metadati per libreria, ricerca nell'indirizzo.
