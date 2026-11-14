@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, Upload, Plus, Trash2, RotateCcw } from "lucide-react";
+import { Download, Upload, Plus, Trash2, RotateCcw, Gauge } from "lucide-react";
 import { api, ApiError, download, getToken, mediaUrl, serverUrl } from "../../api/client";
 import { Alert, Confirm, Empty, TextField, toast } from "../../components/ui";
 import { useState } from "react";
@@ -28,6 +28,7 @@ export default function System() {
         </dl>
       </section>
       <ApiKeys />
+      <Maintenance />
       <Backups />
       <section className="pl-panel panel-pad stack">
         <h2 className="t-h3">{t("admin.system.backup")}</h2>
@@ -155,3 +156,41 @@ function Backups() {
     </section>
   );
 }
+
+interface MaintenanceReport { at: number; ms: number; jobs_removed: number; analyzed: boolean; vacuumed: boolean; size_before: number; size_after: number; wal_before: number; wal_after: number; free_pages_percent: number; error: string | null }
+
+/** Manutenzione del database: quando gira, l'esito dell'ultima, e il pulsante per avviarla ora. */
+function Maintenance() {
+  const { t, bytes, relative, num, duration } = useI18n();
+  const qc = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ["admin", "maintenance"],
+    queryFn: () => api<{ last: MaintenanceReport | null; running: boolean; hour: number }>("/api/v1/admin/maintenance"),
+    refetchInterval: (q) => (q.state.data?.running ? 3000 : false),
+  });
+  const last = data?.last;
+  return (
+    <section className="pl-panel panel-pad stack">
+      <h2 className="t-h3">{t("admin.system.maintenance")}</h2>
+      <p className="t-small muted">{t("admin.system.maintenanceHint", { hour: String(data?.hour ?? 4).padStart(2, "0") })}</p>
+      {last && (
+        <dl className="kv">
+          <dt>{t("admin.system.maintenanceLast")}</dt><dd>{relative(last.at)} · {last.ms < 60_000 ? `${num(last.ms / 1000, 1)} s` : duration(last.ms)}</dd>
+          <dt>{t("admin.system.database")}</dt><dd className="t-mono">{bytes(last.size_before)} → {bytes(last.size_after)}</dd>
+          <dt>WAL</dt><dd className="t-mono">{bytes(last.wal_before)} → {bytes(last.wal_after)}</dd>
+          <dt>{t("admin.system.maintenanceJobs")}</dt><dd>{num(last.jobs_removed)}</dd>
+          <dt>{t("admin.system.maintenanceFree")}</dt><dd>{num(last.free_pages_percent, 1)}%{last.vacuumed ? ` · ${t("admin.system.maintenanceVacuumed")}` : ""}</dd>
+        </dl>
+      )}
+      {last?.error && <Alert tone="danger">{last.error}</Alert>}
+      <div className="row">
+        <button className="pl-btn pl-btn--secondary" disabled={data?.running} onClick={async () => {
+          await api("/api/v1/admin/maintenance", { method: "POST" });
+          toast(t("admin.system.maintenanceStarted"));
+          qc.invalidateQueries({ queryKey: ["admin", "maintenance"] });
+        }}><Gauge />{data?.running ? t("admin.system.maintenanceRunning") : t("admin.system.maintenanceNow")}</button>
+      </div>
+    </section>
+  );
+}
+

@@ -16,6 +16,7 @@ mod events;
 mod ids;
 mod jobs;
 mod logs;
+mod maintenance;
 mod metadata;
 mod mkv;
 mod net;

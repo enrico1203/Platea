@@ -29,11 +29,21 @@ pub struct GeneralSettings {
     /// Quante copie automatiche tenere; le manuali restano finché non le cancelli.
     #[schemars(title = "Copie automatiche da tenere", range(min = 1, max = 100))]
     pub backup_keep: u32,
+    /// Ora (locale) della manutenzione notturna del database: statistiche, pulizia, spazio libero.
+    #[schemars(title = "Ora della manutenzione del database", range(min = 0, max = 23))]
+    pub maintenance_hour: u32,
 }
 
 impl Default for GeneralSettings {
     fn default() -> Self {
-        GeneralSettings { server_name: "Platea".into(), public_url: String::new(), min_password_length: 8, backup_interval_hours: 24, backup_keep: 7 }
+        GeneralSettings {
+            server_name: "Platea".into(),
+            public_url: String::new(),
+            min_password_length: 8,
+            backup_interval_hours: 24,
+            backup_keep: 7,
+            maintenance_hour: 4,
+        }
     }
 }
 

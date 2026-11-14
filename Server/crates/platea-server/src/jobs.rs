@@ -457,6 +457,13 @@ pub async fn run_scheduler(state: Shared) {
             let st = state.clone();
             tokio::spawn(async move { crate::backup::maybe_auto(&st).await });
         }
+        {
+            // Manutenzione del database: leggera ogni ora, completa di notte. Fuori dal ciclo dei lavori.
+            let st = state.clone();
+            let minute_of_day = crate::util::local_now().1 as i64;
+            let m = minutes;
+            tokio::spawn(async move { crate::maintenance::tick(&st, minute_of_day, m).await });
+        }
         if minutes % (24 * 60) == 2 {
             let _ = crate::metadata::schedule_refresh(&state).await;
         }

@@ -37,6 +37,8 @@ pub fn routes(api: Api) -> Api {
         .post("/api/v1/admin/transcode/test", "Transcodifica", Access::Admin, "Prova ora: rileva di nuovo le GPU", transcode_test)
         .get("/api/v1/admin/system", "Sistema", Access::Admin, "Versione, percorsi, database", system)
         .post("/api/v1/admin/backup", "Sistema", Access::Admin, "Crea una copia di sicurezza e la scarica", backup)
+        .get("/api/v1/admin/maintenance", "Sistema", Access::Admin, "Esito dell'ultima manutenzione del database", maintenance_last)
+        .post("/api/v1/admin/maintenance", "Sistema", Access::Admin, "Avvia ora la manutenzione completa del database", maintenance_run)
         .get("/api/v1/admin/backups", "Sistema", Access::Admin, "Copie di sicurezza presenti in data/backups", backups_list)
         .post("/api/v1/admin/backups", "Sistema", Access::Admin, "Crea ora una copia di sicurezza", backups_create)
         .get("/api/v1/admin/backups/{name}", "Sistema", Access::Admin, "Scarica una copia di sicurezza", backups_download)
@@ -132,6 +134,28 @@ async fn sessions(State(state): State<Shared>, _a: AdminUser) -> ApiResult<Json<
         out.push(crate::sessions::session_view(&state, s).await);
     }
     Ok(Json(json!({ "items": out })))
+}
+
+async fn maintenance_last(State(state): State<Shared>, _a: AdminUser) -> ApiResult<Json<Value>> {
+    let running = MAINTENANCE_RUNNING.load(std::sync::atomic::Ordering::Relaxed);
+    Ok(Json(json!({ "last": crate::maintenance::last(&state).await, "running": running, "hour": state.settings.get().general.maintenance_hour })))
+}
+
+static MAINTENANCE_RUNNING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Parte in background: un VACUUM su un database grande può durare più di una richiesta HTTP.
+async fn maintenance_run(State(state): State<Shared>, AdminUser(admin): AdminUser) -> ApiResult<Json<Value>> {
+    use std::sync::atomic::Ordering;
+    if MAINTENANCE_RUNNING.swap(true, Ordering::SeqCst) {
+        return Err(ApiError::Conflict("Manutenzione già in corso".into()));
+    }
+    state.db.activity(Some(admin.user_id), "maintenance", &format!("{} ha avviato la manutenzione del database", admin.username), None).await;
+    tokio::spawn(async move {
+        crate::maintenance::full(&state).await;
+        MAINTENANCE_RUNNING.store(false, Ordering::SeqCst);
+        state.events.admin("maintenance.done", json!({}));
+    });
+    Ok(Json(json!({ "started": true })))
 }
 
 fn id_list(ids: &std::collections::BTreeSet<i64>) -> String {
