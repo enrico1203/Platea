@@ -41,6 +41,7 @@ mime_guess = "2"
 libc = "0.2"
 urlencoding = "2"
 roxmltree = "0.20"
+notify = { version = "8", default-features = false }
 mimalloc = { version = "0.1", default-features = false }
 
 [dev-dependencies]

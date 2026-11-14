@@ -475,7 +475,9 @@ async fn apply_listing(state: &Shared, library_id: i64, kind: &str, path_id: i64
     stats.returned = returned.len();
     // Sparizione di massa: un mount a metà o un provider che risponde con cartelle vuote somigliano a una
     // cancellazione. Oltre la soglia non si segna nulla finché l'amministratore non conferma.
-    let present_before = by_path.values().filter(|f| f.state == "present" && in_scope(&f.relative_path)).count();
+    // La percentuale si misura sull'intera cartella della libreria, anche nelle scansioni mirate:
+    // cancellare una stagione non è una sparizione di massa, perdere metà libreria sì.
+    let present_before = by_path.values().filter(|f| f.state == "present").count();
     let gone = vanished.values().flatten().filter(|f| f.state == "present").count();
     let sc = state.settings.get().scanner.clone();
     let confirmed: i64 = sqlx::query_scalar("SELECT confirm_missing FROM libraries WHERE id = ?").bind(library_id).fetch_one(&state.db.read).await.unwrap_or(0);

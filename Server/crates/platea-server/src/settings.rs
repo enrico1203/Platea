@@ -245,6 +245,12 @@ pub struct ScannerSettings {
     /// …e almeno questo numero di file, nulla viene rimosso finché l'amministratore non conferma.
     #[schemars(title = "Minimo file per la sparizione di massa", range(min = 1, max = 100000))]
     pub mass_missing_min_files: u32,
+    /// Notifiche del file system sulle librerie locali: un file aggiunto o tolto fa scansionare subito la sua cartella.
+    #[schemars(title = "Notifiche sui dischi locali")]
+    pub watch_local: bool,
+    /// Secondi di quiete dopo l'ultimo cambio prima della scansione (una copia lunga genera eventi continui).
+    #[schemars(title = "Attesa dopo un cambio (s)", range(min = 1, max = 600))]
+    pub watch_debounce_seconds: u32,
     /// Cartelle lette in parallelo durante la scansione di una libreria locale.
     #[schemars(title = "Cartelle in parallelo (locale)", range(min = 1, max = 64))]
     pub list_concurrency_local: u32,
@@ -268,6 +274,8 @@ impl Default for ScannerSettings {
             missing_grace_days: 7,
             fs_timeout_seconds: 30,
             probe_timeout_seconds: 60,
+            watch_local: true,
+            watch_debounce_seconds: 10,
             mass_missing_percent: 20,
             mass_missing_min_files: 10,
             list_concurrency_local: 4,

@@ -26,6 +26,7 @@ mod state;
 mod stream;
 mod transcode;
 mod util;
+mod watch;
 
 use crate::state::{AppState, Shared};
 use std::net::SocketAddr;
@@ -145,6 +146,7 @@ async fn run(boot: boot::BootConfig) -> anyhow::Result<()> {
     tokio::spawn(jobs::run_dispatcher(state.clone()));
     tokio::spawn(jobs::run_scheduler(state.clone()));
     tokio::spawn(sessions::run_maintenance(state.clone()));
+    tokio::spawn(watch::run(state.clone()));
     // Prova delle GPU in sottofondo: l'API è pronta subito.
     {
         let st = state.clone();

@@ -5,7 +5,7 @@ Open source media server
 Platea serve il file originale quando il client lo regge, fa remux o transcodifica (anche su GPU Intel, NVIDIA o AMD) solo quando deve, e scansiona librerie anche su storage cloud senza aprire i file. Server in Rust a processo unico, web UI separata, un'API pubblica per tutti i client.
 
 - **Direct play prima di tutto.** Il client dichiara cosa sa riprodurre; il server sceglie direct play, poi remux, poi transcodifica, e registra il motivo (`VideoCodecNotSupported`, `ContainerNotSupported`, ...).
-- **Scansioni leggere.** Una scansione legge solo l'elenco delle cartelle, diverse in parallelo: zero file aperti se nulla è cambiato. 8.500 film su un mount rclone in meno di 40 secondi.
+- **Scansioni leggere.** Una scansione legge solo l'elenco delle cartelle, diverse in parallelo: zero file aperti se nulla è cambiato. 8.500 film su un mount rclone in meno di 40 secondi. Sui dischi locali un film copiato compare da solo dopo pochi secondi.
 - **Il mount che cade non cancella nulla.** Radice vuota o illeggibile: la scansione si ferma. Cartella che va in errore: i suoi file restano. Tanti file spariti insieme (mount a metà): nessuna rimozione finché non confermi. I file che cancelli davvero, pochi alla volta, spariscono da soli.
 - **NFO e .plexmatch.** Legge gli NFO di Kodi, Jellyfin e Radarr e i `.plexmatch` di Plex: identificativi esatti e, anche senza chiave TMDB, trama, cast, generi e locandine. Le cartelle dei media non vengono mai scritte: immagini e metadati stanno nel database e nella cache.
 - **Nessuna licenza, nessun limite.** Utenti, dispositivi, stream e funzioni illimitati, transcodifica hardware inclusa.

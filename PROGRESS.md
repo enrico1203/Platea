@@ -121,6 +121,13 @@ Libreria "Film cloud" (profilo Remoto) creata nel compose locale.
   Episodi e stagioni usano la classificazione della serie; i titoli senza classificazione restano visibili.
   Provato: utente con limite 6 anni vede 7.996 film su 8.496, VM18 → 404 su dettaglio e riproduzione, Infuse coerente.
 - [x] Ricerca: `?q=` nell'indirizzo (condivisibile, "indietro" ritrova i risultati).
+- [x] Notifiche sui dischi locali (`watch.rs`, crate notify/inotify): eventi in coda limitata, quiete di 10 s, scansione della
+  sola cartella di primo livello (voce nella radice → libreria intera, così una cartella cancellata viene tolta); coda piena →
+  scansione completa; watcher ricostruito quando cambiano le librerie. Solo profilo Locale. Provato: film aggiunto visibile
+  dopo 10 s (scansione 6 ms), file tolto segnato mancante. Impostazioni `scanner.watch_local`, `watch_debounce_seconds`.
+- [x] Sparizione di massa: la percentuale ora si misura sull'intera libreria anche nelle scansioni mirate.
+- [x] Infuse: collezioni come BoxSet (IncludeItemTypes=BoxSet, ParentId=collezione → film, ChildCount, locandina del primo film).
+- [x] CORRETTO: nello strato Infuse `SortBy=PremiereDate` dava errore SQL (l'ordinamento veniva spezzato sulle virgole).
 
 ## Benchmark (2026-11-14, 8 CPU, disco locale, libreria sintetica da 100.000 file vuoti)
 
@@ -145,7 +152,7 @@ Script del benchmark: `scripts/bench_library.py` (genera la libreria sintetica).
 0. Libreria cloud: 302 film senza NFO restano "in attesa" finché non c'è una chiave TMDB (chiederla all'utente).
 1. Provare Infuse reale contro il server (serve un dispositivo Apple: chiedere all'utente) e correggere le differenze.
 2. Fase 3: verificare QSV/VA-API/NVENC su hardware reale (qui non c'è GPU: solo software testato).
-3. Fase 4: log in tempo reale, chiavi API con ambito, notify per dischi locali.
+3. Fase 4: fatto (log in tempo reale, chiavi API, notify per dischi locali).
 4. Fase 5: test di carico, libreria sintetica da 100.000 file, CI GitHub Actions.
 
 ## Debito tecnico noto (da fare dopo)
@@ -153,12 +160,12 @@ Script del benchmark: `scripts/bench_library.py` (genera la libreria sintetica).
 - Segmenti HLS in MPEG-TS (non fMP4): HEVC in remux solo se il client lo dichiara in `hls_video_codecs`.
 - Keyframe per MP4 remoti: leggere `stss` dal box moov (ora su remoto senza Cues si transcodifica).
 - `.plexmatch`: righe `ep:` per episodi con nomi non standard. NFO degli episodi (`<episodio>.nfo`) non letti.
-- Collezioni nello strato Infuse (BoxSet) non ancora esposte.
 - Chiavi API con ambito limitato: tabella presente, endpoint da fare.
 - Log in tempo reale in dashboard da fare.
 
 ## Registro
 
+- 2026-11-14 — Notifiche sui dischi locali, collezioni in Infuse (BoxSet), corretto l'ordinamento per data in Infuse.
 - 2026-11-14 — Collezioni automatiche, limite per età applicato ovunque, rinnovo metadati per libreria, ricerca nell'indirizzo.
 - 2026-11-14 — Prova sulla libreria cloud reale: NFO, .plexmatch, Cues MKV, scansione parallela, rclone rc, protezione del mount,
   corretto il taglio dei segmenti dopo un salto, coda lavori per corsia.

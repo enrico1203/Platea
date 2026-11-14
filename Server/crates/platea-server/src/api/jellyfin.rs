@@ -487,17 +487,23 @@ const SELECT: &str =
   i.parent_index_number, i.overview, i.runtime_ms, i.community_rating, i.official_rating, i.premiere_date, i.end_date, i.status, i.added_at,
   (SELECT title FROM items s WHERE s.id = i.series_id) AS series_title,
   (SELECT title FROM items s WHERE s.id = i.parent_id AND s.kind = 'season') AS season_title,
-  (SELECT id FROM images im WHERE im.item_id = i.id AND im.kind = 'poster') AS poster_id,
+  COALESCE((SELECT id FROM images im WHERE im.item_id = i.id AND im.kind = 'poster'),
+    CASE WHEN i.kind = 'collection' THEN (SELECT im.id FROM collection_members cm JOIN items m ON m.id = cm.item_id
+      JOIN images im ON im.item_id = m.id AND im.kind = 'poster' WHERE cm.collection_id = i.id ORDER BY m.year, m.id LIMIT 1) END) AS poster_id,
   (SELECT id FROM images im WHERE im.item_id = i.id AND im.kind = 'backdrop') AS backdrop_id,
   (SELECT id FROM images im WHERE im.item_id = i.id AND im.kind = 'still') AS still_id,
   (SELECT id FROM images im WHERE im.item_id = COALESCE(i.series_id, i.id) AND im.kind = 'logo') AS logo_id,
   (SELECT id FROM images im WHERE im.item_id = i.series_id AND im.kind = 'poster') AS series_poster_id,
   (SELECT id FROM images im WHERE im.item_id = i.series_id AND im.kind = 'backdrop') AS series_backdrop_id,
   u.position_ms, u.played, u.play_count, u.favorite, u.last_played_at,
-  CASE WHEN i.kind IN ('series','season') THEN (SELECT COUNT(*) FROM items c WHERE c.parent_id = i.id) END AS child_count,
+  CASE WHEN i.kind IN ('series','season') THEN (SELECT COUNT(*) FROM items c WHERE c.parent_id = i.id)
+       WHEN i.kind = 'collection' THEN (SELECT COUNT(*) FROM collection_members cm WHERE cm.collection_id = i.id) END AS child_count,
   CASE WHEN i.kind IN ('series','season') THEN (SELECT COUNT(*) FROM items e LEFT JOIN user_item_data ue ON ue.item_id = e.id AND ue.user_id = ?1
      WHERE e.kind = 'episode' AND (e.series_id = i.id OR e.parent_id = i.id) AND COALESCE(ue.played, 0) = 0) END AS unplayed_count
 FROM items i LEFT JOIN user_item_data u ON u.item_id = i.id AND u.user_id = ?1";
+
+/// Collezioni esposte: almeno due film presenti, come nella web UI.
+const BOXSET_MIN: &str = "(SELECT COUNT(*) FROM collection_members cm WHERE cm.collection_id = i.id) >= 2";
 
 fn jf_type(kind: &str) -> &'static str {
     match kind {
@@ -505,6 +511,7 @@ fn jf_type(kind: &str) -> &'static str {
         "series" => "Series",
         "season" => "Season",
         "episode" => "Episode",
+        "collection" => "BoxSet",
         _ => "Folder",
     }
 }
@@ -547,7 +554,7 @@ fn dto(state: &Shared, r: &Row) -> Value {
         "OfficialRating": r.official_rating,
         "RunTimeTicks": ticks(r.runtime_ms),
         "Type": jf_type(&r.kind),
-        "IsFolder": r.kind == "series" || r.kind == "season",
+        "IsFolder": r.kind == "series" || r.kind == "season" || r.kind == "collection",
         "ParentId": r.parent_id.map(|p| item_guid(state, p)).unwrap_or_else(|| guid(state, NS_LIBRARY, r.library_id)),
         "MediaType": if r.kind == "movie" || r.kind == "episode" { "Video" } else { "Unknown" },
         "LocationType": "FileSystem",
@@ -567,7 +574,7 @@ fn dto(state: &Shared, r: &Row) -> Value {
         },
     });
     let o = v.as_object_mut().unwrap();
-    if r.kind == "series" || r.kind == "season" {
+    if r.kind == "series" || r.kind == "season" || r.kind == "collection" {
         o.insert("ChildCount".into(), json!(r.child_count));
     }
     if r.kind == "episode" || r.kind == "season" {
@@ -915,6 +922,7 @@ async fn query_items(state: &Shared, user: &AuthUser, q: ItemsQuery) -> ApiResul
                     "series" => Some("series"),
                     "season" => Some("season"),
                     "episode" => Some("episode"),
+                    "boxset" => Some("collection"),
                     _ => None,
                 })
                 .collect()
@@ -944,6 +952,13 @@ async fn query_items(state: &Shared, user: &AuthUser, q: ItemsQuery) -> ApiResul
                     sql.push_str(" AND i.kind IN ('movie','series')");
                 }
             }
+            Some(Ref::Item(p))
+                if sqlx::query_scalar::<_, String>("SELECT kind FROM items WHERE id = ?").bind(p).fetch_optional(&state.db.read).await?.as_deref()
+                    == Some("collection") =>
+            {
+                // I film di una collezione (BoxSet), in ordine di uscita se il client non chiede altro.
+                push(&mut sql, " AND i.id IN (SELECT item_id FROM collection_members WHERE collection_id = ?)", json!(p));
+            }
             Some(Ref::Item(p)) => {
                 if recursive {
                     push(&mut sql, " AND (i.parent_id = ? OR i.series_id = ?)", json!(p));
@@ -960,6 +975,9 @@ async fn query_items(state: &Shared, user: &AuthUser, q: ItemsQuery) -> ApiResul
     }
     if !types.is_empty() {
         sql.push_str(&format!(" AND i.kind IN ({})", types.iter().map(|t| format!("'{t}'")).collect::<Vec<_>>().join(",")));
+        if types.contains(&"collection") {
+            sql.push_str(&format!(" AND (i.kind <> 'collection' OR {BOXSET_MIN})"));
+        }
     } else if q.ids.is_none() {
         sql.push_str(" AND i.kind IN ('movie','series','season','episode')");
     }
@@ -1001,27 +1019,28 @@ async fn query_items(state: &Shared, user: &AuthUser, q: ItemsQuery) -> ApiResul
         push(&mut sql, " AND i.sort_title LIKE ?", json!(format!("{}%", l.to_lowercase())));
     }
     let count_sql = format!("SELECT COUNT(*) FROM ({sql})");
-    let order = match q.sort_by.as_deref().unwrap_or("SortName").split(',').next().unwrap_or("SortName").trim().to_lowercase().as_str() {
-        "datecreated" => "i.added_at",
-        "premieredate" => "COALESCE(i.premiere_date, '')",
-        "productionyear" => "COALESCE(i.year, 0)",
-        "communityrating" | "criticrating" => "COALESCE(i.community_rating, 0)",
-        "dateplayed" | "datelastcontentadded" => "COALESCE(u.last_played_at, i.added_at)",
-        "random" => "RANDOM()",
-        "runtime" => "COALESCE(i.runtime_ms, 0)",
-        "indexnumber" | "parentindexnumber" | "airedepisodeorder" => "COALESCE(i.parent_index_number, 0), COALESCE(i.index_number, 0)",
+    // Un elenco di espressioni: dividerle sulle virgole spezzerebbe COALESCE(x, '').
+    let order: &[&str] = match q.sort_by.as_deref().unwrap_or("SortName").split(',').next().unwrap_or("SortName").trim().to_lowercase().as_str() {
+        "datecreated" => &["i.added_at"],
+        "premieredate" => &["COALESCE(i.premiere_date, '')"],
+        "productionyear" => &["COALESCE(i.year, 0)"],
+        "communityrating" | "criticrating" => &["COALESCE(i.community_rating, 0)"],
+        "dateplayed" | "datelastcontentadded" => &["COALESCE(u.last_played_at, i.added_at)"],
+        "random" => &["RANDOM()"],
+        "runtime" => &["COALESCE(i.runtime_ms, 0)"],
+        "indexnumber" | "parentindexnumber" | "airedepisodeorder" => &["COALESCE(i.parent_index_number, 0)", "COALESCE(i.index_number, 0)"],
         _ => {
             if q.parent_id.as_deref().and_then(|p| parse_ref(state, p)).is_some_and(|r| matches!(r, Ref::Item(_))) {
-                "COALESCE(i.parent_index_number, 0), COALESCE(i.index_number, 0), i.sort_title"
+                &["COALESCE(i.parent_index_number, 0)", "COALESCE(i.index_number, 0)", "i.sort_title"]
             } else {
-                "i.sort_title"
+                &["i.sort_title"]
             }
         }
     };
     let dir = if q.sort_order.as_deref().is_some_and(|o| o.eq_ignore_ascii_case("descending")) { "DESC" } else { "ASC" };
     let start = q.start_index.unwrap_or(0).max(0);
     let limit = q.limit.unwrap_or(200).clamp(1, 500);
-    let order_sql = order.split(", ").map(|o| format!("{o} {dir}")).collect::<Vec<_>>().join(", ");
+    let order_sql = order.iter().map(|o| format!("{o} {dir}")).collect::<Vec<_>>().join(", ");
     sql.push_str(&format!(" ORDER BY {order_sql}, i.id LIMIT {limit} OFFSET {start}"));
 
     let mut qr = sqlx::query_as::<_, Row>(&sql);
