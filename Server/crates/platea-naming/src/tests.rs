@@ -21,6 +21,8 @@ fn movies_table() {
         ("Movies/Alien.mkv", "Alien", None),
         ("Interstellar.2014.ITA.ENG.1080p.mkv", "Interstellar", Some(2014)),
         ("Star.Wars.Episode.IV.A.New.Hope.1977.720p.mkv", "Star Wars Episode IV A New Hope", Some(1977)),
+        ("Prova HEVC (2022)/Prova HEVC (2022).mkv", "Prova HEVC", Some(2022)),
+        ("Remux Story (2021).mkv", "Remux Story", Some(2021)),
         ("Mission Impossible - Dead Reckoning (2023) [imdbid-tt9603212]/movie.mkv", "Mission Impossible - Dead Reckoning", Some(2023)),
     ];
     for (path, title, year) in cases {

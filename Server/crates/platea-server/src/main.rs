@@ -25,8 +25,33 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::Semaphore;
 use tracing_subscriber::EnvFilter;
 
+/// Controllo di salute per Docker: una richiesta HTTP minima, senza dipendenze nell'immagine.
+fn healthcheck(bind: &str) -> i32 {
+    use std::io::{Read, Write};
+    let port = bind.rsplit(':').next().unwrap_or("8096");
+    let addr = format!("127.0.0.1:{port}");
+    let Ok(addr) = addr.parse::<SocketAddr>() else { return 1 };
+    let Ok(mut s) = std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_secs(3)) else { return 1 };
+    let _ = s.set_read_timeout(Some(std::time::Duration::from_secs(3)));
+    if s.write_all(b"GET /api/v1/health HTTP/1.0\r\nHost: localhost\r\n\r\n").is_err() {
+        return 1;
+    }
+    let mut buf = [0u8; 64];
+    match s.read(&mut buf) {
+        Ok(n) if n > 12 && &buf[9..12] == b"200" => 0,
+        _ => 1,
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     let boot = boot::BootConfig::from_env();
+    if std::env::args().any(|a| a == "--healthcheck") {
+        std::process::exit(healthcheck(&boot.bind));
+    }
+    if std::env::args().any(|a| a == "--version") {
+        println!("platea {}", state::VERSION);
+        return Ok(());
+    }
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::try_new(&boot.log).unwrap_or_else(|_| EnvFilter::new("info")))
         .with_target(false)

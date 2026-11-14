@@ -36,8 +36,10 @@ Se la sessione si interrompe, alla ripresa ("continua") si riparte da qui: legge
   scanner (3 fasi, zero file aperti, mount assente, spostamenti, sidecar), probe (ffprobe, keyframe),
   metadata (TMDB, punteggio, da verificare, immagini), transcode (comandi FFmpeg, HW detect, HLS con riavvio/throttle),
   sessions, stream (Range), API REST completa + OpenAPI generato dalla tabella delle route + WebSocket eventi
-- [ ] Dockerfile Server con jellyfin-ffmpeg
-- [ ] Test end-to-end con clip generate da FFmpeg
+- [x] Dockerfile Server (rust:1-trixie → debian:trixie-slim + jellyfin-ffmpeg8 8.1.3), healthcheck senza curl
+- [x] Test end-to-end manuale (2026-11-14): setup con codice, librerie, scansione (5 ms), analisi, direct play 206,
+  remux MKV+AC3 → HLS con AAC, transcodifica HEVC 10 bit → H.264 con riavvio sul salto, timestamp segmenti allineati,
+  WebVTT da .srt esterno, stato di visione e "prossimi episodi", ricerca FTS5, WebSocket 101. RAM server ~60 MB.
 - [ ] WebApp React
 - [ ] docker-compose.yml root, README
 - [ ] Strato compatibile Jellyfin per Infuse (`api/jellyfin.rs` è uno stub)

@@ -266,7 +266,8 @@ fn split_title_year(clean: &str) -> (String, Option<u16>) {
     if let Some(c) = RE_YEAR_PAREN.captures_iter(clean).last() {
         let m = c.get(0).unwrap();
         let year: u16 = c[1].parse().unwrap();
-        let title = tidy_title(cut_at_quality(&clean[..m.start()]));
+        // Con l'anno, il titolo è tutto ciò che lo precede: "Prova HEVC (2022)" resta "Prova HEVC".
+        let title = tidy_title(&clean[..m.start()]);
         if !title.is_empty() {
             return (title, Some(year));
         }
@@ -278,7 +279,7 @@ fn split_title_year(clean: &str) -> (String, Option<u16>) {
         if m.start() == 0 {
             continue;
         }
-        let title = tidy_title(cut_at_quality(&clean[..m.start()]));
+        let title = tidy_title(&clean[..m.start()]);
         if !title.is_empty() {
             return (title, c[1].parse().ok());
         }
