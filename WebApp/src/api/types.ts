@@ -25,7 +25,7 @@ export interface Library {
   id: string; name: string; kind: "movies" | "shows"; item_count: number;
   paths?: string[]; scan_profile?: "local" | "remote"; language?: string; country?: string; scan_interval_minutes?: number | null;
   probe_concurrency?: number; probe_per_minute?: number | null; probe_window_start?: number | null; probe_window_end?: number | null; probe_pause_on_play?: boolean; extract_keyframes?: boolean;
-  last_scan_at?: number | null; last_scan_status?: string | null; last_scan_message?: string | null; file_count?: number; probe_pending?: number;
+  last_scan_at?: number | null; last_scan_status?: string | null; last_scan_message?: string | null; missing_held?: number; file_count?: number; probe_pending?: number;
 }
 export interface Home { resume: Item[]; next_up: Item[]; recent: { library_id: string; library_name: string; kind: string; items: Item[] }[] }
 export type Method = "direct_play" | "remux" | "transcode";
@@ -44,7 +44,7 @@ export interface Overview {
   jobs: { queued: number; running: number; failed: number };
   library: { movies: number; series: number; episodes: number; files: number; review: number };
   system: { memory_rss_bytes: number | null; load_1m: number | null; cpus: number; uptime_ms: number };
-  alerts: { level: "danger" | "warning"; code: string; message: string }[];
+  alerts: { level: "danger" | "warning" | "info"; code: string; message: string }[];
 }
 export interface UserAdmin {
   id: string; username: string; is_admin: boolean; disabled: boolean; all_libraries: boolean; library_ids: string[]; allow_remux: boolean; allow_transcode: boolean;

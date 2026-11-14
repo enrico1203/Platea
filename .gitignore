@@ -11,3 +11,4 @@ WebApp/dist/
 .env
 *.log
 WebApp/*.tsbuildinfo
+/docker-compose.override.yml

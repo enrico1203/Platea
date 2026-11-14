@@ -171,10 +171,11 @@ pub fn build_args(spec: &JobSpec, hw: &HwProfile) -> Vec<String> {
     // Tempi originali conservati: i segmenti di avvii successivi si allineano tra loro.
     push(&mut a, &["-copyts", "-avoid_negative_ts", "disabled", "-fflags", "+genpts"]);
     if spec.start_ms > 0 {
-        // Per la copia si punta appena dopo il keyframe: la ricerca torna al keyframe precedente o uguale.
+        // Per la copia si punta 200 ms dopo il keyframe: FFmpeg arretra la ricerca di ~130 ms sui flussi con
+        // B-frame e poi prende il keyframe precedente o uguale, che così è proprio quello del taglio.
         let ss = spec.start_ms;
         a.push("-ss".into());
-        a.push(if transcode { secs(ss) } else { format!("{:.4}", ss as f64 / 1000.0 + 0.0005) });
+        a.push(if transcode { secs(ss) } else { secs(ss + COPY_SEEK_AFTER_MS) });
     }
     if spec.threads > 0 && !hw_decode {
         push(&mut a, &["-threads", &spec.threads.to_string()]);
@@ -268,18 +269,37 @@ pub fn build_args(spec: &JobSpec, hw: &HwProfile) -> Vec<String> {
     // Uscita: muxer segment con confini espliciti, segmenti MPEG-TS.
     push(&mut a, &["-max_muxing_queue_size", "2048", "-muxdelay", "0", "-muxpreload", "0"]);
     push(&mut a, &["-f", "segment", "-segment_format", "mpegts"]);
+    // Il muxer segment misura `segment_times` dal primo pacchetto ricevuto, non in tempo assoluto:
+    // con -copyts dopo un salto i tempi assoluti non scatterebbero mai. Si passano relativi all'inizio,
+    // con un margine (`segment_time_delta`) per i pochi ms tra il primo pacchetto audio e il keyframe.
     if !spec.cut_points_ms.is_empty() {
-        let list: Vec<String> = spec.cut_points_ms.iter().map(|t| secs(*t)).collect();
+        let list: Vec<String> = spec.cut_points_ms.iter().map(|t| secs((t - spec.start_ms).max(0))).collect();
         push(&mut a, &["-segment_times", &list.join(",")]);
     } else {
         push(&mut a, &["-segment_time", "86400"]);
     }
-    push(&mut a, &["-segment_time_delta", "0.050", "-segment_start_number", &spec.start_segment.to_string()]);
+    let delta_ms = if transcode { 100 } else { copy_cut_tolerance_ms(spec.start_ms, &spec.cut_points_ms) };
+    push(&mut a, &["-segment_time_delta", &secs(delta_ms), "-segment_start_number", &spec.start_segment.to_string()]);
     let list = spec.out_dir.join("segments.csv");
     push(&mut a, &["-segment_list", &list.to_string_lossy(), "-segment_list_type", "csv", "-segment_list_flags", "+live"]);
     push(&mut a, &["-reset_timestamps", "0", "-break_non_keyframes", "0"]);
     a.push(spec.out_dir.join("seg_%05d.ts").to_string_lossy().to_string());
     a
+}
+
+/// Quanto dopo il keyframe di partenza punta la ricerca nella copia.
+pub const COPY_SEEK_AFTER_MS: i64 = 200;
+
+/// Margine di taglio nella copia: fino a 300 ms, mai oltre metà della distanza minima tra keyframe,
+/// così il taglio non scivola sul keyframe precedente.
+fn copy_cut_tolerance_ms(start_ms: i64, cuts: &[i64]) -> i64 {
+    let mut prev = start_ms;
+    let mut min_gap = i64::MAX;
+    for &c in cuts {
+        min_gap = min_gap.min(c - prev);
+        prev = c;
+    }
+    (min_gap / 2).clamp(1, 300)
 }
 
 fn video_filter(backend: Backend, hw_decode: bool, w: u32, h: u32, tonemap: bool, bit_depth: u8) -> String {
@@ -396,13 +416,15 @@ mod tests {
         let mut s = spec(VideoAction::Copy, AudioAction::Copy);
         s.start_ms = 12_012;
         s.start_segment = 2;
+        s.cut_points_ms = vec![18_012, 24_012];
         let a = build_args(&s, &HwProfile::software());
         let j = joined(&a);
         assert!(j.contains("-c:v copy"));
         assert!(j.contains("-c:a copy"));
-        assert!(j.contains("-ss 12.0125"));
+        assert!(j.contains("-ss 12.212"));
         assert!(j.contains("-segment_start_number 2"));
-        assert!(j.contains("-segment_times 6.000,12.000"));
+        assert!(j.contains("-segment_times 6.000,12.000"), "{j}");
+        assert!(j.contains("-segment_time_delta 0.300"));
         assert!(!j.contains("hwaccel"));
         assert!(a.last().unwrap().ends_with("seg_%05d.ts"));
     }

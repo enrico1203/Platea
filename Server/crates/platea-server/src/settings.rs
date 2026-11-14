@@ -201,6 +201,13 @@ pub struct MetadataSettings {
     /// Larghezza massima delle immagini scaricate.
     #[schemars(title = "Larghezza locandine scaricate")]
     pub poster_download_width: u32,
+    /// Legge i file .nfo accanto ai video (Kodi, Jellyfin, Radarr): identificativo esatto e, senza chiave TMDB, i metadati.
+    /// I file si leggono una volta sola e non si scrivono mai.
+    #[schemars(title = "Leggi i file NFO")]
+    pub read_nfo: bool,
+    /// Legge i file .plexmatch (formato di Plex) nelle cartelle di film e serie: titolo, anno e identificativi scelti dall'utente.
+    #[schemars(title = "Leggi i file .plexmatch")]
+    pub read_plexmatch: bool,
 }
 
 impl Default for MetadataSettings {
@@ -213,6 +220,8 @@ impl Default for MetadataSettings {
             tmdb_requests_per_second: 20,
             refresh_days: 30,
             poster_download_width: 780,
+            read_nfo: true,
+            read_plexmatch: true,
         }
     }
 }
@@ -230,14 +239,43 @@ pub struct ScannerSettings {
     /// Timeout di un'analisi ffprobe (s).
     #[schemars(title = "Timeout analisi (s)", range(min = 5, max = 600))]
     pub probe_timeout_seconds: u32,
+    /// Sparizione di massa: se in una scansione sparisce almeno questa percentuale dei file…
+    #[schemars(title = "Soglia sparizione di massa (%)", range(min = 1, max = 100))]
+    pub mass_missing_percent: u32,
+    /// …e almeno questo numero di file, nulla viene rimosso finché l'amministratore non conferma.
+    #[schemars(title = "Minimo file per la sparizione di massa", range(min = 1, max = 100000))]
+    pub mass_missing_min_files: u32,
+    /// Cartelle lette in parallelo durante la scansione di una libreria locale.
+    #[schemars(title = "Cartelle in parallelo (locale)", range(min = 1, max = 64))]
+    pub list_concurrency_local: u32,
+    /// Cartelle lette in parallelo durante la scansione di una libreria remota: ogni cartella fuori cache è una richiesta al provider.
+    #[schemars(title = "Cartelle in parallelo (remoto)", range(min = 1, max = 64))]
+    pub list_concurrency_remote: u32,
     /// Indirizzo del controllo remoto di rclone (es. http://rclone:5572). Vuoto = disattivato.
     #[schemars(title = "rclone rc URL")]
     pub rclone_rc_url: String,
+    /// Dove il server vede la radice del mount rclone (es. /media/cloud). Vuoto = la radice di ogni libreria.
+    #[schemars(title = "Percorso del mount rclone")]
+    pub rclone_mount_path: String,
+    /// Tempo massimo per l'aggiornamento dell'elenco da parte di rclone (s).
+    #[schemars(title = "Timeout aggiornamento rclone (s)", range(min = 10, max = 3600))]
+    pub rclone_refresh_timeout_seconds: u32,
 }
 
 impl Default for ScannerSettings {
     fn default() -> Self {
-        ScannerSettings { missing_grace_days: 7, fs_timeout_seconds: 30, probe_timeout_seconds: 60, rclone_rc_url: String::new() }
+        ScannerSettings {
+            missing_grace_days: 7,
+            fs_timeout_seconds: 30,
+            probe_timeout_seconds: 60,
+            mass_missing_percent: 20,
+            mass_missing_min_files: 10,
+            list_concurrency_local: 4,
+            list_concurrency_remote: 8,
+            rclone_rc_url: String::new(),
+            rclone_mount_path: String::new(),
+            rclone_refresh_timeout_seconds: 600,
+        }
     }
 }
 

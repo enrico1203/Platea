@@ -4,7 +4,7 @@ import { Square } from "lucide-react";
 import { api, imageUrl } from "../../api/client";
 import type { Overview as OverviewT, SessionView } from "../../api/types";
 import { Alert, Empty, MethodBadge } from "../../components/ui";
-import { useI18n } from "../../i18n";
+import { useI18n, type MessageKey } from "../../i18n";
 
 export function SessionRow({ s, onStop }: { s: SessionView; onStop?: () => void }) {
   const { t, bitrate } = useI18n();
@@ -41,7 +41,12 @@ export default function Overview() {
   return (
     <div className="stack-lg">
       <div className="page-head" style={{ marginBottom: 0 }}><h1 className="t-h1">{t("admin.overview.title")}</h1></div>
-      {data.alerts.map((a) => <Alert key={a.code + a.message} tone={a.level}>{a.message} <span className="t-mono-sm">{a.code}</span></Alert>)}
+      {data.alerts.map((a) => {
+        // Messaggi senza parametri tradotti per codice; gli altri arrivano già composti dal server.
+        const key = `admin.overview.alerts.${a.code}` as MessageKey;
+        const text = t(key);
+        return <Alert key={a.code + a.message} tone={a.level}>{text === key ? a.message : text} <span className="t-mono-sm">{a.code}</span></Alert>;
+      })}
       <div className="cards">
         <div className="stat"><span className="pl-eyebrow">{t("admin.overview.streams")}</span><span className="t-numeral">{num(data.sessions.length)}</span><span className="t-small subtle">{t("admin.overview.split", { d: data.counts.direct_play, r: data.counts.remux, t: data.counts.transcode })}</span></div>
         <div className="stat"><span className="pl-eyebrow">{t("admin.overview.bandwidth")}</span><span className="t-numeral">{bitrate(data.bandwidth_bps) === "—" ? "0" : bitrate(data.bandwidth_bps)}</span></div>

@@ -175,7 +175,7 @@ pub async fn file_abs_path(state: &Shared, file_id: i64) -> anyhow::Result<Optio
 }
 
 pub async fn probe_file_job(state: &Shared, file_id: i64) -> anyhow::Result<()> {
-    let Some((abs, rel, _size, _mtime, library_id)) = file_abs_path(state, file_id).await? else { return Ok(()) };
+    let Some((abs, rel, size, _mtime, library_id)) = file_abs_path(state, file_id).await? else { return Ok(()) };
     let probe_state: Option<String> =
         sqlx::query_scalar("SELECT probe_state FROM media_files WHERE id = ?").bind(file_id).fetch_optional(&state.db.read).await?;
     if probe_state.as_deref() == Some("done") {
@@ -199,6 +199,12 @@ pub async fn probe_file_job(state: &Shared, file_id: i64) -> anyhow::Result<()> 
     save_probe(state, file_id, &rel, &out).await?;
     tracing::debug!(file = %rel, ms = t0.elapsed().as_millis() as u64, "analisi completata");
 
+    // Matroska: l'indice dei keyframe viene dai Cues, costa poco anche sul cloud e accelera il primo remux.
+    if !matches!(sqlx::query_scalar::<_, i64>("SELECT 1 FROM keyframes WHERE file_id = ?").bind(file_id).fetch_optional(&state.db.read).await, Ok(Some(_))) {
+        if let Some(times) = mkv_cues(state, &abs, &rel, size).await {
+            save_keyframes(state, file_id, &times).await?;
+        }
+    }
     // Indice dei keyframe per il remux: subito sui dischi locali se la libreria lo prevede.
     let lib: Option<(i64, String)> =
         sqlx::query_as("SELECT extract_keyframes, scan_profile FROM libraries WHERE id = ?").bind(library_id).fetch_optional(&state.db.read).await?;
@@ -301,7 +307,17 @@ pub async fn extract_keyframes_job(state: &Shared, file_id: i64) -> anyhow::Resu
     {
         return Ok(decode_keyframes(&blob));
     }
-    let Some((abs, ..)) = file_abs_path(state, file_id).await? else { bail!("file non trovato") };
+    let Some((abs, rel, size, _mtime, library_id)) = file_abs_path(state, file_id).await? else { bail!("file non trovato") };
+    // Matroska: l'indice dei Cues basta e costa poche letture.
+    if let Some(times) = mkv_cues(state, &abs, &rel, size).await {
+        save_keyframes(state, file_id, &times).await?;
+        return Ok(times);
+    }
+    // Altrimenti si leggono i pacchetti, cioè tutto il file: solo sui dischi locali.
+    let profile: Option<String> = sqlx::query_scalar("SELECT scan_profile FROM libraries WHERE id = ?").bind(library_id).fetch_optional(&state.db.read).await?;
+    if profile.as_deref() == Some("remote") {
+        bail!("keyframe non disponibili senza leggere tutto il file remoto");
+    }
     let ffprobe = state.ffmpeg.get().ffprobe.clone();
     let mut cmd = Command::new(&ffprobe);
     cmd.args(["-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pts_time,flags", "-of", "csv=print_section=0"])
@@ -331,13 +347,36 @@ pub async fn extract_keyframes_job(state: &Shared, file_id: i64) -> anyhow::Resu
     if times.is_empty() {
         bail!("nessun keyframe trovato");
     }
+    save_keyframes(state, file_id, &times).await?;
+    Ok(times)
+}
+
+async fn save_keyframes(state: &Shared, file_id: i64, times: &[i64]) -> anyhow::Result<()> {
     sqlx::query("INSERT OR REPLACE INTO keyframes (file_id, times_ms, extracted_at) VALUES (?, ?, ?)")
         .bind(file_id)
-        .bind(encode_keyframes(&times))
+        .bind(encode_keyframes(times))
         .bind(now_ms())
         .execute(&state.db.write)
         .await?;
-    Ok(times)
+    Ok(())
+}
+
+/// Keyframe dai Cues di un MKV, con un tempo limite: un mount lento non blocca nulla.
+async fn mkv_cues(state: &Shared, abs: &std::path::Path, rel: &str, size: i64) -> Option<Vec<i64>> {
+    let ext = platea_naming::extension(rel).unwrap_or_default().to_ascii_lowercase();
+    if !matches!(ext.as_str(), "mkv" | "webm" | "mk3d") {
+        return None;
+    }
+    let path = abs.to_path_buf();
+    let timeout = Duration::from_secs(state.settings.get().scanner.fs_timeout_seconds.max(5) as u64 * 2);
+    let t0 = std::time::Instant::now();
+    let task = tokio::task::spawn_blocking(move || {
+        let f = std::fs::File::open(&path).ok()?;
+        crate::mkv::cue_keyframes(std::io::BufReader::with_capacity(64 * 1024, f), size.max(0) as u64)
+    });
+    let r = tokio::time::timeout(timeout, task).await.ok()?.ok()?;
+    tracing::debug!(file = rel, ms = t0.elapsed().as_millis() as u64, keyframes = r.as_ref().map(|v| v.len()), "indice Cues MKV");
+    r
 }
 
 pub fn encode_keyframes(times: &[i64]) -> Vec<u8> {

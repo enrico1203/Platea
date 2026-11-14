@@ -15,6 +15,7 @@ mod ids;
 mod jobs;
 mod logs;
 mod metadata;
+mod mkv;
 mod net;
 mod probe;
 mod scanner;

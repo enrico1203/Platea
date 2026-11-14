@@ -74,6 +74,39 @@ Se la sessione si interrompe, alla ripresa ("continua") si riparte da qui: legge
 - [x] Log in tempo reale (`logs.rs`, pagina Amministrazione → Log, righe via WebSocket `log.line`).
 - [x] Chiavi API con ambito `scan` (header `X-Platea-Key`) per Sonarr/Radarr/script; gestione in Sistema.
 
+### Prova sulla libreria reale dell'utente (2026-11-14)
+
+Mount rclone (Jottacloud crypt) dell'utente su `/mnt/jotta2`: 8.517 cartelle, 8.495 MKV quasi tutti con `.nfo` Kodi.
+Montato SOLO in lettura nel container (`docker-compose.override.yml` locale, non versionato:
+`/mnt/jotta2:/media/jotta2:ro,rslave` + `extra_hosts host.docker.internal:host-gateway` per l'rc di rclone su :6470).
+**Regola dell'utente: mai scrivere nelle cartelle dei media; copertine e metadati solo nel DB o in cache locale.**
+Libreria "Film cloud" (profilo Remoto) creata nel compose locale.
+
+- [x] Scansione in parallelo (`list_tree` a livelli con N thread, 8 per le remote; niente stat su `.plateaignore`, niente stat
+  sui file non video): 8.502 file in 8.520 cartelle in 39 s, 0 non riconosciuti (il vecchio elenco sequenziale non finiva in 10 min:
+  la cache cartelle di rclone scade dopo 5 min e ogni cartella è una richiesta al provider).
+- [x] rclone rc: `rclone_mount_path` traduce la cartella della libreria nel percorso del mount; `vfs/refresh` ricorsivo prima della scansione.
+- [x] Modulo NFO (`metadata/nfo.rs`, roxmltree): film `<nome>.nfo`/`movie.nfo`, `tvshow.nfo`; NFO con solo URL; ID tmdb/imdb/tvdb;
+  senza chiave TMDB applica titolo, originale, trama, voto, classificazione, generi, studi, cast con foto, regia, locandina, sfondo.
+  Risultato: 8.194 film su 8.496 associati senza TMDB, 8.190 locandine in cache. Impostazione `metadata.read_nfo`.
+- [x] Modulo `.plexmatch` (`metadata/plexmatch.rs`): title, year, tmdbid, imdbid, tvdbid, guid; vince sull'NFO; un NFO in
+  contrasto non viene applicato. Righe `ep:` non ancora usate. Impostazione `metadata.read_plexmatch`. Provato end-to-end.
+- [x] Keyframe dai Cues MKV (`mkv.rs`, parser EBML minimo): poche letture invece del file intero; estratti già durante l'analisi.
+  Verificati identici a ffprobe su file reali. Le librerie remote non leggono mai tutto il file (senza Cues → transcodifica).
+- [x] CORRETTO BUG GRAVE: il muxer segment misura `segment_times` dal primo pacchetto, non in tempo assoluto. Con `-copyts`
+  dopo un salto i tagli non scattavano mai (un unico segmento con tutto il resto del film), sia in remux sia in transcodifica;
+  anche dall'inizio i tagli potevano slittare di un keyframe. Ora: tempi relativi all'inizio + `segment_time_delta` (copia: fino a
+  300 ms, mai oltre metà distanza tra keyframe; transcodifica 100 ms); nella copia `-ss` punta 200 ms dopo il keyframe perché
+  FFmpeg arretra la ricerca di ~130 ms con i B-frame. Verificato: salto al segmento 300 dal cloud in 0,6 s, confini esatti.
+- [x] Coda lavori: il prelievo era "i primi 64 per priorità" e migliaia di associazioni affamavano immagini e analisi.
+  Ora per corsia e, per le analisi, per libreria (migrazione 0003, indice `jobs_lane_next`).
+- [x] Protezione del mount (richiesta dell'utente): radice vuota/illeggibile → stop (già c'era); cartelle illeggibili → i loro file
+  non contano come spariti; sparizione di massa (≥ 20% e ≥ 10 file, configurabile) → nulla viene rimosso, stato `missing_held`,
+  avviso in panoramica, pulsante "Li ho cancellati io" (POST `/libraries/{id}/confirm-missing`, vale per una scansione).
+  Cancellazioni normali: file segnati mancanti, visibili come non disponibili per il periodo di grazia, poi rimossi.
+  Migrazione 0004. Provato end-to-end su libreria di prova locale (non sul mount dell'utente).
+- [x] Avvisi della panoramica tradotti per codice; con NFO attivi la chiave TMDB mancante è solo informativa.
+
 ## Benchmark (2026-11-14, 8 CPU, disco locale, libreria sintetica da 100.000 file vuoti)
 
 | Misura | Obiettivo del piano | Misurato |
@@ -94,6 +127,7 @@ Script del benchmark: `scripts/bench_library.py` (genera la libreria sintetica).
 
 ## Prossimi passi
 
+0. Libreria cloud: 302 film senza NFO restano "in attesa" finché non c'è una chiave TMDB (chiederla all'utente).
 1. Provare Infuse reale contro il server (serve un dispositivo Apple: chiedere all'utente) e correggere le differenze.
 2. Fase 3: verificare QSV/VA-API/NVENC su hardware reale (qui non c'è GPU: solo software testato).
 3. Fase 4: log in tempo reale, chiavi API con ambito, notify per dischi locali.
@@ -102,11 +136,15 @@ Script del benchmark: `scripts/bench_library.py` (genera la libreria sintetica).
 ## Debito tecnico noto (da fare dopo)
 
 - Segmenti HLS in MPEG-TS (non fMP4): HEVC in remux solo se il client lo dichiara in `hls_video_codecs`.
-- Keyframe estratti con ffprobe sui pacchetti (legge tutto il file): da sostituire con lettura dei Cues MKV.
+- Keyframe per MP4 remoti: leggere `stss` dal box moov (ora su remoto senza Cues si transcodifica).
+- `.plexmatch`: righe `ep:` per episodi con nomi non standard. NFO degli episodi (`<episodio>.nfo`) non letti.
+- Collezioni (`<set>` negli NFO, `belongs_to_collection` di TMDB): tabella presente, non ancora popolata.
 - `max_rating` per utente salvato ma non ancora applicato ai filtri.
 - Chiavi API con ambito limitato: tabella presente, endpoint da fare.
 - Log in tempo reale in dashboard da fare.
 
 ## Registro
 
+- 2026-11-14 — Prova sulla libreria cloud reale: NFO, .plexmatch, Cues MKV, scansione parallela, rclone rc, protezione del mount,
+  corretto il taglio dei segmenti dopo un salto, coda lavori per corsia.
 - 2026-11-14 — Avvio del progetto. Server, WebApp, compose, README. Fasi 0 e 1 complete, fase 2 quasi (manca Infuse).

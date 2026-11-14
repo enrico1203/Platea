@@ -19,6 +19,13 @@ pub fn routes(api: Api) -> Api {
         .patch("/api/v1/libraries/{id}", "Librerie", Access::Admin, "Modifica una libreria", update)
         .delete("/api/v1/libraries/{id}", "Librerie", Access::Admin, "Elimina una libreria (i file non vengono toccati)", remove)
         .post("/api/v1/libraries/{id}/scan", "Librerie", Access::Admin, "Avvia la scansione di una libreria o di una sua cartella", scan)
+        .post(
+            "/api/v1/libraries/{id}/confirm-missing",
+            "Librerie",
+            Access::Admin,
+            "Conferma che i file spariti tutti insieme sono stati cancellati davvero e avvia la scansione che li toglie",
+            confirm_missing,
+        )
         .post("/api/v1/libraries/scan-all", "Librerie", Access::Admin, "Avvia la scansione di tutte le librerie", scan_all)
         .post("/api/v1/scan/path", "Librerie", Access::Admin, "Scansione mirata della cartella cambiata (per strumenti esterni)", scan_path)
         .get("/api/v1/fs/browse", "Librerie", Access::Admin, "Sfoglia le cartelle visibili al server", browse)
@@ -43,9 +50,10 @@ struct LibRow {
     last_scan_at: Option<i64>,
     last_scan_status: Option<String>,
     last_scan_message: Option<String>,
+    missing_held: i64,
 }
 
-const COLS: &str = "id, name, kind, scan_profile, language, country, scan_interval_minutes, probe_concurrency, probe_per_minute, probe_window_start, probe_window_end, probe_pause_on_play, extract_keyframes, created_at, last_scan_at, last_scan_status, last_scan_message";
+const COLS: &str = "id, name, kind, scan_profile, language, country, scan_interval_minutes, probe_concurrency, probe_per_minute, probe_window_start, probe_window_end, probe_pause_on_play, extract_keyframes, created_at, last_scan_at, last_scan_status, last_scan_message, missing_held";
 
 async fn view(state: &Shared, l: LibRow, admin: bool) -> ApiResult<Value> {
     let paths: Vec<String> =
@@ -86,6 +94,7 @@ async fn view(state: &Shared, l: LibRow, admin: bool) -> ApiResult<Value> {
         o.insert("last_scan_at".into(), json!(l.last_scan_at));
         o.insert("last_scan_status".into(), json!(l.last_scan_status));
         o.insert("last_scan_message".into(), json!(l.last_scan_message));
+        o.insert("missing_held".into(), json!(l.missing_held));
         o.insert("file_count".into(), json!(files));
         o.insert("probe_pending".into(), json!(pending));
     }
@@ -302,6 +311,14 @@ async fn scan(State(state): State<Shared>, _a: ScanAccess, Path(id): Path<String
     let lid = decode(&state, &id)?;
     let sub = body.and_then(|b| b.0.path).filter(|p| !p.trim().is_empty());
     jobs::enqueue(&state, JobKind::ScanLibrary { library_id: lid, subpath: sub }, priority::INTERACTIVE, Some(lid)).await?;
+    Ok(Json(json!({ "queued": true })))
+}
+
+async fn confirm_missing(State(state): State<Shared>, _a: crate::auth::AdminUser, Path(id): Path<String>) -> ApiResult<Json<Value>> {
+    let lid = decode(&state, &id)?;
+    sqlx::query("UPDATE libraries SET confirm_missing = 1 WHERE id = ?").bind(lid).execute(&state.db.write).await?;
+    jobs::enqueue(&state, JobKind::ScanLibrary { library_id: lid, subpath: None }, priority::INTERACTIVE, Some(lid)).await?;
+    tracing::info!(library = lid, "rimozione dei file spariti confermata dall'amministratore");
     Ok(Json(json!({ "queued": true })))
 }
 

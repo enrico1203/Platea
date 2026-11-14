@@ -217,15 +217,63 @@ pub async fn run_dispatcher(state: Shared) {
     }
 }
 
+/// Tipi di lavoro di ogni corsia, nell'ordine in cui si servono.
+const LANES: &[(&str, &[&str])] = &[
+    ("scan", &["scan_library"]),
+    ("metadata", &["match_item", "refresh_metadata"]),
+    ("images", &["download_image"]),
+    ("probe", &["probe_file", "extract_keyframes"]),
+    ("maintenance", &["cleanup_missing"]),
+];
+
+/// Lavori pronti, presi corsia per corsia (e libreria per libreria per le analisi): migliaia di
+/// associazioni in coda non fermano locandine e analisi, e una libreria remota lenta non ferma le altre.
+async fn ready_jobs(state: &Shared, now: i64) -> anyhow::Result<Vec<JobRow>> {
+    let mut rows = Vec::new();
+    for (lane, kinds) in LANES {
+        let free = state.jobs.lanes.get(lane).map(|s| s.available_permits()).unwrap_or(0);
+        if free == 0 {
+            continue;
+        }
+        let list = kinds.iter().map(|k| format!("'{k}'")).collect::<Vec<_>>().join(",");
+        if *lane == "probe" {
+            let libs: Vec<Option<i64>> =
+                sqlx::query_scalar(&format!("SELECT DISTINCT library_id FROM jobs WHERE state = 'queued' AND kind IN ({list}) AND run_after <= ?"))
+                    .bind(now)
+                    .fetch_all(&state.db.read)
+                    .await?;
+            for lib in libs {
+                let mut part: Vec<JobRow> = sqlx::query_as(&format!(
+                    "SELECT id, payload, library_id, attempts, max_attempts FROM jobs
+                     WHERE state = 'queued' AND kind IN ({list}) AND library_id IS ? AND run_after <= ?
+                     ORDER BY priority, run_after, id LIMIT ?"
+                ))
+                .bind(lib)
+                .bind(now)
+                .bind(free as i64)
+                .fetch_all(&state.db.read)
+                .await?;
+                rows.append(&mut part);
+            }
+        } else {
+            let mut part: Vec<JobRow> = sqlx::query_as(&format!(
+                "SELECT id, payload, library_id, attempts, max_attempts FROM jobs
+                 WHERE state = 'queued' AND kind IN ({list}) AND run_after <= ?
+                 ORDER BY priority, run_after, id LIMIT ?"
+            ))
+            .bind(now)
+            .bind((free * 2) as i64)
+            .fetch_all(&state.db.read)
+            .await?;
+            rows.append(&mut part);
+        }
+    }
+    Ok(rows)
+}
+
 async fn dispatch_some(state: &Shared) -> anyhow::Result<usize> {
     let now = now_ms();
-    let rows: Vec<JobRow> = sqlx::query_as(
-        "SELECT id, payload, library_id, attempts, max_attempts FROM jobs
-         WHERE state = 'queued' AND run_after <= ? ORDER BY priority, run_after, id LIMIT 64",
-    )
-    .bind(now)
-    .fetch_all(&state.db.read)
-    .await?;
+    let rows = ready_jobs(state, now).await?;
     let mut started = 0;
     for row in rows {
         let job: JobKind = match serde_json::from_str(&row.payload) {
@@ -434,4 +482,28 @@ pub struct JobView {
     pub started_at: Option<i64>,
     pub finished_at: Option<i64>,
     pub error: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_kind_is_served_by_its_lane() {
+        let all = [
+            JobKind::ScanLibrary { library_id: 1, subpath: None },
+            JobKind::ProbeFile { file_id: 1 },
+            JobKind::ExtractKeyframes { file_id: 1 },
+            JobKind::MatchItem { item_id: 1 },
+            JobKind::RefreshMetadata { item_id: 1 },
+            JobKind::DownloadImage { image_id: 1 },
+            JobKind::CleanupMissing,
+        ];
+        let q = JobQueue::new();
+        for j in all {
+            let (_, kinds) = LANES.iter().find(|(l, _)| *l == j.lane()).expect("corsia elencata");
+            assert!(kinds.contains(&j.name()), "{} non servito dalla corsia {}", j.name(), j.lane());
+            assert!(q.lanes.contains_key(j.lane()));
+        }
+    }
 }

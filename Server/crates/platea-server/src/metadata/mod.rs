@@ -4,6 +4,8 @@
 //! Un campo modificato a mano (bloccato) non viene sovrascritto.
 
 pub mod images;
+pub mod nfo;
+pub mod plexmatch;
 pub mod tmdb;
 
 use crate::jobs::{self, priority, JobKind};
@@ -144,7 +146,35 @@ pub async fn match_item(state: &Shared, item_id: i64) -> anyhow::Result<()> {
         return Ok(());
     }
     let s = state.settings.get();
-    if s.metadata.tmdb_api_key.trim().is_empty() {
+    let has_key = !s.metadata.tmdb_api_key.trim().is_empty();
+    // 0. NFO locale (Kodi, Jellyfin, Radarr…): identificativo esatto e, senza chiave TMDB, i metadati stessi.
+    // .plexmatch: la scelta esplicita dell'utente, i suoi identificativi vincono su quelli dell'NFO.
+    let mut item = item;
+    if s.metadata.read_nfo || s.metadata.read_plexmatch {
+        if let Some(loc) = nfo::locate(state, item_id, &item.kind).await {
+            let pm = if s.metadata.read_plexmatch { plexmatch::find(state, &loc).await } else { None };
+            let n = if s.metadata.read_nfo { nfo::find(state, &loc, &item.kind).await } else { None };
+            if let Some(n) = &n {
+                nfo::store_ids(state, item_id, n).await?;
+            }
+            if let Some(p) = &pm {
+                plexmatch::store_ids(state, item_id, p).await?;
+                if let Some(t) = &p.title {
+                    item.title = t.clone();
+                }
+                item.year = p.year.or(item.year);
+            }
+            // Un NFO che contraddice il .plexmatch descrive un altro titolo: non si usa come metadati.
+            let agrees = match (&pm, &n) {
+                (Some(p), Some(n)) => p.tmdb_id.is_none_or(|t| n.tmdb_id == Some(t)) && p.imdb_id.as_ref().is_none_or(|i| n.imdb_id.as_ref() == Some(i)),
+                _ => true,
+            };
+            if let Some(n) = n.filter(|n| !has_key && agrees && n.complete()) {
+                return nfo::apply(state, item_id, item.library_id, &item.title, item.year, &item.locked_fields, &n).await;
+            }
+        }
+    }
+    if !has_key {
         // Senza chiave l'elemento resta "in attesa": si associa quando la chiave viene impostata.
         return Ok(());
     }
@@ -506,7 +536,7 @@ async fn upsert_person(
     Ok(())
 }
 
-/// Imposta l'immagine di un tipo. Restituisce l'id se va scaricata.
+/// Imposta l'immagine di un tipo da un percorso TMDB. Restituisce l'id se va scaricata.
 async fn set_image(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     item_id: Option<i64>,
@@ -515,21 +545,25 @@ async fn set_image(
     path: Option<&str>,
     size: &str,
 ) -> anyhow::Result<Option<i64>> {
-    let Some(path) = path.filter(|p| !p.is_empty()) else { return Ok(None) };
-    let url = format!("{}/{size}{path}", tmdb::IMAGE_BASE.as_str());
+    let (Some(path), Some(item_id)) = (path.filter(|p| !p.is_empty()), item_id) else { return Ok(None) };
+    set_image_url(tx, item_id, kind, &format!("{}/{size}{path}", tmdb::IMAGE_BASE.as_str())).await
+}
+
+/// Imposta l'immagine di un tipo da un indirizzo completo. Restituisce l'id se va scaricata.
+async fn set_image_url(tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>, item_id: i64, kind: &str, url: &str) -> anyhow::Result<Option<i64>> {
     let existing: Option<(i64, String)> =
         sqlx::query_as("SELECT id, source_url FROM images WHERE item_id = ? AND kind = ?").bind(item_id).bind(kind).fetch_optional(&mut **tx).await?;
     match existing {
         Some((_, u)) if u == url => Ok(None),
         Some((id, _)) => {
-            sqlx::query("UPDATE images SET source_url = ?, state = 'pending', local_path = NULL WHERE id = ?").bind(&url).bind(id).execute(&mut **tx).await?;
+            sqlx::query("UPDATE images SET source_url = ?, state = 'pending', local_path = NULL WHERE id = ?").bind(url).bind(id).execute(&mut **tx).await?;
             Ok(Some(id))
         }
         None => {
             let id = sqlx::query("INSERT INTO images (item_id, kind, source_url, state) VALUES (?, ?, ?, 'pending')")
                 .bind(item_id)
                 .bind(kind)
-                .bind(&url)
+                .bind(url)
                 .execute(&mut **tx)
                 .await?
                 .last_insert_rowid();

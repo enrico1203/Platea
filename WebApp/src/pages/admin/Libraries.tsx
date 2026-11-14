@@ -72,6 +72,7 @@ export default function Libraries() {
   const { data } = useQuery({ queryKey: ["libraries", "admin"], queryFn: () => api<Page<Library>>("/api/v1/libraries").then((r) => r.items) });
   const [edit, setEdit] = useState<Library | null | "new">(null);
   const [del, setDel] = useState<Library | null>(null);
+  const [confirmMissing, setConfirmMissing] = useState<Library | null>(null);
   return (
     <div className="stack-lg">
       <div className="page-head" style={{ marginBottom: 0 }}>
@@ -99,6 +100,14 @@ export default function Libraries() {
             <div className="t-mono subtle">{l.paths?.join(" · ")}</div>
             {l.last_scan_status === "mount_missing" ? (
               <Alert tone="danger">{t("admin.libraries.mountMissing")} <span className="t-mono-sm">{l.last_scan_message}</span></Alert>
+            ) : l.last_scan_status === "missing_held" ? (
+              <Alert tone="danger">
+                {t("admin.libraries.missingHeld", { count: l.missing_held ?? 0 })}
+                <div className="row" style={{ marginTop: 8 }}>
+                  <button className="pl-btn pl-btn--secondary pl-btn--sm" onClick={async () => { await api(`/api/v1/libraries/${l.id}/scan`, { method: "POST" }); toast(t("admin.libraries.scanQueued")); }}><RefreshCw />{t("admin.libraries.rescan")}</button>
+                  <button className="pl-btn pl-btn--danger pl-btn--sm" onClick={() => setConfirmMissing(l)}>{t("admin.libraries.confirmMissing")}</button>
+                </div>
+              </Alert>
             ) : l.last_scan_at ? (
               <div className="t-small muted">{t("admin.libraries.lastScan", { when: relative(l.last_scan_at) })}: <span className="t-mono-sm">{l.last_scan_message}</span></div>
             ) : (
@@ -109,6 +118,7 @@ export default function Libraries() {
         ))}
       </div>
       {edit && <LibraryDialog lib={edit === "new" ? null : edit} onClose={() => setEdit(null)} />}
+      {confirmMissing && <Confirm danger title={t("admin.libraries.confirmMissingTitle", { name: confirmMissing.name })} message={t("admin.libraries.confirmMissingMessage", { count: confirmMissing.missing_held ?? 0 })} confirmLabel={t("admin.libraries.confirmMissing")} onClose={() => setConfirmMissing(null)} onConfirm={async () => { await api(`/api/v1/libraries/${confirmMissing.id}/confirm-missing`, { method: "POST" }); toast(t("admin.libraries.scanQueued")); qc.invalidateQueries(); }} />}
       {del && <Confirm danger title={t("admin.libraries.deleteTitle", { name: del.name })} message={t("admin.libraries.deleteMessage")} confirmLabel={t("common.delete")} onClose={() => setDel(null)} onConfirm={async () => { await api(`/api/v1/libraries/${del.id}`, { method: "DELETE" }); qc.invalidateQueries(); }} />}
     </div>
   );

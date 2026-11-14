@@ -29,6 +29,8 @@ pub struct Listing {
     pub subtitles: HashMap<String, Vec<String>>,
     pub dirs: usize,
     pub errors: Vec<String>,
+    /// Cartelle (relative) che non si sono potute leggere: i file noti lì sotto non contano come spariti.
+    pub error_dirs: Vec<String>,
 }
 
 #[derive(Debug, Default, serde::Serialize)]
@@ -42,48 +44,107 @@ pub struct ScanStats {
     pub unrecognized: usize,
     pub dirs: usize,
     pub files_opened: usize,
+    /// File spariti ma non segnati come mancanti: troppi insieme, si attende la conferma.
+    pub held: usize,
 }
 
-/// Elenco ricorsivo su un thread bloccante. Usa solo `read_dir` e `metadata` (stat): nessun file aperto.
-pub fn list_tree(root: &Path, start_rel: &str) -> Listing {
+/// Elenco ricorsivo con `workers` thread bloccanti, un livello di cartelle alla volta.
+/// Usa solo `read_dir` e `metadata` (stat): nessun file aperto. Sui mount cloud ogni cartella
+/// non in cache costa una richiesta al provider: leggerne diverse insieme divide il tempo.
+pub fn list_tree(root: &Path, start_rel: &str, workers: usize) -> Listing {
     let mut out = Listing::default();
-    let mut stack: Vec<String> = vec![start_rel.trim_matches('/').to_string()];
-    while let Some(rel_dir) = stack.pop() {
-        let abs = if rel_dir.is_empty() { root.to_path_buf() } else { root.join(&rel_dir) };
-        let rd = match std::fs::read_dir(&abs) {
-            Ok(rd) => rd,
-            Err(e) => {
-                out.errors.push(format!("{}: {e}", abs.display()));
-                continue;
+    let mut frontier: Vec<String> = vec![start_rel.trim_matches('/').to_string()];
+    let workers = workers.clamp(1, 64);
+    while !frontier.is_empty() {
+        let next = std::sync::atomic::AtomicUsize::new(0);
+        let n = workers.min(frontier.len());
+        let parts: Vec<(Listing, Vec<String>)> = std::thread::scope(|sc| {
+            let handles: Vec<_> = (0..n)
+                .map(|_| {
+                    sc.spawn(|| {
+                        let mut l = Listing::default();
+                        let mut sub = Vec::new();
+                        loop {
+                            let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                            let Some(rel_dir) = frontier.get(i) else { break };
+                            list_dir(root, rel_dir, &mut l, &mut sub);
+                        }
+                        (l, sub)
+                    })
+                })
+                .collect();
+            handles.into_iter().filter_map(|h| h.join().ok()).collect()
+        });
+        frontier = Vec::new();
+        for (l, sub) in parts {
+            out.videos.extend(l.videos);
+            for (k, v) in l.subtitles {
+                out.subtitles.entry(k).or_default().extend(v);
             }
-        };
-        out.dirs += 1;
-        for entry in rd.flatten() {
-            let name = entry.file_name().to_string_lossy().to_string();
-            if naming::is_ignored_entry(&name) {
-                continue;
-            }
-            let rel = if rel_dir.is_empty() { name.clone() } else { format!("{rel_dir}/{name}") };
-            // file_type() non segue i link; per i link simbolici serve metadata().
-            let Ok(ft) = entry.file_type() else { continue };
-            let meta = if ft.is_symlink() { std::fs::metadata(entry.path()) } else { entry.metadata() };
-            let Ok(meta) = meta else { continue };
-            if meta.is_dir() {
-                // Un file `.plateaignore` non si apre: basta la sua presenza, letta dall'elenco del padre.
-                if !abs.join(&name).join(".plateaignore").exists() {
-                    stack.push(rel);
-                }
-            } else if meta.is_file() {
-                if naming::is_video_file(&name) {
-                    let mtime = meta.modified().ok().and_then(|m| m.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_secs() as i64).unwrap_or(0);
-                    out.videos.push(Entry { rel, size: meta.len() as i64, mtime });
-                } else if naming::is_subtitle_file(&name) {
-                    out.subtitles.entry(rel_dir.clone()).or_default().push(name);
-                }
+            out.dirs += l.dirs;
+            out.errors.extend(l.errors);
+            out.error_dirs.extend(l.error_dirs);
+            frontier.extend(sub);
+        }
+    }
+    out.videos.sort_by(|a, b| a.rel.cmp(&b.rel));
+    out
+}
+
+/// Una cartella: i video, i sottotitoli e le sottocartelle da leggere al livello successivo.
+fn list_dir(root: &Path, rel_dir: &str, out: &mut Listing, sub: &mut Vec<String>) {
+    let abs = if rel_dir.is_empty() { root.to_path_buf() } else { root.join(rel_dir) };
+    let rd = match std::fs::read_dir(&abs) {
+        Ok(rd) => rd,
+        Err(e) => {
+            out.errors.push(format!("{}: {e}", abs.display()));
+            out.error_dirs.push(rel_dir.to_string());
+            return;
+        }
+    };
+    let mut videos = Vec::new();
+    let mut subs = Vec::new();
+    let mut dirs = Vec::new();
+    for entry in rd.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        // Un file `.plateaignore` esclude la cartella e tutto ciò che contiene. Non si apre: basta che ci sia.
+        if name == ".plateaignore" {
+            return;
+        }
+        if naming::is_ignored_entry(&name) {
+            continue;
+        }
+        let rel = if rel_dir.is_empty() { name.clone() } else { format!("{rel_dir}/{name}") };
+        // file_type() non segue i link; per i link simbolici serve metadata().
+        let Ok(ft) = entry.file_type() else { continue };
+        if ft.is_dir() {
+            dirs.push(rel);
+            continue;
+        }
+        let is_video = naming::is_video_file(&name);
+        let is_sub = !is_video && naming::is_subtitle_file(&name);
+        if !is_video && !is_sub && !ft.is_symlink() {
+            continue;
+        }
+        let meta = if ft.is_symlink() { std::fs::metadata(entry.path()) } else { entry.metadata() };
+        let Ok(meta) = meta else { continue };
+        if meta.is_dir() {
+            dirs.push(rel);
+        } else if meta.is_file() {
+            if is_video {
+                let mtime = meta.modified().ok().and_then(|m| m.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_secs() as i64).unwrap_or(0);
+                videos.push(Entry { rel, size: meta.len() as i64, mtime });
+            } else if is_sub {
+                subs.push(name);
             }
         }
     }
-    out
+    out.dirs += 1;
+    out.videos.extend(videos);
+    if !subs.is_empty() {
+        out.subtitles.entry(rel_dir.to_string()).or_default().extend(subs);
+    }
+    sub.extend(dirs);
 }
 
 /// Verifica che la radice esista e non sia vuota, entro un tempo limite (mount bloccati).
@@ -131,8 +192,9 @@ struct ItemIndex {
 }
 
 pub async fn scan_library(state: &Shared, library_id: i64, subpath: Option<String>) -> anyhow::Result<()> {
-    let lib: Option<(String, String)> = sqlx::query_as("SELECT name, kind FROM libraries WHERE id = ?").bind(library_id).fetch_optional(&state.db.read).await?;
-    let Some((lib_name, kind)) = lib else { return Ok(()) };
+    let lib: Option<(String, String, String)> =
+        sqlx::query_as("SELECT name, kind, scan_profile FROM libraries WHERE id = ?").bind(library_id).fetch_optional(&state.db.read).await?;
+    let Some((lib_name, kind, profile)) = lib else { return Ok(()) };
     let paths: Vec<(i64, String)> =
         sqlx::query_as("SELECT id, path FROM library_paths WHERE library_id = ?").bind(library_id).fetch_all(&state.db.read).await?;
     let settings = state.settings.get();
@@ -173,7 +235,8 @@ pub async fn scan_library(state: &Shared, library_id: i64, subpath: Option<Strin
         let rp = root_path.clone();
         let sr = start_rel.clone();
         // L'elenco gira su un thread bloccante: un mount lento consuma quel thread, non il runtime.
-        let listing = tokio::task::spawn_blocking(move || list_tree(&rp, &sr)).await.context("elenco delle cartelle")?;
+        let workers = if profile == "remote" { settings.scanner.list_concurrency_remote } else { settings.scanner.list_concurrency_local } as usize;
+        let listing = tokio::task::spawn_blocking(move || list_tree(&rp, &sr, workers)).await.context("elenco delle cartelle")?;
         if !listing.errors.is_empty() {
             tracing::warn!(library = %lib_name, errors = listing.errors.len(), first = %listing.errors[0], "cartelle non leggibili durante l'elenco");
         }
@@ -186,10 +249,25 @@ pub async fn scan_library(state: &Shared, library_id: i64, subpath: Option<Strin
         total.returned += stats.returned;
         total.unrecognized += stats.unrecognized;
         total.dirs += stats.dirs;
+        total.held += stats.held;
     }
 
-    let status = if problems.is_empty() { "ok" } else { "mount_missing" };
-    let message = if problems.is_empty() {
+    let status = if !problems.is_empty() {
+        "mount_missing"
+    } else if total.held > 0 {
+        "missing_held"
+    } else {
+        "ok"
+    };
+    if total.held > 0 {
+        tracing::warn!(library = %lib_name, files = total.held, "troppi file spariti insieme: rimozione sospesa in attesa di conferma");
+    }
+    let message = if total.held > 0 {
+        format!(
+            "{} file spariti insieme: possibile mount non funzionante, nessun file rimosso. Se l'eliminazione è voluta, confermala dalla dashboard.",
+            total.held
+        )
+    } else if problems.is_empty() {
         format!(
             "{} file in {} cartelle, {} nuovi, {} modificati, {} spostati, {} mancanti, {} non riconosciuti, {} ms",
             total.listed,
@@ -204,10 +282,13 @@ pub async fn scan_library(state: &Shared, library_id: i64, subpath: Option<Strin
     } else {
         problems.join("; ")
     };
-    sqlx::query("UPDATE libraries SET last_scan_at = ?, last_scan_status = ?, last_scan_message = ? WHERE id = ?")
+    // La conferma vale per una sola scansione completa.
+    sqlx::query("UPDATE libraries SET last_scan_at = ?, last_scan_status = ?, last_scan_message = ?, missing_held = ?, confirm_missing = CASE WHEN ? THEN confirm_missing ELSE 0 END WHERE id = ?")
         .bind(now_ms())
         .bind(status)
         .bind(&message)
+        .bind(total.held as i64)
+        .bind(!problems.is_empty())
         .bind(library_id)
         .execute(&state.db.write)
         .await?;
@@ -253,6 +334,14 @@ async fn load_index(state: &Shared, library_id: i64) -> anyhow::Result<ItemIndex
     Ok(idx)
 }
 
+/// Troppi file spariti in una volta sola per essere una cancellazione voluta.
+pub fn mass_missing(gone: usize, present_before: usize, min_files: usize, percent: u32) -> bool {
+    if gone == 0 || present_before == 0 || gone < min_files.max(1) {
+        return false;
+    }
+    gone * 100 >= present_before * percent.clamp(1, 100) as usize
+}
+
 fn parent_dir(rel: &str) -> &str {
     rel.rsplit_once('/').map(|(d, _)| d).unwrap_or("")
 }
@@ -268,10 +357,12 @@ async fn apply_listing(state: &Shared, library_id: i64, kind: &str, path_id: i64
     let mut by_path: HashMap<String, DbFile> = db_files.into_iter().map(|f| (f.relative_path.clone(), f)).collect();
 
     let seen: HashSet<&str> = listing.videos.iter().map(|e| e.rel.as_str()).collect();
+    // Sotto una cartella illeggibile non si sa nulla: quei file non sono spariti.
+    let unreadable = |rel: &str| listing.error_dirs.iter().any(|d| d.is_empty() || rel.starts_with(&format!("{d}/")));
     // File noti ma non più presenti (nell'ambito della scansione): candidati per gli spostamenti.
     let mut vanished: HashMap<(i64, i64), Vec<DbFile>> = HashMap::new();
     for f in by_path.values() {
-        if in_scope(&f.relative_path) && !seen.contains(f.relative_path.as_str()) {
+        if in_scope(&f.relative_path) && !seen.contains(f.relative_path.as_str()) && !unreadable(&f.relative_path) {
             vanished.entry((f.size, f.mtime)).or_default().push(f.clone());
         }
     }
@@ -382,6 +473,17 @@ async fn apply_listing(state: &Shared, library_id: i64, kind: &str, path_id: i64
         sqlx::query("UPDATE media_files SET state = 'present', missing_since = NULL WHERE id = ?").bind(id).execute(&mut *tx).await?;
     }
     stats.returned = returned.len();
+    // Sparizione di massa: un mount a metà o un provider che risponde con cartelle vuote somigliano a una
+    // cancellazione. Oltre la soglia non si segna nulla finché l'amministratore non conferma.
+    let present_before = by_path.values().filter(|f| f.state == "present" && in_scope(&f.relative_path)).count();
+    let gone = vanished.values().flatten().filter(|f| f.state == "present").count();
+    let sc = state.settings.get().scanner.clone();
+    let confirmed: i64 = sqlx::query_scalar("SELECT confirm_missing FROM libraries WHERE id = ?").bind(library_id).fetch_one(&state.db.read).await.unwrap_or(0);
+    let hold = confirmed == 0 && mass_missing(gone, present_before, sc.mass_missing_min_files as usize, sc.mass_missing_percent);
+    if hold {
+        stats.held = gone;
+        vanished.clear();
+    }
     for cands in vanished.values() {
         for f in cands {
             if f.state == "present" {
@@ -667,24 +769,73 @@ pub async fn cleanup_missing(state: &Shared) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
+#[test]
+fn mass_missing_threshold() {
+    // Cancellare qualche film è normale.
+    assert!(!mass_missing(3, 8500, 10, 20));
+    assert!(!mass_missing(500, 8500, 10, 20));
+    // Metà libreria sparita in un colpo: sospetto.
+    assert!(mass_missing(4250, 8500, 10, 20));
+    // Libreria piccola: sotto il minimo assoluto non si blocca.
+    assert!(!mass_missing(5, 10, 10, 20));
+    assert!(mass_missing(10, 12, 10, 20));
+}
+
 pub mod rclone {
     //! Integrazione con il controllo remoto di rclone: `vfs/refresh` prima di leggere una cartella.
     use crate::state::Shared;
     use std::path::Path;
 
-    pub async fn refresh(state: &Shared, _root: &Path, rel: &str) {
-        let url = state.settings.get().scanner.rclone_rc_url.clone();
-        if url.trim().is_empty() {
+    /// Cartella da chiedere a rclone: il percorso relativo alla radice del mount rclone.
+    /// Se la libreria non sta sotto il mount indicato, non c'è niente da aggiornare.
+    pub fn remote_dir(mount: &str, root: &Path, rel: &str) -> Option<String> {
+        let full = if rel.is_empty() { root.to_path_buf() } else { root.join(rel) };
+        let mount = mount.trim();
+        if mount.is_empty() {
+            return Some(rel.to_string());
+        }
+        let r = full.strip_prefix(mount).ok()?;
+        Some(r.to_string_lossy().trim_matches('/').to_string())
+    }
+
+    pub async fn refresh(state: &Shared, root: &Path, rel: &str) {
+        let sc = state.settings.get().scanner.clone();
+        let url = sc.rclone_rc_url.trim().to_string();
+        if url.is_empty() {
             return;
         }
-        let dir = if rel.is_empty() { String::new() } else { rel.to_string() };
-        let body = serde_json::json!({ "dir": dir, "recursive": true, "_async": false });
-        let r = state.http.post(format!("{}/vfs/refresh", url.trim_end_matches('/'))).json(&body).timeout(std::time::Duration::from_secs(120)).send().await;
+        let Some(dir) = remote_dir(&sc.rclone_mount_path, root, rel) else { return };
+        let body = if dir.is_empty() { serde_json::json!({ "recursive": "true" }) } else { serde_json::json!({ "dir": dir, "recursive": "true" }) };
+        let t0 = std::time::Instant::now();
+        let r = state
+            .http
+            .post(format!("{}/vfs/refresh", url.trim_end_matches('/')))
+            .json(&body)
+            .timeout(std::time::Duration::from_secs(sc.rclone_refresh_timeout_seconds.max(10) as u64))
+            .send()
+            .await;
         match r {
-            Ok(resp) if resp.status().is_success() => tracing::debug!(dir = %dir, "rclone vfs/refresh completato"),
-            Ok(resp) => tracing::warn!(status = %resp.status(), "rclone vfs/refresh non riuscito"),
+            Ok(resp) if resp.status().is_success() => {
+                tracing::info!(dir = %dir, ms = t0.elapsed().as_millis() as u64, "rclone: elenco delle cartelle aggiornato")
+            }
+            Ok(resp) => {
+                let status = resp.status();
+                let text = resp.text().await.unwrap_or_default();
+                tracing::warn!(%status, body = %text.chars().take(300).collect::<String>(), "rclone vfs/refresh non riuscito")
+            }
             Err(e) => tracing::warn!(error = %e, "rclone non raggiungibile"),
         }
+    }
+
+    #[cfg(test)]
+    #[test]
+    fn maps_library_to_remote_dir() {
+        assert_eq!(remote_dir("/media/cloud", Path::new("/media/cloud/Film"), "").as_deref(), Some("Film"));
+        assert_eq!(remote_dir("/media/cloud/", Path::new("/media/cloud"), "").as_deref(), Some(""));
+        assert_eq!(remote_dir("/media/cloud", Path::new("/media/cloud"), "Saghe/007").as_deref(), Some("Saghe/007"));
+        assert_eq!(remote_dir("/media/altro", Path::new("/media/cloud"), ""), None);
+        assert_eq!(remote_dir("", Path::new("/media/cloud"), "X").as_deref(), Some("X"));
     }
 }
 
@@ -705,7 +856,7 @@ mod tests {
         std::fs::create_dir_all(root.join("Ignored")).unwrap();
         std::fs::write(root.join("Ignored/.plateaignore"), b"").unwrap();
         std::fs::write(root.join("Ignored/y.mkv"), b"x").unwrap();
-        let l = list_tree(root, "");
+        let l = list_tree(root, "", 3);
         assert_eq!(l.videos.len(), 1);
         assert_eq!(l.videos[0].rel, "Matrix (1999)/Matrix (1999).mkv");
         assert_eq!(l.subtitles.get("Matrix (1999)").unwrap(), &vec!["Matrix (1999).it.srt".to_string()]);

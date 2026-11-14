@@ -69,11 +69,20 @@ async fn overview(State(state): State<Shared>, _a: AdminUser) -> ApiResult<Json<
     for (name, msg) in mount_missing {
         alerts.push(json!({ "level": "danger", "code": "MountMissing", "message": format!("Libreria {name}: {}", msg.unwrap_or_default()) }));
     }
+    let held: Vec<(String, i64)> =
+        sqlx::query_as("SELECT name, missing_held FROM libraries WHERE last_scan_status = 'missing_held'").fetch_all(&state.db.read).await?;
+    for (name, n) in held {
+        alerts.push(json!({ "level": "danger", "code": "MissingHeld", "message": format!("Libreria {name}: {n} file spariti insieme, nessuno rimosso. Controlla il mount o conferma l'eliminazione in Librerie.") }));
+    }
     if !state.ffmpeg.get().available {
         alerts.push(json!({ "level": "danger", "code": "FfmpegMissing", "message": "FFmpeg non trovato: analisi e transcodifica non disponibili" }));
     }
     if state.settings.get().metadata.tmdb_api_key.is_empty() {
-        alerts.push(json!({ "level": "warning", "code": "TmdbKeyMissing", "message": "Chiave TMDB non impostata: i metadati non vengono scaricati" }));
+        if state.settings.get().metadata.read_nfo {
+            alerts.push(json!({ "level": "info", "code": "TmdbKeyMissingNfo", "message": "Chiave TMDB non impostata: i metadati arrivano solo dai file NFO" }));
+        } else {
+            alerts.push(json!({ "level": "warning", "code": "TmdbKeyMissing", "message": "Chiave TMDB non impostata: i metadati non vengono scaricati" }));
+        }
     }
     if review > 0 {
         alerts.push(json!({ "level": "warning", "code": "MetadataReview", "message": format!("{review} elementi da verificare") }));
