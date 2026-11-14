@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { api, ApiError } from "../../api/client";
 import type { Device, Library, Page, ScheduleSlot, UserAdmin } from "../../api/types";
-import { Alert, Badge, Confirm, Dialog, SelectField, Switch, TextField, toast } from "../../components/ui";
+import { Alert, Badge, Confirm, Dialog, Empty, MethodBadge, SelectField, Switch, TextField, toast } from "../../components/ui";
 import { useSession } from "../../session";
 import { useI18n } from "../../i18n";
 
@@ -14,10 +14,9 @@ function toDateInput(ms: number): string {
 }
 
 function UserDialog({ user, onClose }: { user: UserAdmin | null; onClose: () => void }) {
-  const { t, relative } = useI18n();
+  const { t } = useI18n();
   const qc = useQueryClient();
   const { data: libs } = useQuery({ queryKey: ["libraries", "admin"], queryFn: () => api<Page<Library>>("/api/v1/libraries").then((r) => r.items) });
-  const { data: devices } = useQuery({ queryKey: ["admin", "devices", user?.id], queryFn: () => api<{ items: Device[] }>(`/api/v1/users/${user!.id}/devices`).then((r) => r.items), enabled: !!user });
   const [f, setF] = useState({
     username: user?.username ?? "", password: "", is_admin: user?.is_admin ?? false, disabled: user?.disabled ?? false,
     all_libraries: user?.all_libraries ?? true, library_ids: user?.library_ids ?? [], allow_remux: user?.allow_remux ?? true, allow_transcode: user?.allow_transcode ?? true,
@@ -85,17 +84,6 @@ function UserDialog({ user, onClose }: { user: UserAdmin | null; onClose: () => 
         <TextField label={t("admin.users.maxBitrate")} inputMode="decimal" value={f.max_bitrate} onChange={(e) => set("max_bitrate", e.target.value)} hint={t("admin.users.unlimitedHint")} />
         <TextField label={t("admin.users.maxStreams")} inputMode="numeric" value={f.max_streams} onChange={(e) => set("max_streams", e.target.value)} hint={t("admin.users.unlimitedHint")} />
       </div>
-      {user && devices && devices.length > 0 && (
-        <>
-          <span className="pl-eyebrow">{t("account.devices")}</span>
-          {devices.map((d) => (
-            <div className="row" key={d.id}>
-              <div className="spacer"><div className="t-label">{d.device_name}</div><div className="t-small subtle">{d.client} · {relative(d.last_used_at)}{d.last_ip ? ` · ${d.last_ip}` : ""}</div></div>
-              <button className="pl-btn pl-btn--danger pl-btn--sm" onClick={async () => { await api(`/api/v1/users/${user.id}/devices/${d.id}`, { method: "DELETE" }); qc.invalidateQueries({ queryKey: ["admin", "devices", user.id] }); toast(t("account.revoked")); }}>{t("account.revoke")}</button>
-            </div>
-          ))}
-        </>
-      )}
     </Dialog>
   );
 }
@@ -106,6 +94,7 @@ export default function Users() {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["admin", "users"], queryFn: () => api<Page<UserAdmin>>("/api/v1/users").then((r) => r.items) });
   const [edit, setEdit] = useState<UserAdmin | null | "new">(null);
+  const [devicesOf, setDevicesOf] = useState<UserAdmin | null>(null);
   const [del, setDel] = useState<UserAdmin | null>(null);
   const [err, setErr] = useState<string | null>(null);
   return (
@@ -125,7 +114,12 @@ export default function Users() {
                 <td>{u.is_admin ? <Badge>{t("admin.users.admin")}</Badge> : t("admin.users.user")} {u.disabled && <Badge tone="danger">{t("admin.users.disabledBadge")}</Badge>}
                   {u.expired ? <Badge tone="danger">{t("admin.users.expiredBadge")}</Badge> : u.expires_at ? <span className="t-small subtle"> {t("admin.users.expiresOn", { date: date(u.expires_at) })}</span> : null}</td>
                 <td className="t-small muted">{u.last_login_at ? relative(u.last_login_at) : "—"}</td>
-                <td className="t-mono">{u.devices}{u.active_streams > 0 ? ` · ${t("admin.users.streaming", { count: u.active_streams })}` : ""}</td>
+                <td>
+                  <button className="link-btn" onClick={() => setDevicesOf(u)} disabled={u.devices === 0}>
+                    {t("admin.users.devicesCount", { count: u.devices })}
+                  </button>
+                  {u.active_streams > 0 && <span className="t-small subtle"> · {t("admin.users.streaming", { count: u.active_streams })}</span>}
+                </td>
                 <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                   <button className="icon-btn" onClick={() => setEdit(u)} aria-label={t("common.edit")}><Pencil /></button>
                   {u.id !== me?.id && <button className="icon-btn" onClick={() => setDel(u)} aria-label={t("common.delete")}><Trash2 /></button>}
@@ -136,6 +130,7 @@ export default function Users() {
         </table>
       </div>
       {edit && <UserDialog user={edit === "new" ? null : edit} onClose={() => setEdit(null)} />}
+      {devicesOf && <UserDevices user={devicesOf} onClose={() => setDevicesOf(null)} />}
       {del && <Confirm danger title={t("admin.users.deleteTitle", { name: del.username })} message={t("admin.users.deleteMessage")} confirmLabel={t("common.delete")} onClose={() => setDel(null)} onConfirm={async () => {
         try { await api(`/api/v1/users/${del.id}`, { method: "DELETE" }); qc.invalidateQueries({ queryKey: ["admin", "users"] }); } catch (e) { setErr((e as ApiError).message); }
       }} />}
@@ -175,3 +170,45 @@ function ScheduleEditor({ value, onChange }: { value: ScheduleSlot[]; onChange: 
     </div>
   );
 }
+
+/** Dispositivi di un utente: cosa usa, da dove, cosa guarda o ha guardato, e scollegamento. */
+function UserDevices({ user, onClose }: { user: UserAdmin; onClose: () => void }) {
+  const { t, relative, dateTime } = useI18n();
+  const qc = useQueryClient();
+  const { data: devices } = useQuery({ queryKey: ["admin", "devices", user.id], queryFn: () => api<{ items: Device[] }>(`/api/v1/users/${user.id}/devices`).then((r) => r.items) });
+  const refresh = () => { qc.invalidateQueries({ queryKey: ["admin", "devices", user.id] }); qc.invalidateQueries({ queryKey: ["admin", "users"] }); };
+  return (
+    <Dialog title={t("admin.users.devicesOf", { name: user.username })} onClose={onClose} footer={devices && devices.length > 1 ? (
+      <button className="pl-btn pl-btn--danger" onClick={async () => { await api(`/api/v1/users/${user.id}/devices`, { method: "DELETE" }); refresh(); toast(t("account.revoked")); }}>{t("admin.users.revokeAll")}</button>
+    ) : undefined}>
+      {!devices ? <div className="t-small subtle">{t("common.loading")}</div> : devices.length === 0 ? <Empty>{t("admin.users.noDevices")}</Empty> : (
+        <div className="device-list">
+          {devices.map((d) => (
+            <div className="device" key={d.id}>
+              <div className="device__main">
+                <div className="t-label">{d.device_name}</div>
+                <div className="t-small muted">{d.client}{d.client_version ? ` ${d.client_version}` : ""}</div>
+                {d.playing && (
+                  <div className="t-small device__playing">
+                    {d.playing.paused ? t("admin.users.devicePaused") : t("admin.users.deviceWatching")}: {d.playing.title}{d.playing.subtitle ? ` · ${d.playing.subtitle}` : ""} <MethodBadge method={d.playing.method} />
+                  </div>
+                )}
+                <div className="t-small subtle">
+                  {t("admin.users.deviceLastSeen", { when: relative(d.last_used_at) })}
+                  {d.last_ip ? ` · ${d.last_ip}${d.remote == null ? "" : d.remote ? ` (${t("admin.overview.session.remote")})` : ` (${t("admin.overview.session.local")})`}` : ""}
+                </div>
+                <div className="t-small subtle">
+                  {t("admin.users.deviceSince", { when: dateTime(d.created_at) })}
+                  {d.plays ? ` · ${t("admin.users.devicePlays", { count: d.plays })}` : ""}
+                  {d.last_played_title ? ` · ${t("admin.users.deviceLastPlayed", { title: d.last_played_title, when: relative(d.last_played_at ?? null) })}` : ""}
+                </div>
+              </div>
+              <button className="pl-btn pl-btn--danger pl-btn--sm" onClick={async () => { await api(`/api/v1/users/${user.id}/devices/${d.id}`, { method: "DELETE" }); refresh(); toast(t("account.revoked")); }}>{t("account.revoke")}</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Dialog>
+  );
+}
+

@@ -69,7 +69,8 @@ export interface UserAdmin {
   id: string; username: string; is_admin: boolean; disabled: boolean; all_libraries: boolean; library_ids: string[]; allow_remux: boolean; allow_transcode: boolean;
   max_bitrate: number | null; max_streams: number | null; max_rating: string | null; allow_remote: boolean; manage_devices: boolean; created_at: number; last_login_at: number | null; devices: number; active_streams: number; expires_at: number | null; expired: boolean; allow_download: boolean; block_unrated: boolean; access_schedule: ScheduleSlot[]; avatar: string | null;
 }
-export interface Device { id: string; device_id: string; device_name: string; client: string; client_version: string; created_at: number; last_used_at: number; last_ip: string | null; current: boolean }
+export interface Device { id: string; device_id: string; device_name: string; client: string; client_version: string; created_at: number; last_used_at: number; last_ip: string | null; current: boolean;
+  remote?: boolean | null; playing?: { title: string; subtitle: string | null; method: Method; paused: boolean }; plays?: number; last_played_at?: number | null; last_played_title?: string | null; last_method?: Method | null }
 export interface Job { id: number; kind: string; payload: Record<string, unknown>; priority: number; state: string; attempts: number; run_after: number; created_at: number; started_at: number | null; finished_at: number | null; error: string | null; subject?: { title: string; detail: string | null; item_id: string | null } }
 export interface Candidate { provider_id: string; title: string; year: number | null; score: number; overview?: string | null; poster: string | null }
 export interface ReviewItem { id: string; kind: string; title: string; year: number | null; match_state: string; match_score: number | null; library: string; path: string | null; candidates: Candidate[] }

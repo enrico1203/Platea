@@ -419,3 +419,14 @@ a.person:focus-visible .person__img { outline: 2px solid var(--focus); outline-o
 .job-subject__title { font: 500 14px/20px var(--font-sans); color: var(--ink); }
 .job-subject__title a { color: inherit; }
 .job-subject__detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 560px; }
+
+/* Dispositivi di un utente */
+.device-list { display: flex; flex-direction: column; }
+.device { display: flex; gap: var(--space-3); align-items: flex-start; justify-content: space-between; padding: var(--space-3) 0; border-bottom: 1px solid var(--line); }
+.device:last-child { border-bottom: 0; }
+.device__main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.device__playing { color: var(--ink); display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.link-btn { all: unset; cursor: pointer; color: var(--blue-text); font: 400 14px/20px var(--font-sans); }
+.link-btn:hover { text-decoration: underline; }
+.link-btn:disabled { color: var(--ink-subtle); cursor: default; text-decoration: none; }
+.link-btn:focus-visible { outline: 2px solid var(--focus, var(--blue)); outline-offset: 2px; border-radius: 4px; }

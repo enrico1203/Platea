@@ -18,6 +18,7 @@ pub fn routes(api: Api) -> Api {
         .patch("/api/v1/users/{id}", "Utenti", Access::Admin, "Modifica permessi, ruolo, stato o password", update)
         .delete("/api/v1/users/{id}", "Utenti", Access::Admin, "Elimina un utente", remove)
         .get("/api/v1/users/{id}/devices", "Utenti", Access::Admin, "Dispositivi e sessioni di un utente", devices)
+        .delete("/api/v1/users/{id}/devices", "Utenti", Access::Admin, "Scollega tutti i dispositivi di un utente", revoke_all_devices)
         .delete("/api/v1/users/{id}/devices/{device}", "Utenti", Access::Admin, "Revoca un token di un utente", revoke_device)
 }
 
@@ -262,9 +263,53 @@ async fn remove(State(state): State<Shared>, AdminUser(admin): AdminUser, Path(i
     Ok(Json(json!({ "ok": true })))
 }
 
+/// Dispositivi di un utente per l'amministratore: oltre ai dati del token, se è in rete locale, cosa sta
+/// guardando adesso, l'ultima cosa vista e quante riproduzioni ha fatto da quel dispositivo.
 async fn devices(State(state): State<Shared>, _a: AdminUser, Path(id): Path<String>) -> ApiResult<Json<Value>> {
     let uid = decode(&state, &id)?;
-    Ok(Json(json!({ "items": super::auth::devices_of(&state, uid, None).await? })))
+    let mut items = super::auth::devices_of(&state, uid, None).await?;
+    let local = state.settings.get().network.local_networks.clone();
+    let sessions = state.sessions.all();
+    for d in items.iter_mut() {
+        let Some(o) = d.as_object_mut() else { continue };
+        let tid = o.get("id").and_then(|v| v.as_str()).and_then(|s| state.ids.decode(s));
+        let ip = o.get("last_ip").and_then(|v| v.as_str()).and_then(|s| s.parse::<std::net::IpAddr>().ok());
+        o.insert("remote".into(), json!(ip.map(|i| !crate::net::in_any(&local, i))));
+        if let Some(s) = tid.and_then(|t| sessions.iter().find(|s| s.token_id == t)) {
+            o.insert(
+                "playing".into(),
+                json!({ "title": s.title, "subtitle": s.subtitle, "method": s.decision.method.as_str(), "paused": s.paused.load(std::sync::atomic::Ordering::Relaxed) }),
+            );
+        }
+        let name = o.get("device_name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let client = o.get("client").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let stats: (i64, Option<i64>, Option<String>, Option<String>) = sqlx::query_as(
+            "SELECT COUNT(*), MAX(h.started_at),
+                    (SELECT COALESCE(s.title || ' · ', '') || i.title FROM playback_history h2 JOIN items i ON i.id = h2.item_id LEFT JOIN items s ON s.id = i.series_id
+                      WHERE h2.user_id = ?1 AND h2.device_name = ?2 AND h2.client = ?3 ORDER BY h2.started_at DESC LIMIT 1),
+                    (SELECT h3.method FROM playback_history h3 WHERE h3.user_id = ?1 AND h3.device_name = ?2 AND h3.client = ?3 ORDER BY h3.started_at DESC LIMIT 1)
+             FROM playback_history h WHERE h.user_id = ?1 AND h.device_name = ?2 AND h.client = ?3",
+        )
+        .bind(uid)
+        .bind(&name)
+        .bind(&client)
+        .fetch_one(&state.db.read)
+        .await?;
+        o.insert("plays".into(), json!(stats.0));
+        o.insert("last_played_at".into(), json!(stats.1));
+        o.insert("last_played_title".into(), json!(stats.2));
+        o.insert("last_method".into(), json!(stats.3));
+    }
+    Ok(Json(json!({ "items": items })))
+}
+
+/// Scollega tutti i dispositivi di un utente (dovrà accedere di nuovo ovunque).
+async fn revoke_all_devices(State(state): State<Shared>, AdminUser(admin): AdminUser, Path(id): Path<String>) -> ApiResult<Json<Value>> {
+    let uid = decode(&state, &id)?;
+    let n = sqlx::query("DELETE FROM tokens WHERE user_id = ?").bind(uid).execute(&state.db.write).await?.rows_affected();
+    state.token_cache.remove_user(uid);
+    state.db.activity(Some(admin.user_id), "token_revoked", &format!("{} ha scollegato {n} dispositivi di un utente", admin.username), None).await;
+    Ok(Json(json!({ "revoked": n })))
 }
 
 async fn revoke_device(State(state): State<Shared>, AdminUser(admin): AdminUser, Path((id, device)): Path<(String, String)>) -> ApiResult<Json<Value>> {
