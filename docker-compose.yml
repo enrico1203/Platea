@@ -26,6 +26,7 @@ services:
       # rclone fatto dopo l'avvio. Aggiungi una riga per ogni cartella: cartella dell'host → percorso nel
       # container. Sotto /media il selettore delle cartelle in Amministrazione → Librerie le trova subito.
       - ${MEDIA_DIR:-./media}:/media:ro,rslave
+      - /mnt/jotta2:/media/jotta2:ro,rslave
       # - /mnt/jottamio:/media/jottamio:ro,rslave
       # - /mnt/nas/Serie:/media/serie:ro,rslave
     # Transcodifiche brevi e frequenti: i segmenti possono stare in RAM.
