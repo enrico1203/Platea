@@ -37,6 +37,13 @@ Se la sessione si interrompe, alla ripresa ("continua") si riparte da qui: legge
   (`/media/<nome>=http://host.docker.internal:<porta>`), uno per mount; ogni cartella di libreria usa il suo.
   Tunnel Cloudflare attivo (profilo `tunnel`, token in `.env`). Password dimenticata:
   `docker compose exec server platea reset-password <utente>`.
+- 15/11/2026 notte: Infuse completo (serie comprese: Fields in tutti gli elenchi), AirPlay e Google Cast nel player,
+  pausa dei lavori, dispositivi per utente, soggetto leggibile dei lavori, manutenzione programmata del DB (PRAGMA
+  optimize ogni ora, ANALYZE/WAL/VACUUM la notte), indice items(series_id), eventi raggruppati (client e server).
+  Sicurezza: job Trivy in CI (fallisce su HIGH/CRITICAL correggibili), container NON root (server uid 1000:
+  data/cache/transcode dell'host sono `chown 1000:1000`; nginx utente nginx). Restano HIGH non corrette da Debian
+  (util-linux, libxml2, expat…): elencate in CI, non bloccanti.
+  Prima di ogni commit: `scripts/cargo.sh fmt --all` e `scripts/cargo.sh clippy --all-targets --locked -- -D warnings`.
 - 14/11/2026 sera: menu laterale fisso e comprimibile, pannello riproduzioni con dati dal vivo, ricerca nella
   libreria, "torna su", associazione TMDB migliorata (da 214 incerti a 68), loghi SVG, API Jellyfin in più.
   Infuse 8.5 su iPhone FUNZIONA (confermato dall'utente) dopo: /UserViews/GroupingOptions, niente null nelle
