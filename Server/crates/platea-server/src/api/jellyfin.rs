@@ -22,7 +22,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -1317,7 +1317,9 @@ async fn do_stream(state: &Shared, user: &AuthUser, item: &str, uri: &Uri, metho
     crate::probe::ensure_probed(state, fid).await.ok();
     let (file, info) = open_cached(state, fid).await?;
     let ct = crate::stream::content_type_for(&info.media.container, &info.abs);
-    crate::stream::serve_file(file, info.size as u64, info.mtime, ct, method, headers)
+    // Byte inviati alla sessione di questo dispositivo, se Infuse l'ha già aperta con un rapporto.
+    let sent = COMPAT_SESSIONS.lock().unwrap().get(&(user.token_id, id)).and_then(|sid| state.sessions.get(sid)).map(|s| s.bytes_sent.clone());
+    crate::stream::serve_file(file, info.size as u64, info.mtime, ct, method, headers, sent)
 }
 
 async fn download(State(state): State<Shared>, user: AuthUser, Path(item): Path<String>, method: Method, headers: HeaderMap) -> ApiResult<Response> {
@@ -1432,32 +1434,32 @@ async fn ensure_session(state: &Shared, user: &AuthUser, item: i64, source: Opti
     } else {
         (row.title.clone(), row.year.map(|y| y.to_string()))
     };
-    let s = Arc::new(PlaySession {
-        id: sid.clone(),
+    let local = state.settings.get().network.local_networks.clone();
+    let extra = crate::sessions::SessionExtra {
+        ip: user.ip.map(|i| i.to_string()),
+        remote: user.ip.is_some_and(|i| !crate::net::in_any(&local, i)),
+        details: crate::sessions::details(&info, &decision, None),
+        position_ms: 0,
+    };
+    let bitrate = info.media.bitrate.map(|b| b as i64);
+    let duration_ms = info.media.duration_ms.map(|d| d as i64).or(row.runtime_ms).unwrap_or(0);
+    let s = Arc::new(PlaySession::new(
+        sid.clone(),
         token,
-        user_id: user.user_id,
-        token_id: user.token_id,
-        expires_at: if user.is_admin { None } else { user.perms.expires_at },
-        username: user.username.clone(),
-        item_id: item,
-        file_id: fid,
+        user,
+        item,
+        fid,
         title,
         subtitle,
-        poster_image: row.poster_id.or(row.series_poster_id),
-        device_name: user.device_name.clone(),
-        client: user.client.clone(),
+        row.poster_id.or(row.series_poster_id),
         decision,
         chain,
-        bitrate: info.media.bitrate.map(|b| b as i64),
-        duration_ms: info.media.duration_ms.map(|d| d as i64).or(row.runtime_ms).unwrap_or(0),
-        started_at: now_ms(),
-        last_seen: AtomicI64::new(now_ms()),
-        position_ms: AtomicI64::new(0),
-        paused: AtomicBool::new(false),
+        bitrate,
+        duration_ms,
         history_id,
-        hls: None,
-        file: Mutex::new(None),
-    });
+        None,
+        extra,
+    ));
     state.sessions.insert(s.clone());
     COMPAT_SESSIONS.lock().unwrap().insert(key, sid);
     state.events.admin("sessions.changed", json!({}));
@@ -1475,13 +1477,11 @@ async fn report(state: &Shared, user: &AuthUser, r: &PlayReport) -> ApiResult<Op
         return Ok(None);
     };
     let s = ensure_session(state, user, item, r.media_source_id.as_deref()).await?;
-    if let Some(t) = r.position_ticks {
-        let pos = (t / TICKS_PER_MS).max(0);
-        s.position_ms.store(pos, Ordering::Relaxed);
+    let pos = r.position_ticks.map(|t| (t / TICKS_PER_MS).max(0));
+    if let Some(pos) = pos {
         state.sessions.record_progress(user.user_id, item, pos, s.duration_ms);
     }
-    s.paused.store(r.is_paused.unwrap_or(false), Ordering::Relaxed);
-    s.touch();
+    s.report(pos, r.is_paused.unwrap_or(false));
     Ok(Some(s))
 }
 

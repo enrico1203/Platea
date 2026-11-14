@@ -106,7 +106,16 @@ pub fn etag(size: u64, mtime: i64) -> String {
 }
 
 /// Risposta per un file già aperto.
-pub fn serve_file(file: Arc<File>, size: u64, mtime: i64, content_type: &str, method: &Method, headers: &HeaderMap) -> ApiResult<Response> {
+/// `sent`: contatore dei byte inviati (banda della sessione), aggiornato a ogni blocco.
+pub fn serve_file(
+    file: Arc<File>,
+    size: u64,
+    mtime: i64,
+    content_type: &str,
+    method: &Method,
+    headers: &HeaderMap,
+    sent: Option<Arc<std::sync::atomic::AtomicU64>>,
+) -> ApiResult<Response> {
     let tag = etag(size, mtime);
     if let Some(inm) = headers.get(header::IF_NONE_MATCH).and_then(|v| v.to_str().ok()) {
         if inm == tag {
@@ -142,7 +151,11 @@ pub fn serve_file(file: Arc<File>, size: u64, mtime: i64, content_type: &str, me
     if method == Method::HEAD || len == 0 {
         return builder.body(Body::empty()).map_err(|e| ApiError::Internal(e.into()));
     }
-    let body = Body::from_stream(chunked(file, start, len, CHUNK));
+    let body = Body::from_stream(futures_util::TryStreamExt::inspect_ok(chunked(file, start, len, CHUNK), move |c: &Vec<u8>| {
+        if let Some(n) = &sent {
+            n.fetch_add(c.len() as u64, std::sync::atomic::Ordering::Relaxed);
+        }
+    }));
     builder.body(body).map_err(|e| ApiError::Internal(e.into()))
 }
 

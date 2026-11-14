@@ -103,7 +103,7 @@ async fn serve(State(state): State<Shared>, Path((token, _name)): Path<(String, 
     let timeout = std::time::Duration::from_secs(state.settings.get().scanner.fs_timeout_seconds as u64);
     let file = crate::stream::open_library_file(file_id, &info.abs, &info.root, timeout).await?;
     let ct = crate::stream::content_type_for(&info.media.container, &info.abs);
-    let mut resp = crate::stream::serve_file(file, info.size as u64, info.mtime, ct, &method, &headers)?;
+    let mut resp = crate::stream::serve_file(file, info.size as u64, info.mtime, ct, &method, &headers, None)?;
     let name = file_name(&info.abs);
     let disp = format!("attachment; filename=\"{}\"; filename*=UTF-8''{}", name.replace(['"', '\\'], "_"), urlencoding::encode(&name));
     if let Ok(v) = HeaderValue::from_str(&disp) {
@@ -121,7 +121,7 @@ pub async fn serve_for_user(state: &Shared, user: &AuthUser, item_id: i64, metho
     let timeout = std::time::Duration::from_secs(state.settings.get().scanner.fs_timeout_seconds as u64);
     let file = crate::stream::open_library_file(fid, &info.abs, &info.root, timeout).await?;
     let ct = crate::stream::content_type_for(&info.media.container, &info.abs);
-    let mut resp = crate::stream::serve_file(file, info.size as u64, info.mtime, ct, method, headers)?;
+    let mut resp = crate::stream::serve_file(file, info.size as u64, info.mtime, ct, method, headers, None)?;
     if let Ok(v) = HeaderValue::from_str(&format!("attachment; filename*=UTF-8''{}", urlencoding::encode(&file_name(&info.abs)))) {
         resp.headers_mut().insert(header::CONTENT_DISPOSITION, v);
     }

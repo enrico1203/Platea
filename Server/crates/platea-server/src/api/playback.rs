@@ -18,8 +18,8 @@ use platea_playback::{self as pb, AudioInfo, DecisionError, DeviceProfile, Media
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use std::time::Duration;
 
 pub fn routes(api: Api) -> Api {
@@ -465,32 +465,30 @@ async fn info(State(state): State<Shared>, user: AuthUser, Json(req): Json<InfoR
         (item.title.clone(), item.year.map(|y| y.to_string()))
     };
     let start = req.start_ms.unwrap_or(0).max(0);
-    let sess = Arc::new(PlaySession {
-        id: session_id.clone(),
-        token: token.clone(),
-        user_id: user.user_id,
-        token_id: user.token_id,
-        expires_at: if user.is_admin { None } else { user.perms.expires_at },
-        username: user.username.clone(),
+    let client_ip = user.ip;
+    let extra = crate::sessions::SessionExtra {
+        ip: client_ip.map(|i| i.to_string()),
+        remote: client_ip.is_some_and(|i| !crate::net::in_any(&s.network.local_networks, i)),
+        details: crate::sessions::details(&file, &decision, hls.as_ref().map(|h| h.is_fmp4())),
+        position_ms: start,
+    };
+    let sess = Arc::new(PlaySession::new(
+        session_id.clone(),
+        token.clone(),
+        &user,
         item_id,
-        file_id: file.id,
+        file.id,
         title,
-        subtitle: subtitle_line,
-        poster_image: item.poster_id.or(item.series_poster_id),
-        device_name: user.device_name.clone(),
-        client: user.client.clone(),
-        decision: decision.clone(),
-        chain: chain.clone(),
+        subtitle_line,
+        item.poster_id.or(item.series_poster_id),
+        decision.clone(),
+        chain.clone(),
         bitrate,
         duration_ms,
-        started_at: now_ms(),
-        last_seen: AtomicI64::new(now_ms()),
-        position_ms: AtomicI64::new(start),
-        paused: AtomicBool::new(false),
         history_id,
         hls,
-        file: Mutex::new(None),
-    });
+        extra,
+    ));
     state.sessions.insert(sess.clone());
     state.events.admin("sessions.changed", json!({ "started": session_id }));
     tracing::info!(user = %user.username, method = decision.method.as_str(), reason = %reason, chain = %chain, "riproduzione avviata");
@@ -574,9 +572,7 @@ fn own_session(state: &Shared, user: &AuthUser, id: &str) -> ApiResult<Arc<PlayS
 async fn progress(State(state): State<Shared>, user: AuthUser, Path(id): Path<String>, Json(req): Json<ProgressReq>) -> ApiResult<Json<Value>> {
     let s = own_session(&state, &user, &id)?;
     let pos = req.position_ms.clamp(0, s.duration_ms.max(req.position_ms));
-    s.position_ms.store(pos, Ordering::Relaxed);
-    s.paused.store(req.paused, Ordering::Relaxed);
-    s.touch();
+    s.report(Some(pos), req.paused);
     state.sessions.record_progress(s.user_id, s.item_id, pos, s.duration_ms);
     Ok(Json(json!({ "ok": true })))
 }
@@ -662,7 +658,7 @@ async fn direct(State(state): State<Shared>, Path(id): Path<String>, Query(q): Q
         }
     };
     let ct = crate::stream::content_type_for(&info.media.container, &info.abs);
-    crate::stream::serve_file(file, info.size as u64, info.mtime, ct, &method, &headers)
+    crate::stream::serve_file(file, info.size as u64, info.mtime, ct, &method, &headers, Some(s.bytes_sent.clone()))
 }
 
 /// Un segmento sparito mentre la richiesta aspettava: la sessione è stata chiusa (nuova riproduzione,
@@ -693,6 +689,7 @@ async fn hls(State(state): State<Shared>, Path((id, name)): Path<(String, String
     if name == "init.mp4" && rt.is_fmp4() {
         let p = rt.init_segment().await.map_err(|e| ApiError::coded(StatusCode::INTERNAL_SERVER_ERROR, "TranscodeFailed", e.to_string()))?;
         let bytes = read_segment(&p).await?;
+        s.bytes_sent.fetch_add(bytes.len() as u64, Ordering::Relaxed);
         return Ok(Response::builder()
             .header(header::CONTENT_TYPE, "video/mp4")
             .header(header::CACHE_CONTROL, "private, max-age=3600")
@@ -722,6 +719,7 @@ async fn hls(State(state): State<Shared>, Path((id, name)): Path<(String, String
     for p in &paths {
         bytes.extend(read_segment(p).await?);
     }
+    s.bytes_sent.fetch_add(bytes.len() as u64, Ordering::Relaxed);
     let ct = if rt.is_fmp4() { "video/mp4" } else { "video/mp2t" };
     Ok(Response::builder().header(header::CONTENT_TYPE, ct).header(header::CACHE_CONTROL, "private, max-age=3600").body(Body::from(bytes)).unwrap())
 }

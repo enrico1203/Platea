@@ -40,7 +40,23 @@ export interface PlaybackInfo {
   subtitle_default: number | null;
   container: string;
 }
-export interface SessionView { id: string; user: string; item_id: string; title: string; subtitle: string | null; poster_url: string | null; device_name: string; client: string; method: Method; reasons: string[]; chain: string; bitrate: number | null; position_ms: number; duration_ms: number; paused: boolean; throttled: boolean; started_at: number }
+export interface SessionView { id: string; user: string; item_id: string; title: string; subtitle: string | null; poster_url: string | null; device_name: string; client: string; method: Method; reasons: string[]; chain: string; bitrate: number | null; position_ms: number; duration_ms: number; paused: boolean; throttled: boolean; started_at: number;
+  server_now: number; position_at: number; paused_since: number | null; last_seen: number; ip: string | null; remote: boolean;
+  details: SessionDetails; buffered_until_ms: number | null; backend: string | null; bandwidth_bps: number; bytes_sent: number }
+export interface SessionDetails {
+  file: { name: string | null; size: number; container: string; bitrate: number | null };
+  video: { codec: string; profile: string | null; width: number; height: number; bit_depth: number | null; hdr: string | null; bitrate: number | null } | null;
+  audio: { index: number; codec: string; channels: number; language: string | null; bitrate: number | null } | null;
+  audio_tracks: number;
+  subtitle: { index: number; codec: string; language: string | null; forced: boolean; external: boolean } | null;
+  subtitle_tracks: number;
+  out: {
+    video: { action: "copy" } | { action: "transcode"; codec: string; max_width: number; max_height: number; bitrate: number; tonemap: boolean; burn_subtitle: boolean };
+    audio: { action: "copy" } | { action: "none" } | { action: "transcode"; codec: string; channels: number; bitrate: number };
+    subtitle: "none" | "external" | "embedded" | "burn_in";
+    container: "file" | "hls_fmp4" | "hls_ts";
+  };
+}
 export interface Overview {
   sessions: SessionView[]; bandwidth_bps: number; counts: { direct_play: number; remux: number; transcode: number };
   transcode_slots: { hw_used: number; hw_max: number; sw_used: number; sw_max: number };

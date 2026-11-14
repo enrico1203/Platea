@@ -592,6 +592,18 @@ impl HlsRuntime {
         }
     }
 
+    /// Fin dove il video è pronto, contiguo dal punto in cui è partita la codifica in corso.
+    pub async fn buffered_until_ms(&self) -> Option<i64> {
+        let start = self.proc.lock().await.as_ref().map(|r| r.start_segment as usize)?;
+        let produced = contiguous_frontier(&self.completed(), start);
+        Some(self.cuts.get(produced).copied().unwrap_or(self.duration_ms))
+    }
+
+    /// Chi codifica adesso: "copia", il backend hardware, o "Software" dopo un ripiego.
+    pub fn backend(&self) -> String {
+        self.backend_label.lock().unwrap().clone()
+    }
+
     pub async fn is_paused(&self) -> bool {
         self.proc.lock().await.as_ref().is_some_and(|r| r.paused)
     }

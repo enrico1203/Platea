@@ -10,7 +10,7 @@ use platea_playback::{Decision, Method};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fs::File;
-use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
@@ -38,16 +38,183 @@ pub struct PlaySession {
     pub last_seen: AtomicI64,
     pub position_ms: AtomicI64,
     pub paused: AtomicBool,
+    /// Quando il client ha riferito l'ultima posizione: il pannello la fa avanzare da lì.
+    pub position_at: AtomicI64,
+    /// Inizio della pausa in corso (0 = in riproduzione).
+    pub paused_since: AtomicI64,
+    /// Indirizzo del client e se è fuori dalle reti locali.
+    pub ip: Option<String>,
+    pub remote: bool,
+    /// Sorgente e uscita (file, tracce, cosa fa il server), calcolate all'avvio.
+    pub details: serde_json::Value,
+    /// Byte inviati al client (file o segmenti), per la banda.
+    pub bytes_sent: Arc<AtomicU64>,
+    rate: Mutex<RateSample>,
     pub history_id: i64,
     pub hls: Option<Arc<HlsRuntime>>,
     /// Descrittore aperto per la durata della sessione: su un mount cloud riaprire costa secondi.
     pub file: Mutex<Option<Arc<File>>>,
 }
 
+#[derive(Default)]
+struct RateSample {
+    at: i64,
+    bytes: u64,
+    bps: u64,
+}
+
+/// Campi che dipendono dal client, uguali per le sessioni web e Jellyfin.
+pub struct SessionExtra {
+    pub ip: Option<String>,
+    pub remote: bool,
+    pub details: serde_json::Value,
+    pub position_ms: i64,
+}
+
 impl PlaySession {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        id: String,
+        token: String,
+        user: &crate::auth::AuthUser,
+        item_id: i64,
+        file_id: i64,
+        title: String,
+        subtitle: Option<String>,
+        poster_image: Option<i64>,
+        decision: Decision,
+        chain: String,
+        bitrate: Option<i64>,
+        duration_ms: i64,
+        history_id: i64,
+        hls: Option<Arc<HlsRuntime>>,
+        extra: SessionExtra,
+    ) -> Self {
+        let now = now_ms();
+        PlaySession {
+            id,
+            token,
+            user_id: user.user_id,
+            token_id: user.token_id,
+            expires_at: if user.is_admin { None } else { user.perms.expires_at },
+            username: user.username.clone(),
+            item_id,
+            file_id,
+            title,
+            subtitle,
+            poster_image,
+            device_name: user.device_name.clone(),
+            client: user.client.clone(),
+            decision,
+            chain,
+            bitrate,
+            duration_ms,
+            started_at: now,
+            last_seen: AtomicI64::new(now),
+            position_ms: AtomicI64::new(extra.position_ms),
+            paused: AtomicBool::new(false),
+            position_at: AtomicI64::new(now),
+            paused_since: AtomicI64::new(0),
+            ip: extra.ip,
+            remote: extra.remote,
+            details: extra.details,
+            bytes_sent: Arc::new(AtomicU64::new(0)),
+            rate: Mutex::new(RateSample { at: now, ..Default::default() }),
+            history_id,
+            hls,
+            file: Mutex::new(None),
+        }
+    }
+
     pub fn touch(&self) {
         self.last_seen.store(now_ms(), Ordering::Relaxed);
     }
+
+    /// Rapporto del client: posizione (se nota) e pausa, con l'istante in cui la pausa è iniziata.
+    pub fn report(&self, position_ms: Option<i64>, paused: bool) {
+        let now = now_ms();
+        if let Some(p) = position_ms {
+            self.position_ms.store(p, Ordering::Relaxed);
+            self.position_at.store(now, Ordering::Relaxed);
+        }
+        self.paused.store(paused, Ordering::Relaxed);
+        if paused {
+            let _ = self.paused_since.compare_exchange(0, now, Ordering::Relaxed, Ordering::Relaxed);
+        } else {
+            self.paused_since.store(0, Ordering::Relaxed);
+        }
+        self.touch();
+    }
+
+    /// Banda media dall'ultima lettura (almeno 2 s), in bit/s.
+    fn bandwidth(&self) -> u64 {
+        let now = now_ms();
+        let bytes = self.bytes_sent.load(Ordering::Relaxed);
+        let mut r = self.rate.lock().unwrap();
+        let dt = now - r.at;
+        if dt >= 2000 {
+            r.bps = bytes.saturating_sub(r.bytes) * 8 * 1000 / dt as u64;
+            r.at = now;
+            r.bytes = bytes;
+        }
+        r.bps
+    }
+}
+
+fn lang(l: &Option<String>) -> Option<String> {
+    l.as_ref().filter(|l| !l.is_empty() && l.as_str() != "und").cloned()
+}
+
+/// Sorgente e uscita di una riproduzione, per il pannello dell'amministratore.
+pub fn details(info: &crate::api::playback::FileInfo, d: &Decision, fmp4: Option<bool>) -> serde_json::Value {
+    use platea_playback::{AudioAction, SubtitleDelivery, VideoAction};
+    let m = &info.media;
+    let audio = d.audio_index.and_then(|i| m.audio.iter().find(|a| a.index == i)).or_else(|| m.audio.iter().find(|a| a.default)).or(m.audio.first());
+    let sub_index = match d.subtitle {
+        SubtitleDelivery::None => None,
+        SubtitleDelivery::External { index } | SubtitleDelivery::Embedded { index } | SubtitleDelivery::BurnIn { index } => Some(index),
+    };
+    let sub = sub_index.and_then(|i| m.subtitles.iter().find(|s| s.index == i));
+    let video = m.video.as_ref().map(|v| {
+        serde_json::json!({
+            "codec": v.codec, "profile": v.profile, "width": v.width, "height": v.height,
+            "bit_depth": v.bit_depth, "hdr": v.hdr, "bitrate": v.bitrate,
+        })
+    });
+    serde_json::json!({
+        "file": {
+            "name": info.abs.file_name().map(|n| n.to_string_lossy().to_string()),
+            "size": info.size,
+            "container": m.container,
+            "bitrate": m.bitrate,
+        },
+        "video": video,
+        "audio": audio.map(|a| serde_json::json!({ "index": a.index, "codec": a.codec, "channels": a.channels, "language": lang(&a.language), "bitrate": a.bitrate })),
+        "audio_tracks": m.audio.len(),
+        "subtitle": sub.map(|s| serde_json::json!({ "index": s.index, "codec": s.codec, "language": lang(&s.language), "forced": s.forced, "external": s.external })),
+        "subtitle_tracks": m.subtitles.len(),
+        "out": {
+            "video": match &d.video {
+                VideoAction::Copy => serde_json::json!({ "action": "copy" }),
+                VideoAction::Transcode { codec, max_width, max_height, bitrate, tonemap, burn_subtitle } => serde_json::json!({
+                    "action": "transcode", "codec": codec, "max_width": max_width, "max_height": max_height,
+                    "bitrate": bitrate, "tonemap": tonemap, "burn_subtitle": burn_subtitle.is_some(),
+                }),
+            },
+            "audio": match &d.audio {
+                AudioAction::Copy => serde_json::json!({ "action": "copy" }),
+                AudioAction::Transcode { codec, channels, bitrate } => serde_json::json!({ "action": "transcode", "codec": codec, "channels": channels, "bitrate": bitrate }),
+                AudioAction::None => serde_json::json!({ "action": "none" }),
+            },
+            "subtitle": match d.subtitle {
+                SubtitleDelivery::None => "none",
+                SubtitleDelivery::External { .. } => "external",
+                SubtitleDelivery::Embedded { .. } => "embedded",
+                SubtitleDelivery::BurnIn { .. } => "burn_in",
+            },
+            "container": match fmp4 { None => "file", Some(true) => "hls_fmp4", Some(false) => "hls_ts" },
+        },
+    })
 }
 
 #[derive(Serialize)]
@@ -69,6 +236,20 @@ pub struct SessionView {
     pub paused: bool,
     pub throttled: bool,
     pub started_at: i64,
+    /// Ora del server: il pannello fa avanzare la posizione da `position_at` senza dipendere dall'orologio del browser.
+    pub server_now: i64,
+    pub position_at: i64,
+    pub paused_since: Option<i64>,
+    pub last_seen: i64,
+    pub ip: Option<String>,
+    pub remote: bool,
+    pub details: serde_json::Value,
+    /// Fin dove è pronto il video sul server (HLS), in ms dall'inizio.
+    pub buffered_until_ms: Option<i64>,
+    /// Chi codifica davvero adesso (dopo un eventuale ripiego): "copia", "NVENC", "Software"…
+    pub backend: Option<String>,
+    pub bandwidth_bps: u64,
+    pub bytes_sent: u64,
 }
 
 #[derive(Default)]
@@ -266,6 +447,20 @@ pub async fn session_view(state: &Shared, s: &PlaySession) -> SessionView {
             None => false,
         },
         started_at: s.started_at,
+        server_now: now_ms(),
+        position_at: s.position_at.load(Ordering::Relaxed),
+        paused_since: Some(s.paused_since.load(Ordering::Relaxed)).filter(|t| *t > 0),
+        last_seen: s.last_seen.load(Ordering::Relaxed),
+        ip: s.ip.clone(),
+        remote: s.remote,
+        details: s.details.clone(),
+        buffered_until_ms: match &s.hls {
+            Some(h) => h.buffered_until_ms().await,
+            None => None,
+        },
+        backend: s.hls.as_ref().map(|h| h.backend()),
+        bandwidth_bps: s.bandwidth(),
+        bytes_sent: s.bytes_sent.load(Ordering::Relaxed),
     }
 }
 
