@@ -273,6 +273,11 @@ pub struct ScannerSettings {
     /// Dove il server vede la radice del mount rclone (es. /media/cloud). Vuoto = la radice di ogni libreria.
     #[schemars(title = "Percorso del mount rclone")]
     pub rclone_mount_path: String,
+    /// Più mount rclone, ognuno con il suo controllo remoto: `percorso=indirizzo`, es.
+    /// `/media/film=http://host.docker.internal:8573`. Prima di scansionare una cartella si aggiorna il mount
+    /// che la contiene (il percorso più lungo vince), anche per le librerie con più cartelle su mount diversi.
+    #[schemars(title = "Mount rclone (percorso=indirizzo rc)")]
+    pub rclone_mounts: Vec<String>,
     /// Tempo massimo per l'aggiornamento dell'elenco da parte di rclone (s).
     #[schemars(title = "Timeout aggiornamento rclone (s)", range(min = 10, max = 3600))]
     pub rclone_refresh_timeout_seconds: u32,
@@ -292,6 +297,7 @@ impl Default for ScannerSettings {
             list_concurrency_remote: 8,
             rclone_rc_url: String::new(),
             rclone_mount_path: String::new(),
+            rclone_mounts: vec![],
             rclone_refresh_timeout_seconds: 600,
         }
     }

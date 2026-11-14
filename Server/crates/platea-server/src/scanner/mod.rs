@@ -802,13 +802,40 @@ pub mod rclone {
         Some(r.to_string_lossy().trim_matches('/').to_string())
     }
 
+    /// Mount configurati: (percorso nel server, indirizzo rc). L'impostazione singola di prima vale come una voce.
+    pub fn mounts(sc: &crate::settings::ScannerSettings) -> Vec<(String, String)> {
+        let mut out: Vec<(String, String)> = sc
+            .rclone_mounts
+            .iter()
+            .filter_map(|e| {
+                let (p, u) = e.split_once('=')?;
+                let (p, u) = (p.trim().trim_end_matches('/'), u.trim());
+                (!p.is_empty() && (u.starts_with("http://") || u.starts_with("https://"))).then(|| (p.to_string(), u.to_string()))
+            })
+            .collect();
+        if !sc.rclone_rc_url.trim().is_empty() {
+            out.push((sc.rclone_mount_path.trim().trim_end_matches('/').to_string(), sc.rclone_rc_url.trim().to_string()));
+        }
+        out
+    }
+
+    /// Il mount che contiene la cartella (il percorso più lungo vince) e la cartella relativa da chiedere.
+    /// Una voce con percorso vuoto vale per tutte le cartelle che nessun'altra contiene.
+    pub fn pick(mounts: &[(String, String)], root: &Path, rel: &str) -> Option<(String, String)> {
+        let best = mounts
+            .iter()
+            .filter(|(p, _)| !p.is_empty())
+            .filter_map(|(p, u)| remote_dir(p, root, rel).map(|d| (p.len(), u.clone(), d)))
+            .max_by_key(|(len, _, _)| *len);
+        if let Some((_, u, d)) = best {
+            return Some((u, d));
+        }
+        mounts.iter().find(|(p, _)| p.is_empty()).map(|(_, u)| (u.clone(), rel.to_string()))
+    }
+
     pub async fn refresh(state: &Shared, root: &Path, rel: &str) {
         let sc = state.settings.get().scanner.clone();
-        let url = sc.rclone_rc_url.trim().to_string();
-        if url.is_empty() {
-            return;
-        }
-        let Some(dir) = remote_dir(&sc.rclone_mount_path, root, rel) else { return };
+        let Some((url, dir)) = pick(&mounts(&sc), root, rel) else { return };
         let body = if dir.is_empty() { serde_json::json!({ "recursive": "true" }) } else { serde_json::json!({ "dir": dir, "recursive": "true" }) };
         let t0 = std::time::Instant::now();
         let r = state
@@ -820,15 +847,52 @@ pub mod rclone {
             .await;
         match r {
             Ok(resp) if resp.status().is_success() => {
-                tracing::info!(dir = %dir, ms = t0.elapsed().as_millis() as u64, "rclone: elenco delle cartelle aggiornato")
+                tracing::info!(rc = %url, dir = %dir, ms = t0.elapsed().as_millis() as u64, "rclone: elenco delle cartelle aggiornato")
             }
             Ok(resp) => {
                 let status = resp.status();
                 let text = resp.text().await.unwrap_or_default();
-                tracing::warn!(%status, body = %text.chars().take(300).collect::<String>(), "rclone vfs/refresh non riuscito")
+                tracing::warn!(rc = %url, %status, body = %text.chars().take(300).collect::<String>(), "rclone vfs/refresh non riuscito")
             }
-            Err(e) => tracing::warn!(error = %e, "rclone non raggiungibile"),
+            Err(e) => tracing::warn!(rc = %url, error = %e, "rclone non raggiungibile"),
         }
+    }
+
+    #[cfg(test)]
+    #[test]
+    fn picks_mount_per_folder() {
+        let m = vec![
+            ("/media/film".to_string(), "http://h:8573".to_string()),
+            ("/media/serie".to_string(), "http://h:8574".to_string()),
+            ("/media/film/4K".to_string(), "http://h:9000".to_string()),
+        ];
+        assert_eq!(pick(&m, Path::new("/media/film"), "Matrix (1999)"), Some(("http://h:8573".into(), "Matrix (1999)".into())));
+        assert_eq!(pick(&m, Path::new("/media/serie/Anime"), ""), Some(("http://h:8574".into(), "Anime".into())));
+        // Il percorso più lungo vince.
+        assert_eq!(pick(&m, Path::new("/media/film/4K"), "Dune"), Some(("http://h:9000".into(), "Dune".into())));
+        // Cartella fuori da ogni mount: niente.
+        assert_eq!(pick(&m, Path::new("/media/locale"), ""), None);
+        // "/media/filmati" non è dentro "/media/film".
+        assert_eq!(pick(&m, Path::new("/media/filmati"), ""), None);
+        // Voce senza percorso: vale per il resto.
+        let mut m2 = m.clone();
+        m2.push((String::new(), "http://h:6470".into()));
+        assert_eq!(pick(&m2, Path::new("/media/locale"), "X"), Some(("http://h:6470".into(), "X".into())));
+    }
+
+    #[cfg(test)]
+    #[test]
+    fn parses_mount_entries() {
+        let sc = crate::settings::ScannerSettings {
+            rclone_mounts: vec!["/media/film/ = http://h:8573".into(), "senza-indirizzo".into(), "/x=ftp://no".into()],
+            rclone_rc_url: "http://h:6470".into(),
+            rclone_mount_path: "/media/jotta2".into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            mounts(&sc),
+            vec![("/media/film".to_string(), "http://h:8573".to_string()), ("/media/jotta2".to_string(), "http://h:6470".to_string())]
+        );
     }
 
     #[cfg(test)]

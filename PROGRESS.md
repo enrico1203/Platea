@@ -31,7 +31,10 @@ Se la sessione si interrompe, alla ripresa ("continua") si riparte da qui: legge
 - Nessun cargo/node sull'host: build solo via Docker.
 - 14/11/2026: l'installazione locale è stata azzerata su richiesta dell'utente (data, cache, transcode):
   l'onboarding lo fa l'utente. Niente account o librerie di prova sul database dell'utente.
-  Cartelle dei media solo nei `volumes` del compose (niente `MEDIA_DIR`): `/mnt/jotta2:/media/jotta2:ro,rslave`.
+  Cartelle dei media dell'utente in `docker-compose.override.yml` (NON versionato): `/mnt/{jotta2,ortiad,john,
+  audiolibri,film,serie}` → `/media/<nome>:ro,rslave` (mount rclone dell'host). rc di rclone: jotta2 :6470,
+  film :8573, serie :8574, john :8575, ortiad :8578, audiolibri :8579 — in Impostazioni → Scansione → "Mount rclone"
+  (`/media/<nome>=http://host.docker.internal:<porta>`), uno per mount; ogni cartella di libreria usa il suo.
   Tunnel Cloudflare attivo (profilo `tunnel`, token in `.env`). Password dimenticata:
   `docker compose exec server platea reset-password <utente>`.
 - 14/11/2026 sera: menu laterale fisso e comprimibile, pannello riproduzioni con dati dal vivo, ricerca nella

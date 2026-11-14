@@ -653,6 +653,8 @@ const it = {
       rclone_rc_url_hint: "Es. http://rclone:5572. Prima di leggere una cartella il server chiede a rclone di aggiornarne l'elenco.",
       rclone_mount_path: "Percorso del mount rclone",
       rclone_mount_path_hint: "Dove il server vede la radice del mount (es. /media/cloud). Serve a tradurre le cartelle delle librerie per rclone. Vuoto = la radice della libreria.",
+      rclone_mounts: "Mount rclone (più mount)",
+      rclone_mounts_hint: "Una voce per mount: percorso nel server=indirizzo del controllo remoto, es. /media/film=http://host.docker.internal:8573. Prima di scansionare una cartella si aggiorna il mount che la contiene, anche nelle librerie con più cartelle.",
       rclone_refresh_timeout_seconds: "Timeout aggiornamento rclone (s)",
       list_concurrency_local: "Cartelle lette in parallelo (librerie locali)",
       list_concurrency_remote: "Cartelle lette in parallelo (librerie remote)",

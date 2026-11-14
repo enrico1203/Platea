@@ -25,7 +25,7 @@ services:
       # Le cartelle dei media, sempre in sola lettura (:ro). rslave: il container vede anche un mount
       # rclone fatto dopo l'avvio. Una riga per ogni cartella: cartella dell'host → percorso nel container.
       # Sotto /media il selettore delle cartelle in Amministrazione → Librerie le trova subito.
-      - /mnt/jotta2:/media/jotta2:ro,rslave
+      # Le cartelle della propria installazione vanno meglio in docker-compose.override.yml (non versionato).
       # - /mnt/jottamio:/media/jottamio:ro,rslave
       # - /mnt/nas/Serie:/media/serie:ro,rslave
     # Transcodifiche brevi e frequenti: i segmenti possono stare in RAM.

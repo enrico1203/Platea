@@ -652,6 +652,8 @@ const en = {
       rclone_rc_url_hint: "E.g. http://rclone:5572. Before reading a folder the server asks rclone to refresh its listing.",
       rclone_mount_path: "rclone mount path",
       rclone_mount_path_hint: "Where the server sees the root of the mount (e.g. /media/cloud). Used to translate library folders for rclone. Empty = the library root.",
+      rclone_mounts: "rclone mounts (several)",
+      rclone_mounts_hint: "One entry per mount: path on the server=remote control URL, e.g. /media/film=http://host.docker.internal:8573. Before scanning a folder the server refreshes the mount that holds it, also in libraries with several folders.",
       rclone_refresh_timeout_seconds: "rclone refresh timeout (s)",
       list_concurrency_local: "Folders listed in parallel (local libraries)",
       list_concurrency_remote: "Folders listed in parallel (remote libraries)",
