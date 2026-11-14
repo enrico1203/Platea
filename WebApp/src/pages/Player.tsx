@@ -15,8 +15,11 @@ import { DEFAULT_PREFS } from "../lib/prefs";
 const QUALITIES = [0, 40_000_000, 20_000_000, 8_000_000, 4_000_000, 2_000_000, 1_000_000];
 const K_QUALITY = "platea.maxBitrate";
 
+/** Ogni video parte in qualità originale: un limite scelto nel player vale solo per quel video.
+ *  (Prima la scelta restava nel browser e tutti i video successivi partivano limitati.) */
 function readQuality(): number {
-  try { return Number(localStorage.getItem(K_QUALITY) ?? 0) || 0; } catch { return 0; }
+  try { localStorage.removeItem(K_QUALITY); } catch { /* ignora */ }
+  return 0;
 }
 
 type Panel = null | "subs" | "settings" | "info" | "chapters";
@@ -663,7 +666,6 @@ export default function Player() {
           {QUALITIES.map((q) => (
             <button key={q} className={quality === q ? "active" : ""} onClick={() => {
               setQuality(q);
-              try { localStorage.setItem(K_QUALITY, String(q)); } catch { /* ignora */ }
               setPanel(null);
               // La nuova qualità richiede una nuova decisione dal punto corrente.
               window.setTimeout(() => start({ startMs: (videoRef.current?.currentTime ?? 0) * 1000, audioIndex: info?.audio_index }), 0);
