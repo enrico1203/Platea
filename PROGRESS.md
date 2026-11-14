@@ -28,11 +28,33 @@ Se la sessione si interrompe, alla ripresa ("continua") si riparte da qui: legge
 ## Dove sono arrivato
 
 - [x] Letti i documenti, spostati in `docs/`
-- [ ] Repository GitHub creata
+- [x] Repository GitHub privata creata: github.com/enrico1203/Platea
+- [x] `Server/` workspace Rust: crate `platea-naming` (nomi), `platea-playback` (decisione), `platea-server` (eseguibile)
+- [x] Server compila; 39 test unitari verdi (`scripts/cargo.sh test`)
+- Moduli scritti nel server: boot, db (WAL, scrittore unico + pool lettura, migrazioni con backup), settings (schema JSON),
+  auth (Argon2id, token hash, cache, limite login), jobs (coda SQLite, priorità, semafori per libreria),
+  scanner (3 fasi, zero file aperti, mount assente, spostamenti, sidecar), probe (ffprobe, keyframe),
+  metadata (TMDB, punteggio, da verificare, immagini), transcode (comandi FFmpeg, HW detect, HLS con riavvio/throttle),
+  sessions, stream (Range), API REST completa + OpenAPI generato dalla tabella delle route + WebSocket eventi
+- [ ] Dockerfile Server con jellyfin-ffmpeg
+- [ ] Test end-to-end con clip generate da FFmpeg
+- [ ] WebApp React
+- [ ] docker-compose.yml root, README
+- [ ] Strato compatibile Jellyfin per Infuse (`api/jellyfin.rs` è uno stub)
 
 ## Prossimi passi
 
-Vedi roadmap in `docs/piano-di-progetto.md`, fasi 0 → 2 per la prima versione utile.
+1. Dockerfile server, prova end-to-end (setup, libreria, scan, probe, direct play, remux, transcodifica).
+2. WebApp (React + Vite + TS) con brand, wizard, home, dettaglio, player hls.js, dashboard admin.
+3. Compose root, README, poi strato Jellyfin per Infuse.
+
+## Debito tecnico noto (da fare dopo)
+
+- Segmenti HLS in MPEG-TS (non fMP4): HEVC in remux solo se il client lo dichiara in `hls_video_codecs`.
+- Keyframe estratti con ffprobe sui pacchetti (legge tutto il file): da sostituire con lettura dei Cues MKV.
+- `max_rating` per utente salvato ma non ancora applicato ai filtri.
+- Chiavi API con ambito limitato: tabella presente, endpoint da fare.
+- Log in tempo reale in dashboard da fare.
 
 ## Registro
 
