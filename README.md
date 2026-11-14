@@ -99,7 +99,7 @@ Metadati locali, letti una volta e mai scritti:
 | Client | Piattaforme | Stato |
 | --- | --- | --- |
 | WebApp Platea | Qualunque browser: computer, tablet, telefono (installabile come app web) | OK |
-| Infuse | iPhone, iPad, Apple TV, Mac (collegamento come server Jellyfin) | OK |
+| Infuse | iPhone, iPad, Apple TV, Mac (collegamento come server Jellyfin) | OK (provato su iPhone con Infuse 8.5, anche dal tunnel Cloudflare) |
 | App Android nativa | Telefoni, tablet, Android TV, Fire TV con Fire OS | TODO (fase 6) |
 | App iOS nativa | iPhone, iPad, Mac | TODO (fase 6) |
 

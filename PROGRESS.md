@@ -36,9 +36,10 @@ Se la sessione si interrompe, alla ripresa ("continua") si riparte da qui: legge
   `docker compose exec server platea reset-password <utente>`.
 - 14/11/2026 sera: menu laterale fisso e comprimibile, pannello riproduzioni con dati dal vivo, ricerca nella
   libreria, "torna su", associazione TMDB migliorata (da 214 incerti a 68), loghi SVG, API Jellyfin in più.
-  APERTO: Infuse da iOS via tunnel dà "si è verificato un errore" dopo il login riuscito. Log richieste
-  attivo (`PLATEA_LOG=info,tower_http=debug` in .env, da rimettere a `info` dopo): leggere i percorsi chiesti
-  da Infuse (`docker compose logs server | grep "path="`) e i "percorso non gestito".
+  Infuse 8.5 su iPhone FUNZIONA (confermato dall'utente) dopo: /UserViews/GroupingOptions, niente null nelle
+  risposte JSON, Fields negli elenchi (MediaSources, Path, ProviderIds, Genres). Per diagnosticare un client:
+  `PLATEA_LOG=info,tower_http=debug,platea::api::jellyfin=debug` in .env (percorsi e parametri di elenco nel log,
+  i "percorso non gestito" sempre a livello info). Ora di nuovo `PLATEA_LOG=info`.
 
 ## Dove sono arrivato
 
