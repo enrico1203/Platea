@@ -56,14 +56,39 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!me) return;
     connectEvents();
+    // Gli eventi arrivano a raffica durante una scansione o un'analisi (migliaia di elementi): si raccolgono
+    // e si ricarica al massimo una volta ogni pochi secondi per gruppo, mai una richiesta per evento.
+    const pending = new Set<string>();
+    const timers = new Map<string, number>();
+    const GROUPS: Record<string, { keys: string[]; wait: number }> = {
+      catalog: { keys: ["items", "home", "item", "libraries", "search"], wait: 10_000 },
+      userdata: { keys: ["items", "home", "item"], wait: 1_500 },
+      overview: { keys: ["admin:overview"], wait: 2_000 },
+      jobs: { keys: ["admin:jobs"], wait: 5_000 },
+    };
+    const flush = (g: string) => {
+      timers.delete(g);
+      if (!pending.delete(g)) return;
+      const keys = GROUPS[g].keys;
+      qc.invalidateQueries({
+        predicate: (q) => {
+          const k0 = String(q.queryKey[0]);
+          return keys.includes(k0) || keys.includes(`${k0}:${String(q.queryKey[1])}`);
+        },
+      });
+    };
+    const schedule = (g: string) => {
+      pending.add(g);
+      if (!timers.has(g)) timers.set(g, window.setTimeout(() => flush(g), GROUPS[g].wait));
+    };
     const off = subscribe((e) => {
-      if (e.type.startsWith("library.") || e.type.startsWith("item.")) qc.invalidateQueries({ predicate: (q) => ["items", "home", "item", "libraries", "search"].includes(String(q.queryKey[0])) });
-      if (e.type === "user_data.changed") qc.invalidateQueries({ predicate: (q) => ["items", "home", "item"].includes(String(q.queryKey[0])) });
-      if (e.type.startsWith("sessions.")) qc.invalidateQueries({ queryKey: ["admin", "overview"] });
-      if (e.type.startsWith("jobs.") || e.type.startsWith("scan.")) qc.invalidateQueries({ queryKey: ["admin", "jobs"] });
+      if (e.type.startsWith("library.") || e.type.startsWith("item.")) schedule("catalog");
+      if (e.type === "user_data.changed") schedule("userdata");
+      if (e.type.startsWith("sessions.")) schedule("overview");
+      if (e.type.startsWith("jobs.") || e.type.startsWith("scan.")) schedule("jobs");
       if (e.type === "resync") qc.invalidateQueries();
     });
-    return () => { off(); disconnectEvents(); };
+    return () => { off(); disconnectEvents(); timers.forEach((t) => window.clearTimeout(t)); };
   }, [me, qc]);
 
   const acceptToken = useCallback(async (token: string) => {
