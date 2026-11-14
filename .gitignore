@@ -4,10 +4,10 @@ Server/target/
 WebApp/node_modules/
 WebApp/dist/
 # Dati locali del compose
-data/
-cache/
-transcode/
-media/
+/data/
+/cache/
+/transcode/
+/media/
 .env
 *.log
 WebApp/*.tsbuildinfo
