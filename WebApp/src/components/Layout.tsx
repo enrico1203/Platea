@@ -1,7 +1,8 @@
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Home, Search, Film, Tv, LayoutDashboard, FolderOpen, Users, ListChecks, SearchCheck, Cpu, Settings, ScrollText, Server, Terminal, User, Info, LogOut, Library as LibraryIcon, ListVideo } from "lucide-react";
-import { Logo } from "./Logo";
+import { Home, Search, Film, Tv, LayoutDashboard, FolderOpen, Users, ListChecks, SearchCheck, Cpu, Settings, ScrollText, Server, Terminal, User, Info, LogOut, Library as LibraryIcon, ListVideo, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Logo, Mark } from "./Logo";
 import { api, mediaUrl } from "../api/client";
 import type { Library, Page } from "../api/types";
 import { useSession } from "../session";
@@ -20,51 +21,73 @@ export function Avatar({ name, url, size = 28 }: { name: string; url: string | n
   return <span className="avatar avatar--initials" style={{ ...style, background: `hsl(${h} 45% 32%)` }} aria-hidden>{name.slice(0, 1).toUpperCase()}</span>;
 }
 
+const COLLAPSED_KEY = "platea.sidebar.collapsed";
+
+/** Menu compresso o no: preferenza di questo browser. */
+function useCollapsed(): [boolean, () => void] {
+  const [collapsed, set] = useState(() => {
+    try { return localStorage.getItem(COLLAPSED_KEY) === "1"; } catch { return false; }
+  });
+  const toggle = () => set((c) => {
+    try { localStorage.setItem(COLLAPSED_KEY, c ? "0" : "1"); } catch { /* storage non disponibile */ }
+    return !c;
+  });
+  return [collapsed, toggle];
+}
+
 export function Layout() {
   const t = useT();
   const { me, logout } = useSession();
   const nav = useNavigate();
   const { data: libs } = useLibraries();
+  const [collapsed, toggleCollapsed] = useCollapsed();
   const link = ({ isActive }: { isActive: boolean }) => `nav__item${isActive ? " active" : ""}`;
+  // Compresso: solo icone, il nome nel tooltip e per i lettori di schermo.
+  const tip = (label: string) => (collapsed ? { title: label, "aria-label": label } : {});
   return (
-    <div className="app">
+    <div className={`app${collapsed ? " app--collapsed" : ""}`}>
       <aside className="sidebar">
-        <div className="sidebar__logo"><Logo /></div>
+        <div className="sidebar__logo">
+          {collapsed ? <Link to="/" className="logo" aria-label="Platea"><Mark /></Link> : <Logo />}
+          <button className="sidebar__toggle" onClick={toggleCollapsed} aria-expanded={!collapsed} title={t(collapsed ? "nav.expand" : "nav.collapse")} aria-label={t(collapsed ? "nav.expand" : "nav.collapse")}>
+            {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
+          </button>
+        </div>
         <nav className="nav" aria-label={t("nav.main")}>
-          <NavLink to="/" end className={link}><Home />{t("nav.home")}</NavLink>
-          <NavLink to="/search" className={link}><Search />{t("nav.search")}</NavLink>
-          <NavLink to="/playlists" className={link}><ListVideo />{t("nav.playlists")}</NavLink>
+          <NavLink to="/" end className={link} {...tip(t("nav.home"))}><Home /><span className="nav__label">{t("nav.home")}</span></NavLink>
+          <NavLink to="/search" className={link} {...tip(t("nav.search"))}><Search /><span className="nav__label">{t("nav.search")}</span></NavLink>
+          <NavLink to="/playlists" className={link} {...tip(t("nav.playlists"))}><ListVideo /><span className="nav__label">{t("nav.playlists")}</span></NavLink>
           {libs?.map((l) => (
-            <NavLink key={l.id} to={`/library/${l.id}`} className={link}>
+            <NavLink key={l.id} to={`/library/${l.id}`} className={link} {...tip(l.name)}>
               {l.kind === "movies" ? <Film /> : <Tv />}
-              {l.name}
+              <span className="nav__label">{l.name}</span>
             </NavLink>
           ))}
         </nav>
         {me?.is_admin && (
           <nav className="nav__group" aria-label={t("nav.admin")}>
             <span className="pl-eyebrow">{t("nav.admin")}</span>
-            <NavLink to="/admin" end className={link}><LayoutDashboard />{t("admin.overview.title")}</NavLink>
-            <NavLink to="/admin/libraries" className={link}><FolderOpen />{t("admin.libraries.title")}</NavLink>
-            <NavLink to="/admin/users" className={link}><Users />{t("admin.users.title")}</NavLink>
-            <NavLink to="/admin/review" className={link}><SearchCheck />{t("admin.review.title")}</NavLink>
-            <NavLink to="/admin/jobs" className={link}><ListChecks />{t("admin.jobs.title")}</NavLink>
-            <NavLink to="/admin/transcode" className={link}><Cpu />{t("admin.transcode.title")}</NavLink>
-            <NavLink to="/admin/settings" className={link}><Settings />{t("admin.settings.title")}</NavLink>
-            <NavLink to="/admin/activity" className={link}><ScrollText />{t("admin.activity.title")}</NavLink>
-            <NavLink to="/admin/logs" className={link}><Terminal />{t("admin.logs.title")}</NavLink>
-            <NavLink to="/admin/system" className={link}><Server />{t("admin.system.title")}</NavLink>
+            <NavLink to="/admin" end className={link} {...tip(t("admin.overview.title"))}><LayoutDashboard /><span className="nav__label">{t("admin.overview.title")}</span></NavLink>
+            <NavLink to="/admin/libraries" className={link} {...tip(t("admin.libraries.title"))}><FolderOpen /><span className="nav__label">{t("admin.libraries.title")}</span></NavLink>
+            <NavLink to="/admin/users" className={link} {...tip(t("admin.users.title"))}><Users /><span className="nav__label">{t("admin.users.title")}</span></NavLink>
+            <NavLink to="/admin/review" className={link} {...tip(t("admin.review.title"))}><SearchCheck /><span className="nav__label">{t("admin.review.title")}</span></NavLink>
+            <NavLink to="/admin/jobs" className={link} {...tip(t("admin.jobs.title"))}><ListChecks /><span className="nav__label">{t("admin.jobs.title")}</span></NavLink>
+            <NavLink to="/admin/transcode" className={link} {...tip(t("admin.transcode.title"))}><Cpu /><span className="nav__label">{t("admin.transcode.title")}</span></NavLink>
+            <NavLink to="/admin/settings" className={link} {...tip(t("admin.settings.title"))}><Settings /><span className="nav__label">{t("admin.settings.title")}</span></NavLink>
+            <NavLink to="/admin/activity" className={link} {...tip(t("admin.activity.title"))}><ScrollText /><span className="nav__label">{t("admin.activity.title")}</span></NavLink>
+            <NavLink to="/admin/logs" className={link} {...tip(t("admin.logs.title"))}><Terminal /><span className="nav__label">{t("admin.logs.title")}</span></NavLink>
+            <NavLink to="/admin/system" className={link} {...tip(t("admin.system.title"))}><Server /><span className="nav__label">{t("admin.system.title")}</span></NavLink>
           </nav>
         )}
         <div className="sidebar__foot">
-          <NavLink to="/account" className={link}><Avatar name={me?.username ?? ""} url={me?.avatar ?? null} size={22} />{me?.username}</NavLink>
-          <NavLink to="/about" className={link}><Info />{t("nav.about")}</NavLink>
-          <button className="nav__item" style={{ border: 0, background: "none", cursor: "pointer" }} onClick={async () => { await logout(); nav("/login"); }}>
-            <LogOut />{t("nav.logout")}
+          <NavLink to="/account" className={link} {...tip(me?.username ?? "")}><Avatar name={me?.username ?? ""} url={me?.avatar ?? null} size={22} /><span className="nav__label">{me?.username}</span></NavLink>
+          <NavLink to="/about" className={link} {...tip(t("nav.about"))}><Info /><span className="nav__label">{t("nav.about")}</span></NavLink>
+          <button className="nav__item nav__button" {...tip(t("nav.logout"))} onClick={async () => { await logout(); nav("/login"); }}>
+            <LogOut /><span className="nav__label">{t("nav.logout")}</span>
           </button>
         </div>
       </aside>
-      <div>
+      <div className="app__content">
         <header className="topbar">
           <Logo />
           <NavLink to="/account" className="icon-btn" aria-label={t("nav.account")}><Avatar name={me?.username ?? ""} url={me?.avatar ?? null} size={30} /></NavLink>

@@ -1,6 +1,8 @@
 /* Platea — stili dell'applicazione. Ogni valore viene dai token. */
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); }
+/* Niente effetto elastico della pagina a fine scorrimento: con la barra laterale fissa sembrerebbe muoversi anche lei. */
+html { overscroll-behavior-y: none; }
 body { font: 400 15px/22px var(--font-sans); -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; }
 #root { min-height: 100dvh; }
 a { color: var(--blue-text); text-decoration: none; }
@@ -35,9 +37,23 @@ img { display: block; }
 }
 
 /* Struttura */
-.app { display: grid; grid-template-columns: 240px minmax(0, 1fr); min-height: 100dvh; }
-.sidebar { position: sticky; top: 0; height: 100dvh; overflow-y: auto; background: var(--surface-1); border-right: 1px solid var(--line); padding: var(--space-5) var(--space-3); display: flex; flex-direction: column; gap: var(--space-5); }
-.sidebar__logo { padding: 0 var(--space-3); }
+/* Barra laterale fissa (non sticky): durante uno scorrimento veloce resta ferma, il contenuto scorre sotto. */
+.app { --sidebar-w: 240px; min-height: 100dvh; }
+.app--collapsed { --sidebar-w: 72px; }
+.app__content { margin-left: var(--sidebar-w); min-width: 0; transition: margin-left .16s ease; }
+.sidebar { position: fixed; top: 0; left: 0; bottom: 0; z-index: 30; width: var(--sidebar-w); box-sizing: border-box; overflow-x: hidden; overflow-y: auto; background: var(--surface-1); border-right: 1px solid var(--line); padding: var(--space-5) var(--space-3); display: flex; flex-direction: column; gap: var(--space-5); transition: width .16s ease; }
+.sidebar__logo { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: 36px; padding: 0 0 0 var(--space-3); }
+.sidebar__toggle { display: grid; place-items: center; width: 36px; height: 36px; flex: none; border: 0; border-radius: var(--radius-md); background: none; color: var(--ink-subtle); cursor: pointer; transition: background-color .12s ease, color .12s ease; }
+.sidebar__toggle:hover { background: var(--surface-2); color: var(--ink); }
+.sidebar__toggle svg { width: 20px; height: 20px; }
+.nav__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav__button { border: 0; background: none; cursor: pointer; width: 100%; text-align: left; }
+/* Compresso: solo icone, centrate; il marchio sopra il pulsante per riaprire. */
+.sidebar > * { flex-shrink: 0; } /* menu più alto della finestra: scorre, non si schiaccia */
+.app--collapsed .sidebar__logo { flex-direction: column; justify-content: flex-start; padding: 0; gap: var(--space-3); }
+.app--collapsed .nav__item { justify-content: center; padding: 0; }
+.app--collapsed .nav__label { display: none; }
+.app--collapsed .nav__group .pl-eyebrow { display: block; height: 1px; padding: 0; margin: 0 var(--space-3) var(--space-2); overflow: hidden; color: transparent; background: var(--line); }
 .nav { display: flex; flex-direction: column; gap: 2px; }
 .nav__item { display: flex; align-items: center; gap: var(--space-3); height: 40px; padding: 0 var(--space-3); border-radius: var(--radius-md); color: var(--ink-muted); font: 500 14px/20px var(--font-sans); text-decoration: none; transition: background-color .12s ease, color .12s ease; }
 .nav__item svg { width: 20px; height: 20px; flex: none; }
@@ -50,7 +66,7 @@ img { display: block; }
 .topbar { display: none; }
 .tabbar { display: none; }
 @media (max-width: 900px) {
-  .app { grid-template-columns: minmax(0, 1fr); }
+  .app__content { margin-left: 0; }
   .sidebar { display: none; }
   .main { padding: var(--space-4); padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
   .topbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); position: sticky; top: 0; z-index: 20; padding: calc(var(--space-3) + env(safe-area-inset-top)) var(--space-4) var(--space-3); background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); }
@@ -240,6 +256,7 @@ img { display: block; }
 .matrix td.ko { color: var(--ink-subtle); }
 
 @media (prefers-reduced-motion: reduce) {
+  .sidebar, .app__content { transition: none; }
   *, *::before, *::after { transition-duration: 0s !important; animation-duration: 0s !important; }
 }
 

@@ -33,6 +33,8 @@ const en = {
     account: "Account",
     about: "About",
     logout: "Sign out",
+    collapse: "Collapse menu",
+    expand: "Expand menu",
   },
   auth: {
     username: "Username",

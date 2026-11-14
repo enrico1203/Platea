@@ -34,6 +34,8 @@ const it = {
     account: "Account",
     about: "Informazioni",
     logout: "Esci",
+    collapse: "Comprimi il menu",
+    expand: "Espandi il menu",
   },
   auth: {
     username: "Nome utente",
