@@ -37,6 +37,8 @@ pub fn routes(api: Api) -> Api {
         .post("/api/v1/admin/transcode/test", "Transcodifica", Access::Admin, "Prova ora: rileva di nuovo le GPU", transcode_test)
         .get("/api/v1/admin/system", "Sistema", Access::Admin, "Versione, percorsi, database", system)
         .post("/api/v1/admin/backup", "Sistema", Access::Admin, "Crea una copia di sicurezza e la scarica", backup)
+        .post("/api/v1/admin/jobs/pause", "Lavori", Access::Admin, "Mette in pausa la coda dei lavori (minuti, o finché non si riprende)", jobs_pause)
+        .post("/api/v1/admin/jobs/resume", "Lavori", Access::Admin, "Riprende la coda dei lavori", jobs_resume)
         .get("/api/v1/admin/maintenance", "Sistema", Access::Admin, "Esito dell'ultima manutenzione del database", maintenance_last)
         .post("/api/v1/admin/maintenance", "Sistema", Access::Admin, "Avvia ora la manutenzione completa del database", maintenance_run)
         .get("/api/v1/admin/backups", "Sistema", Access::Admin, "Copie di sicurezza presenti in data/backups", backups_list)
@@ -134,6 +136,30 @@ async fn sessions(State(state): State<Shared>, _a: AdminUser) -> ApiResult<Json<
         out.push(crate::sessions::session_view(&state, s).await);
     }
     Ok(Json(json!({ "items": out })))
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct PauseReq {
+    /// Minuti di pausa; assente o 0 = finché non si riprende.
+    minutes: Option<u32>,
+}
+
+async fn jobs_pause(State(state): State<Shared>, AdminUser(admin): AdminUser, Json(req): Json<PauseReq>) -> ApiResult<Json<Value>> {
+    let minutes = req.minutes.filter(|m| *m > 0).map(|m| m.min(7 * 24 * 60));
+    let until = crate::jobs::pause(&state, minutes).await;
+    let what = match minutes {
+        Some(m) => format!("per {m} minuti"),
+        None => "finché non si riprende".into(),
+    };
+    state.db.activity(Some(admin.user_id), "jobs_paused", &format!("{} ha messo in pausa i lavori {what}", admin.username), None).await;
+    Ok(Json(json!({ "paused_until": until })))
+}
+
+async fn jobs_resume(State(state): State<Shared>, AdminUser(admin): AdminUser) -> ApiResult<Json<Value>> {
+    crate::jobs::resume(&state).await;
+    state.db.activity(Some(admin.user_id), "jobs_resumed", &format!("{} ha ripreso i lavori", admin.username), None).await;
+    Ok(Json(json!({ "paused_until": null })))
 }
 
 async fn maintenance_last(State(state): State<Shared>, _a: AdminUser) -> ApiResult<Json<Value>> {
@@ -314,7 +340,11 @@ async fn jobs(State(state): State<Shared>, _a: AdminUser, Query(q): Query<JobQue
     let mut items = items;
     describe_jobs(&state, &mut items).await?;
     let counts: Vec<(String, i64)> = sqlx::query_as("SELECT state, COUNT(*) FROM jobs GROUP BY state").fetch_all(&state.db.read).await?;
-    Ok(Json(json!({ "items": items, "counts": counts.into_iter().collect::<std::collections::HashMap<_, _>>() })))
+    Ok(Json(json!({
+        "items": items,
+        "counts": counts.into_iter().collect::<std::collections::HashMap<_, _>>(),
+        "paused_until": state.jobs.paused_until(),
+    })))
 }
 
 async fn retry_job(State(state): State<Shared>, _a: AdminUser, Path(id): Path<i64>) -> ApiResult<Json<Value>> {

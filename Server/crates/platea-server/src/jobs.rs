@@ -94,6 +94,8 @@ pub struct JobQueue {
     probe_lanes: Arc<Mutex<HashMap<i64, (usize, Arc<Semaphore>)>>>,
     /// Ultimi avvii di analisi per libreria, per il tetto al minuto.
     probe_rate: Arc<Mutex<HashMap<i64, Vec<i64>>>>,
+    /// Pausa della coda: fino a quando (ms), `i64::MAX` = finché l'amministratore non riprende, 0 = attiva.
+    paused_until: Arc<std::sync::atomic::AtomicI64>,
 }
 
 impl JobQueue {
@@ -104,7 +106,19 @@ impl JobQueue {
         lanes.insert("metadata", Arc::new(Semaphore::new(4)));
         lanes.insert("images", Arc::new(Semaphore::new(4)));
         lanes.insert("maintenance", Arc::new(Semaphore::new(1)));
-        JobQueue { notify: Arc::new(Notify::new()), lanes: Arc::new(lanes), probe_lanes: Default::default(), probe_rate: Default::default() }
+        JobQueue {
+            notify: Arc::new(Notify::new()),
+            lanes: Arc::new(lanes),
+            probe_lanes: Default::default(),
+            probe_rate: Default::default(),
+            paused_until: Default::default(),
+        }
+    }
+
+    /// Fine della pausa in corso, se la coda è in pausa adesso.
+    pub fn paused_until(&self) -> Option<i64> {
+        let u = self.paused_until.load(std::sync::atomic::Ordering::Relaxed);
+        (u > now_ms()).then_some(u)
     }
 
     pub fn wake(&self) {
@@ -198,8 +212,34 @@ pub async fn recover(state: &Shared) -> anyhow::Result<()> {
 }
 
 /// Ciclo principale: preleva i lavori pronti, li avvia rispettando i semafori.
+const PAUSE_KEY: &str = "jobs_paused_until";
+
+/// Mette in pausa la coda: i lavori in corso finiscono, i nuovi aspettano. `minutes = None`: finché non si riprende.
+/// La pausa sopravvive a un riavvio del server.
+pub async fn pause(state: &Shared, minutes: Option<u32>) -> i64 {
+    let until = match minutes.filter(|m| *m > 0) {
+        Some(m) => now_ms() + m as i64 * 60_000,
+        None => i64::MAX,
+    };
+    state.jobs.paused_until.store(until, std::sync::atomic::Ordering::Relaxed);
+    let _ = state.db.state_set(PAUSE_KEY, &until.to_string()).await;
+    state.events.admin("jobs.paused", serde_json::json!({ "until": until }));
+    until
+}
+
+pub async fn resume(state: &Shared) {
+    state.jobs.paused_until.store(0, std::sync::atomic::Ordering::Relaxed);
+    let _ = state.db.state_set(PAUSE_KEY, "0").await;
+    state.events.admin("jobs.paused", serde_json::json!({ "until": null }));
+    state.jobs.wake();
+}
+
 pub async fn run_dispatcher(state: Shared) {
     let queue = state.jobs.clone();
+    // Pausa impostata prima di un riavvio.
+    if let Some(u) = state.db.state_get(PAUSE_KEY).await.ok().flatten().and_then(|v| v.parse::<i64>().ok()) {
+        queue.paused_until.store(u, std::sync::atomic::Ordering::Relaxed);
+    }
     loop {
         let dispatched = match dispatch_some(&state).await {
             Ok(n) => n,
@@ -273,6 +313,10 @@ async fn ready_jobs(state: &Shared, now: i64) -> anyhow::Result<Vec<JobRow>> {
 
 async fn dispatch_some(state: &Shared) -> anyhow::Result<usize> {
     let now = now_ms();
+    // In pausa: niente lavori nuovi. Alla scadenza si riparte da soli (il dispatcher ricontrolla ogni 5 s).
+    if state.jobs.paused_until().is_some() {
+        return Ok(0);
+    }
     let rows = ready_jobs(state, now).await?;
     let mut started = 0;
     for row in rows {

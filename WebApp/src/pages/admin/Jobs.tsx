@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { RotateCcw } from "lucide-react";
+import { Pause, Play, RotateCcw } from "lucide-react";
 import { api } from "../../api/client";
 import type { Job } from "../../api/types";
-import { Badge, Empty } from "../../components/ui";
+import { Alert, Badge, Dialog, Empty, TextField } from "../../components/ui";
 import { useI18n, type MessageKey } from "../../i18n";
 
 const STATES = ["queued", "running", "failed", "done", "all"] as const;
@@ -13,13 +13,25 @@ export default function Jobs() {
   const { t, relative, num } = useI18n();
   const qc = useQueryClient();
   const [st, setSt] = useState<(typeof STATES)[number]>("queued");
-  const { data } = useQuery({ queryKey: ["admin", "jobs", st], queryFn: () => api<{ items: Job[]; counts: Record<string, number> }>(`/api/v1/admin/jobs?state=${st}&limit=200`) });
+  const { data } = useQuery({ queryKey: ["admin", "jobs", st], queryFn: () => api<{ items: Job[]; counts: Record<string, number>; paused_until: number | null }>(`/api/v1/admin/jobs?state=${st}&limit=200`) });
+  const [pauseOpen, setPauseOpen] = useState(false);
+  const paused = data?.paused_until ?? null;
+  const resume = async () => { await api("/api/v1/admin/jobs/resume", { method: "POST" }); qc.invalidateQueries({ queryKey: ["admin", "jobs"] }); };
   return (
     <div className="stack-lg">
       <div className="page-head" style={{ marginBottom: 0 }}>
         <h1 className="t-h1">{t("admin.jobs.title")}</h1>
+        <div className="row">
+        {paused ? (
+          <button className="pl-btn pl-btn--primary" onClick={resume}><Play />{t("admin.jobs.resume")}</button>
+        ) : (
+          <button className="pl-btn pl-btn--secondary" onClick={() => setPauseOpen(true)}><Pause />{t("admin.jobs.pause")}</button>
+        )}
         {st === "failed" && (data?.items.length ?? 0) > 0 && <button className="pl-btn pl-btn--ghost" onClick={async () => { await api("/api/v1/admin/jobs/failed", { method: "DELETE" }); qc.invalidateQueries({ queryKey: ["admin", "jobs"] }); }}>{t("admin.jobs.clearFailed")}</button>}
+        </div>
       </div>
+      {paused && <PausedBanner until={paused} onResume={resume} />}
+      {pauseOpen && <PauseDialog onClose={() => setPauseOpen(false)} onDone={() => qc.invalidateQueries({ queryKey: ["admin", "jobs"] })} />}
       <div className="tabs" role="tablist">
         {STATES.map((s) => (
           <button key={s} role="tab" className={`tab${st === s ? " active" : ""}`} onClick={() => setSt(s)}>
@@ -58,3 +70,43 @@ export default function Jobs() {
     </div>
   );
 }
+
+/** Avviso di coda in pausa: fino a quando, e "Riprendi". La scadenza la gestisce il server. */
+function PausedBanner({ until, onResume }: { until: number; onResume: () => void }) {
+  const { t, tag, relative } = useI18n();
+  const forever = until > Date.now() + 365 * 86_400_000;
+  const at = new Intl.DateTimeFormat(tag, { hour: "2-digit", minute: "2-digit" }).format(new Date(until));
+  return (
+    <Alert tone="warning">
+      {forever ? t("admin.jobs.pausedForever") : t("admin.jobs.pausedUntil", { time: at, rel: relative(until) })}{" "}
+      <button className="pl-btn pl-btn--ghost" onClick={onResume}>{t("admin.jobs.resume")}</button>
+    </Alert>
+  );
+}
+
+const PAUSE_CHOICES = [15, 30, 60, 120, 240, 480];
+
+function PauseDialog({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const { t, duration } = useI18n();
+  const [custom, setCustom] = useState("");
+  const go = async (minutes: number | null) => {
+    await api("/api/v1/admin/jobs/pause", { body: { minutes } });
+    onDone();
+    onClose();
+  };
+  const n = Number(custom);
+  return (
+    <Dialog title={t("admin.jobs.pauseTitle")} onClose={onClose}>
+      <p className="t-small muted">{t("admin.jobs.pauseHint")}</p>
+      <div className="row" style={{ flexWrap: "wrap" }}>
+        {PAUSE_CHOICES.map((m) => <button key={m} className="pl-btn pl-btn--secondary" onClick={() => go(m)}>{duration(m * 60_000)}</button>)}
+      </div>
+      <div className="row" style={{ alignItems: "flex-end" }}>
+        <TextField label={t("admin.jobs.pauseMinutes")} inputMode="numeric" value={custom} onChange={(e) => setCustom(e.target.value.replace(/[^0-9]/g, ""))} />
+        <button className="pl-btn pl-btn--secondary" disabled={!(n > 0)} onClick={() => go(n)}>{t("admin.jobs.pause")}</button>
+      </div>
+      <button className="pl-btn pl-btn--ghost" onClick={() => go(null)}>{t("admin.jobs.pauseForever")}</button>
+    </Dialog>
+  );
+}
+
