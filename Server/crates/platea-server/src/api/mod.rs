@@ -178,7 +178,7 @@ pub fn router(state: Shared) -> Router {
         .layer(CompressionLayer::new().gzip(true).compress_when(compress_predicate()))
         .layer(TraceLayer::new_for_http().make_span_with(|req: &Request<Body>| {
             // Nel log solo il percorso: mai la query, che può contenere un token.
-            tracing::debug_span!("http", method = %req.method(), path = %req.uri().path())
+            tracing::info_span!("http", method = %req.method(), path = %req.uri().path())
         }))
         .with_state(state)
 }
