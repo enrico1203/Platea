@@ -23,7 +23,8 @@ Serve Docker con il plugin Compose.
 ```sh
 git clone https://github.com/enrico1203/Platea.git
 cd Platea
-cp .env.example .env          # imposta MEDIA_DIR con la cartella dei tuoi film e serie
+cp .env.example .env          # porte, fuso orario, tunnel (facoltativo)
+# in docker-compose.yml, servizio server → volumes: una riga per ogni cartella dei media
 docker compose up -d --build
 docker compose logs server | grep -i codice
 ```
@@ -40,7 +41,7 @@ Apri `http://<host>:8080`, inserisci il codice di primo avvio stampato nei log e
 | `./data` | Database e segreto dell'installazione | No: va nel backup |
 | `./cache` | Immagini ridimensionate, sottotitoli estratti | Sì |
 | `./transcode` | Segmenti delle sessioni attive | Sì |
-| `MEDIA_DIR` → `/media` | La libreria, in sola lettura. Più cartelle: una riga per ognuna nei `volumes` del servizio `server` (es. `/mnt/jottamio:/media/jottamio:ro,rslave`) | — |
+| Cartelle dei media → `/media/…` | La libreria, in sola lettura: una riga per ognuna nei `volumes` del servizio `server` (es. `/mnt/jottamio:/media/jottamio:ro,rslave`) | — |
 
 Per aggiornare: `git pull && docker compose up -d --build`. Le migrazioni del database partono da sole, dopo una copia di sicurezza.
 
@@ -57,7 +58,7 @@ Poi in **Amministrazione → Transcodifica → Prova ora**: il server codifica e
 
 ### Storage cloud (rclone)
 
-Monta lo storage sull'host e indica il punto di mount in `MEDIA_DIR` (l'opzione `rslave` fa vedere al container anche un mount fatto dopo l'avvio). Crea la libreria con il profilo **Remoto**: scansione ogni 6 ore, un'analisi alla volta, cartelle elencate in parallelo.
+Monta lo storage sull'host e aggiungi il punto di mount ai `volumes` del servizio `server` (l'opzione `rslave` fa vedere al container anche un mount fatto dopo l'avvio). Crea la libreria con il profilo **Remoto**: scansione ogni 6 ore, un'analisi alla volta, cartelle elencate in parallelo.
 
 - **Remux senza scaricare il film.** Per gli MKV l'indice dei keyframe viene dai Cues del file (poche centinaia di KB), non dalla lettura di tutti i pacchetti: un salto a metà film parte in meno di un secondo.
 - **Controllo remoto di rclone.** Se il mount ha `--rc` (per esempio `--rc --rc-addr :5572`), in **Impostazioni → Scansione** imposta l'URL (`http://host.docker.internal:5572`, aggiungendo al servizio `server` `extra_hosts: ["host.docker.internal:host-gateway"]`) e il percorso in cui il server vede la radice del mount (es. `/media`). Prima di ogni scansione il server chiede a rclone di aggiornare l'elenco delle cartelle in un colpo solo (`vfs/refresh`).
