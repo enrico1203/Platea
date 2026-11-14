@@ -29,6 +29,11 @@ Se la sessione si interrompe, alla ripresa ("continua") si riparte da qui: legge
   ma non può riprodurre né scaricare. (Fatta: vedi sotto.)
 - Host condiviso con altri progetti Docker: le porte 8096 (server) e 8080 (web) erano libere all'inizio.
 - Nessun cargo/node sull'host: build solo via Docker.
+- 14/11/2026: l'installazione locale è stata azzerata su richiesta dell'utente (data, cache, transcode):
+  l'onboarding lo fa l'utente. Niente account o librerie di prova sul database dell'utente.
+  Cartelle dei media solo nei `volumes` del compose (niente `MEDIA_DIR`): `/mnt/jotta2:/media/jotta2:ro,rslave`.
+  Tunnel Cloudflare attivo (profilo `tunnel`, token in `.env`). Password dimenticata:
+  `docker compose exec server platea reset-password <utente>`.
 
 ## Dove sono arrivato
 
