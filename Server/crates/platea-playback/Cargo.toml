@@ -1,0 +1,12 @@
+[package]
+name = "platea-playback"
+description = "Profilo dispositivo e decisione di riproduzione: direct play, remux, transcodifica"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

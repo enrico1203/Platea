@@ -14,6 +14,11 @@ Se la sessione si interrompe, alla ripresa ("continua") si riparte da qui: legge
 - Scaricare da soli FFmpeg (jellyfin-ffmpeg) e le altre dipendenze.
 - Fare domande solo se indispensabile, cercando di non fermarsi mai.
 - Scrivere sempre in questo file cosa è stato fatto e dove si è arrivati.
+- Nel README una sezione "App compatibili": Infuse (Apple) OK, WebApp OK, TODO Android nativa, TODO iOS nativa.
+- Immagini Docker leggere: l'obiettivo è l'efficienza estrema. Il server non deve bloccarsi mai
+  (nessun I/O bloccante sul runtime async, timeout ovunque, semafori su ogni risorsa scarsa).
+  Scelte: runtime server `debian:trixie-slim` + `jellyfin-ffmpeg8` senza pacchetti consigliati
+  (serve glibc per i driver GPU); web UI su `nginx:alpine` con soli file statici.
 
 ## Note sull'ambiente
 
