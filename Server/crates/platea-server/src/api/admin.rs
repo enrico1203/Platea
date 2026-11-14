@@ -266,7 +266,7 @@ async fn review(State(state): State<Shared>, _a: AdminUser) -> ApiResult<Json<Va
             "path": file,
             "candidates": cands.into_iter().map(|(p, t, y, s, pp)| json!({
                 "provider_id": p, "title": t, "year": y, "score": s,
-                "poster": pp.map(|x| format!("{}/w185{x}", crate::metadata::tmdb::IMAGE_BASE)),
+                "poster": pp.map(|x| format!("{}/w185{x}", crate::metadata::tmdb::IMAGE_BASE.as_str())),
             })).collect::<Vec<_>>(),
         }));
     }

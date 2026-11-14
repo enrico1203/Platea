@@ -708,7 +708,7 @@ async fn candidates(State(state): State<Shared>, _a: AdminUser, Path(id): Path<S
         if !saved.is_empty() {
             return Ok(Json(json!({ "items": saved.into_iter().map(|(p, t, y, s, o, pp)| json!({
                 "provider_id": p, "title": t, "year": y, "score": s, "overview": o,
-                "poster": pp.map(|x| format!("{}/w185{x}", crate::metadata::tmdb::IMAGE_BASE)),
+                "poster": pp.map(|x| format!("{}/w185{x}", crate::metadata::tmdb::IMAGE_BASE.as_str())),
             })).collect::<Vec<_>>() })));
         }
     }
@@ -718,7 +718,7 @@ async fn candidates(State(state): State<Shared>, _a: AdminUser, Path(id): Path<S
         .map_err(|e| ApiError::BadRequest(format!("Ricerca TMDB non riuscita: {e}")))?;
     Ok(Json(json!({ "items": c.into_iter().map(|c| json!({
         "provider_id": c.provider_id, "title": c.title, "year": c.year, "score": c.score, "overview": c.overview,
-        "poster": c.poster_path.map(|x| format!("{}/w185{x}", crate::metadata::tmdb::IMAGE_BASE)),
+        "poster": c.poster_path.map(|x| format!("{}/w185{x}", crate::metadata::tmdb::IMAGE_BASE.as_str())),
     })).collect::<Vec<_>>() })))
 }
 

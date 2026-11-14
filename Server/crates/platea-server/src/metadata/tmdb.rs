@@ -9,7 +9,9 @@ use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, Semaphore};
 
 const BASE: &str = "https://api.themoviedb.org/3";
-pub const IMAGE_BASE: &str = "https://image.tmdb.org/t/p";
+/// Base delle immagini TMDB (sovrascrivibile per i test con PLATEA_TMDB_IMAGE_BASE).
+pub static IMAGE_BASE: once_cell::sync::Lazy<String> =
+    once_cell::sync::Lazy::new(|| std::env::var("PLATEA_TMDB_IMAGE_BASE").unwrap_or_else(|_| "https://image.tmdb.org/t/p".to_string()));
 
 #[derive(Clone)]
 pub struct Tmdb {

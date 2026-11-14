@@ -58,6 +58,12 @@ Se la sessione si interrompe, alla ripresa ("continua") si riparte da qui: legge
   ID GUID a 32 cifre con prefisso di tipo; percorsi senza distinzione maiuscole/minuscole e prefisso /emby.
   Verificato con richieste simulate (curl) come le fa Infuse. NON ancora provato con l'app Infuse reale.
 
+- [x] Metadati verificati contro un TMDB finto (`scripts/tmdb-mock/mock.py`, server con `PLATEA_TMDB_BASE` e
+  `PLATEA_TMDB_IMAGE_BASE`): associazione automatica, "da verificare" con candidati e punteggi, Identifica manuale,
+  stagioni ed episodi, cast, generi, studi, classificazione, immagini con colore segnaposto, foto attori su richiesta.
+  Non c'è una chiave TMDB vera in questo ambiente: va provata dall'utente.
+- [x] CI GitHub Actions (`.github/workflows/ci.yml`): fmt, clippy -D warnings, test, typecheck e build web, build immagini.
+
 ## Benchmark (2026-11-14, 8 CPU, disco locale, libreria sintetica da 100.000 file vuoti)
 
 | Misura | Obiettivo del piano | Misurato |

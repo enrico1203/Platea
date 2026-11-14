@@ -498,7 +498,7 @@ async fn upsert_person(
         if exists.is_none() {
             sqlx::query("INSERT INTO images (person_id, kind, source_url, state) VALUES (?, 'profile', ?, 'pending')")
                 .bind(pid)
-                .bind(format!("{}/w185{p}", tmdb::IMAGE_BASE))
+                .bind(format!("{}/w185{p}", tmdb::IMAGE_BASE.as_str()))
                 .execute(&mut **tx)
                 .await?;
         }
@@ -516,7 +516,7 @@ async fn set_image(
     size: &str,
 ) -> anyhow::Result<Option<i64>> {
     let Some(path) = path.filter(|p| !p.is_empty()) else { return Ok(None) };
-    let url = format!("{}/{size}{path}", tmdb::IMAGE_BASE);
+    let url = format!("{}/{size}{path}", tmdb::IMAGE_BASE.as_str());
     let existing: Option<(i64, String)> =
         sqlx::query_as("SELECT id, source_url FROM images WHERE item_id = ? AND kind = ?").bind(item_id).bind(kind).fetch_optional(&mut **tx).await?;
     match existing {
