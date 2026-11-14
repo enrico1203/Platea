@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import type Hls from "hls.js";
 import { ArrowLeft, Play, Pause, RotateCcw, RotateCw, Maximize, Minimize, Volume2, VolumeX, Captions, Settings2, Info, SkipForward } from "lucide-react";
 import { api, ApiError, getToken, mediaUrl, serverUrl } from "../api/client";
-import type { ItemDetail, Item, PlaybackInfo } from "../api/types";
+import type { ItemDetail, Item, PlaybackInfo, PlaylistDetail } from "../api/types";
 import { buildProfile } from "../lib/profile";
 import { MethodBadge } from "../components/ui";
 import { useI18n } from "../i18n";
@@ -250,7 +250,16 @@ export default function Player() {
     return Math.max(0, Math.min(1, (clientX - r.left) / r.width)) * duration;
   };
 
+  // Dentro una playlist (?pl=…&i=…) la voce successiva viene dalla playlist; altrimenti l'episodio successivo.
+  const playlistId = search.get("pl");
+  const playlistIndex = Number(search.get("i") ?? "0");
   const goNext = async () => {
+    if (playlistId) {
+      const pl = await api<PlaylistDetail>(`/api/v1/playlists/${playlistId}`);
+      const next = pl.items[playlistIndex + 1];
+      if (next) nav(`/play/${next.id}?pl=${playlistId}&i=${playlistIndex + 1}`, { replace: true });
+      return;
+    }
     if (item?.kind !== "episode") return;
     const r = await api<{ item: Item | null }>(`/api/v1/items/${item.id}/next`);
     if (r.item) nav(`/play/${r.item.id}`, { replace: true });
@@ -326,7 +335,7 @@ export default function Player() {
             <span className="player__time">{clock(shown * 1000)} / {clock(duration * 1000)}</span>
             <span className="spacer" />
             <button className="player__btn" onClick={() => { const v = videoRef.current; if (v) { v.muted = !v.muted; setMuted(v.muted); } }} aria-label={muted ? t("player.unmute") : t("player.mute")}>{muted ? <VolumeX /> : <Volume2 />}</button>
-            {item?.kind === "episode" && <button className="player__btn" onClick={goNext} aria-label={t("player.next")}><SkipForward /></button>}
+            {(item?.kind === "episode" || playlistId) && <button className="player__btn" onClick={goNext} aria-label={t("player.next")}><SkipForward /></button>}
             <button className="player__btn" onClick={() => setPanel(panel === "subs" ? null : "subs")} aria-label={t("player.subtitlesAudio")}><Captions /></button>
             <button className="player__btn" onClick={() => setPanel(panel === "settings" ? null : "settings")} aria-label={t("player.quality")}><Settings2 /></button>
             <button className="player__btn" onClick={() => setPanel(panel === "info" ? null : "info")} aria-label={t("player.info")}><Info /></button>

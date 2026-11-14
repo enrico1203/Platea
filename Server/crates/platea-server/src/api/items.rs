@@ -37,7 +37,7 @@ pub fn routes(api: Api) -> Api {
 }
 
 /// Colonne comuni per gli elenchi. `?1` è sempre l'utente.
-const ITEM_SELECT: &str = "SELECT i.id, i.library_id, i.kind, i.parent_id, i.series_id, i.title, i.original_title, i.year, i.index_number, i.index_end,
+pub const ITEM_SELECT: &str = "SELECT i.id, i.library_id, i.kind, i.parent_id, i.series_id, i.title, i.original_title, i.year, i.index_number, i.index_end,
   i.parent_index_number, i.overview, i.runtime_ms, i.community_rating, i.official_rating, i.premiere_date, i.end_date, i.status, i.available,
   i.match_state, i.added_at, i.sort_title,
   (SELECT title FROM items s WHERE s.id = i.series_id) AS series_title,

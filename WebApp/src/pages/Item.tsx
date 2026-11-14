@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Play, Check, Heart, SearchCheck, RefreshCw, Pencil } from "lucide-react";
+import { Play, Check, Heart, SearchCheck, RefreshCw, Pencil, ListPlus } from "lucide-react";
+import { AddToPlaylist } from "./Playlists";
 import { api, ApiError, imageUrl } from "../api/client";
 import type { Candidate, Item as ItemT, ItemDetail, MediaFile, Page } from "../api/types";
 import { PosterCard } from "../components/PosterCard";
@@ -108,7 +109,7 @@ export default function ItemPage() {
   const { t, duration, date, num } = useI18n();
   const [season, setSeason] = useState<string | null>(null);
   const [fileIdx, setFileIdx] = useState(0);
-  const [dialog, setDialog] = useState<"identify" | "edit" | null>(null);
+  const [dialog, setDialog] = useState<"identify" | "edit" | "playlist" | null>(null);
   const { data: item, error } = useQuery({ queryKey: ["item", id], queryFn: () => api<ItemDetail>(`/api/v1/items/${id}`) });
   const seriesId = item?.kind === "series" ? item.id : item?.kind === "season" ? item.parent_id : null;
   const { data: seasons } = useQuery({ queryKey: ["items", "children", seriesId], queryFn: () => api<Page<ItemT>>(`/api/v1/items/${seriesId}/children`).then((r) => r.items), enabled: !!seriesId });
@@ -173,6 +174,7 @@ export default function ItemPage() {
             <button className={`icon-btn${item.user_data.played ? " on" : ""}`} onClick={() => toggle("played", !item.user_data.played)} aria-label={item.user_data.played ? t("item.markUnplayed") : t("item.markPlayed")} title={item.user_data.played ? t("item.markUnplayed") : t("item.markPlayed")}><Check /></button>
             <button className={`icon-btn${item.user_data.favorite ? " on" : ""}`} onClick={() => toggle("favorite", !item.user_data.favorite)} aria-label={t("item.favorite")} title={t("item.favorite")}><Heart fill={item.user_data.favorite ? "currentColor" : "none"} /></button>
             </>}
+            <button className="icon-btn" onClick={() => setDialog("playlist")} aria-label={t("playlist.addTo")} title={t("playlist.addTo")}><ListPlus /></button>
             {me?.is_admin && (item.kind === "movie" || item.kind === "series") && (
               <>
                 <button className="icon-btn" onClick={() => setDialog("identify")} aria-label={t("item.identify")} title={t("item.identify")}><SearchCheck /></button>
@@ -255,6 +257,7 @@ export default function ItemPage() {
       </div>
       {dialog === "identify" && <IdentifyDialog item={item} onClose={() => setDialog(null)} />}
       {dialog === "edit" && <EditDialog item={item} onClose={() => setDialog(null)} />}
+      {dialog === "playlist" && <AddToPlaylist itemId={item.id} onClose={() => setDialog(null)} />}
     </div>
   );
 }

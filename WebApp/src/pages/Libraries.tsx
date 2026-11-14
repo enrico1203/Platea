@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Film, Tv, ChevronRight } from "lucide-react";
+import { Film, Tv, ChevronRight, ListVideo } from "lucide-react";
 import { useLibraries } from "../components/Layout";
 import { Empty } from "../components/ui";
 import { useI18n } from "../i18n";
@@ -21,6 +21,11 @@ export default function Libraries() {
             <ChevronRight size={18} className="subtle" />
           </Link>
         ))}
+        <Link to="/playlists" className="list-row" style={{ color: "inherit", textDecoration: "none" }}>
+          <ListVideo size={20} />
+          <div className="spacer"><div className="t-label">{t("nav.playlists")}</div></div>
+          <ChevronRight size={18} className="subtle" />
+        </Link>
       </div>
     </div>
   );

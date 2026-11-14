@@ -17,6 +17,8 @@ import Account from "./pages/Account";
 import About from "./pages/About";
 
 // Player e dashboard admin in pacchetti separati: la dashboard si carica solo per gli amministratori.
+const Playlists = lazy(() => import("./pages/Playlists"));
+const PlaylistPage = lazy(() => import("./pages/Playlists").then((m) => ({ default: m.PlaylistPage })));
 const Player = lazy(() => import("./pages/Player"));
 const AdminOverview = lazy(() => import("./pages/admin/Overview"));
 const AdminLibraries = lazy(() => import("./pages/admin/Libraries"));
@@ -57,6 +59,8 @@ function Routed() {
           <Route path="libraries" element={<Libraries />} />
           <Route path="library/:id" element={<Library />} />
           <Route path="search" element={<Search />} />
+          <Route path="playlists" element={<Playlists />} />
+          <Route path="playlist/:id" element={<PlaylistPage />} />
           <Route path="item/:id" element={<ItemPage />} />
           <Route path="account" element={<Account />} />
           <Route path="about" element={<About />} />

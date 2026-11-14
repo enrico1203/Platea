@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Home, Search, Film, Tv, LayoutDashboard, FolderOpen, Users, ListChecks, SearchCheck, Cpu, Settings, ScrollText, Server, Terminal, User, Info, LogOut, Library as LibraryIcon } from "lucide-react";
+import { Home, Search, Film, Tv, LayoutDashboard, FolderOpen, Users, ListChecks, SearchCheck, Cpu, Settings, ScrollText, Server, Terminal, User, Info, LogOut, Library as LibraryIcon, ListVideo } from "lucide-react";
 import { Logo } from "./Logo";
 import { api } from "../api/client";
 import type { Library, Page } from "../api/types";
@@ -24,6 +24,7 @@ export function Layout() {
         <nav className="nav" aria-label={t("nav.main")}>
           <NavLink to="/" end className={link}><Home />{t("nav.home")}</NavLink>
           <NavLink to="/search" className={link}><Search />{t("nav.search")}</NavLink>
+          <NavLink to="/playlists" className={link}><ListVideo />{t("nav.playlists")}</NavLink>
           {libs?.map((l) => (
             <NavLink key={l.id} to={`/library/${l.id}`} className={link}>
               {l.kind === "movies" ? <Film /> : <Tv />}

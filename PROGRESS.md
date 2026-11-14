@@ -162,6 +162,13 @@ Trovato e corretto durante il test:
   (`stream::open_library_file`, aperti finché usati + 10 min).
 - mmap di SQLite disattivato: ogni connessione mappava gli stessi 64 MB e la RSS mostrava 600+ MB che erano solo cache.
 - Copie di sicurezza delle migrazioni: si tengono solo le ultime 2 (erano 5, 330 MB).
+### Playlist (2026-11-14)
+
+- [x] API `/api/v1/playlists` (elenco, crea con voci, dettaglio, rinomina, cancella, aggiungi, togli, sposta): una riga per voce;
+  serie/stagioni/collezioni si espandono nei loro episodi/film; voci filtrate dai permessi correnti (libreria, età);
+  playlist visibili solo al proprietario (404 agli altri). Web UI: pagina Playlist, dettaglio con riordino, "Aggiungi a
+  playlist" sul dettaglio, "Riproduci tutto" e player in sequenza (`?pl=…&i=…`). Provato: James Bond → 10 voci.
+
 ### HLS in fMP4: HEVC copiato nel browser (2026-11-14)
 
 La libreria cloud è quasi tutta HEVC + AC3 (6.827 film su 7.088): nel browser ogni film andava in transcodifica completa,
@@ -221,6 +228,7 @@ Script del benchmark: `scripts/bench_library.py` (genera la libreria sintetica).
 
 ## Registro
 
+- 2026-11-14 — Playlist personali.
 - 2026-11-14 — HLS in fMP4: HEVC e AV1 copiati nel browser invece di transcodificati.
 - 2026-11-14 — Backup automatici e ripristino dalla dashboard; voci del piano spuntate.
 - 2026-11-14 — Prova di storage lento e mount bloccato: server reattivo, nessuna cancellazione.

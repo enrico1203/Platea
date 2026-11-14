@@ -9,6 +9,7 @@ pub mod items;
 pub mod jellyfin;
 pub mod libraries;
 pub mod playback;
+pub mod playlists;
 pub mod setup;
 pub mod system;
 pub mod users;
@@ -144,6 +145,7 @@ pub fn router(state: Shared) -> Router {
     let api = libraries::routes(api);
     let api = items::routes(api);
     let api = playback::routes(api);
+    let api = playlists::routes(api);
     let api = admin::routes(api);
     let api = events::routes(api);
     let doc = openapi(&api.docs);

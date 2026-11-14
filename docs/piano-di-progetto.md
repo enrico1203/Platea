@@ -917,7 +917,7 @@ Criterio di uscita: le due app sono pubblicate e riproducono in direct play i fo
 ### Fase 7 — Ecosistema
 
 - [ ] Miniature sulla barra di avanzamento e salto delle sigle, come opzioni
-- [ ] Collezioni automatiche (fatte) e playlist (da fare)
+- [x] Collezioni automatiche e playlist
 - [ ] Download per la visione offline nelle app
 - [ ] Autenticazione esterna con OIDC o LDAP
 - [ ] Transcodifica su macchine worker
