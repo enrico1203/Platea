@@ -1,0 +1,51 @@
+# Platea: server e web UI.
+#   docker compose up -d --build
+# Web UI su http://localhost:8080, API e Infuse su http://localhost:8096.
+# Il codice di primo avvio è nei log:  docker compose logs server | grep -i codice
+
+services:
+  server:
+    build: ./Server
+    image: platea-server:latest
+    container_name: platea-server
+    restart: unless-stopped
+    ports:
+      - "${PLATEA_SERVER_PORT:-8096}:8096"
+    environment:
+      PLATEA_DATA_DIR: /data
+      PLATEA_CACHE_DIR: /cache
+      PLATEA_TRANSCODE_DIR: /transcode
+      PLATEA_LOG: ${PLATEA_LOG:-info}
+      TZ: ${TZ:-Europe/Rome}
+    volumes:
+      - ./data:/data
+      - ./cache:/cache
+      - ./transcode:/transcode
+      # La libreria, in sola lettura. rslave: il container vede anche un mount rclone fatto dopo l'avvio.
+      - ${MEDIA_DIR:-./media}:/media:ro,rslave
+    # Transcodifiche brevi e frequenti: i segmenti possono stare in RAM.
+    # tmpfs:
+    #   - /transcode:size=4g
+    # GPU Intel o AMD: togliere il commento
+    # devices:
+    #   - /dev/dri:/dev/dri
+    # GPU NVIDIA: togliere il commento
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  web:
+    build: ./WebApp
+    image: platea-web:latest
+    container_name: platea-web
+    restart: unless-stopped
+    depends_on:
+      - server
+    ports:
+      - "${PLATEA_WEB_PORT:-8080}:80"
+    environment:
+      PLATEA_SERVER_URL: http://server:8096

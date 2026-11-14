@@ -1,0 +1,56 @@
+export interface SystemInfo { name: string; id: string; version: string; product: string; setup_required: boolean }
+export interface UserRef { id: string; username: string; is_admin: boolean }
+export interface Me extends UserRef {
+  device_name: string;
+  permissions: { all_libraries: boolean; library_ids: string[]; allow_remux: boolean; allow_transcode: boolean; max_bitrate: number | null; max_streams: number | null; allow_remote: boolean; manage_devices: boolean };
+}
+export type ItemKind = "movie" | "series" | "season" | "episode";
+export interface UserData { position_ms: number; played: boolean; play_count: number; favorite: boolean; last_played_at: number | null }
+export interface Item {
+  id: string; library_id: string; kind: ItemKind; title: string; original_title: string | null; year: number | null;
+  index_number: number | null; index_end: number | null; parent_index_number: number | null; parent_id: string | null; series_id: string | null; series_title: string | null;
+  overview: string | null; runtime_ms: number | null; community_rating: number | null; official_rating: string | null; premiere_date: string | null; end_date: string | null; status: string | null;
+  available: boolean; match_state: string; added_at: number;
+  images: { poster: string | null; poster_color: string | null; backdrop: string | null; still: string | null; logo?: string | null };
+  user_data: UserData; child_count: number | null; unplayed_count: number | null;
+}
+export interface VideoStream { index: number; codec: string; profile: string | null; level: number | null; bit_depth: number | null; width: number | null; height: number | null; frame_rate: number | null; hdr: string | null; bitrate: number | null }
+export interface AudioStream { index: number; codec: string; channels: number | null; channel_layout: string | null; bitrate: number | null; language: string | null; title: string | null; default: boolean }
+export interface SubtitleStream { index: number; codec: string; language: string | null; title: string | null; default: boolean; forced: boolean; external: boolean; image: boolean }
+export interface MediaFile { id: string; name: string; version_label: string | null; container: string | null; size: number; duration_ms: number | null; bitrate: number | null; state: string; probe_state: string; probe_error: string | null; video: VideoStream[]; audio: AudioStream[]; subtitles: SubtitleStream[] }
+export interface Person { name: string; role: string; character: string | null; image: string | null }
+export interface ItemDetail extends Item { tagline: string | null; genres: string[]; studios: string[]; people: Person[]; external_ids: Record<string, string>; files?: MediaFile[]; locked_fields?: string[] }
+export interface Page<T> { items: T[]; next_cursor?: string | null }
+export interface Library {
+  id: string; name: string; kind: "movies" | "shows"; item_count: number;
+  paths?: string[]; scan_profile?: "local" | "remote"; language?: string; country?: string; scan_interval_minutes?: number | null;
+  probe_concurrency?: number; probe_per_minute?: number | null; probe_window_start?: number | null; probe_window_end?: number | null; probe_pause_on_play?: boolean; extract_keyframes?: boolean;
+  last_scan_at?: number | null; last_scan_status?: string | null; last_scan_message?: string | null; file_count?: number; probe_pending?: number;
+}
+export interface Home { resume: Item[]; next_up: Item[]; recent: { library_id: string; library_name: string; kind: string; items: Item[] }[] }
+export type Method = "direct_play" | "remux" | "transcode";
+export interface PlaybackInfo {
+  session_id: string; stream_token: string; method: Method; reasons: string[]; chain: string;
+  stream_url: string | null; hls_url: string | null; file_id: string; duration_ms: number; start_ms: number; audio_index: number | null;
+  audio_tracks: { index: number; codec: string; channels: number; language: string | null; default: boolean }[];
+  subtitles: { index: number; codec: string; language: string | null; title: string | null; external: boolean; forced: boolean; default: boolean; image: boolean; url: string | null }[];
+  subtitle: { delivery: string; index?: number };
+  container: string;
+}
+export interface SessionView { id: string; user: string; item_id: string; title: string; subtitle: string | null; poster_url: string | null; device_name: string; client: string; method: Method; reasons: string[]; chain: string; bitrate: number | null; position_ms: number; duration_ms: number; paused: boolean; throttled: boolean; started_at: number }
+export interface Overview {
+  sessions: SessionView[]; bandwidth_bps: number; counts: { direct_play: number; remux: number; transcode: number };
+  transcode_slots: { hw_used: number; hw_max: number; sw_used: number; sw_max: number };
+  jobs: { queued: number; running: number; failed: number };
+  library: { movies: number; series: number; episodes: number; files: number; review: number };
+  system: { memory_rss_bytes: number | null; load_1m: number | null; cpus: number; uptime_ms: number };
+  alerts: { level: "danger" | "warning"; code: string; message: string }[];
+}
+export interface UserAdmin {
+  id: string; username: string; is_admin: boolean; disabled: boolean; all_libraries: boolean; library_ids: string[]; allow_remux: boolean; allow_transcode: boolean;
+  max_bitrate: number | null; max_streams: number | null; max_rating: string | null; allow_remote: boolean; manage_devices: boolean; created_at: number; last_login_at: number | null; devices: number; active_streams: number;
+}
+export interface Device { id: string; device_id: string; device_name: string; client: string; client_version: string; created_at: number; last_used_at: number; last_ip: string | null; current: boolean }
+export interface Job { id: number; kind: string; payload: Record<string, unknown>; priority: number; state: string; attempts: number; run_after: number; created_at: number; started_at: number | null; finished_at: number | null; error: string | null }
+export interface Candidate { provider_id: string; title: string; year: number | null; score: number; overview?: string | null; poster: string | null }
+export interface ReviewItem { id: string; kind: string; title: string; year: number | null; match_state: string; match_score: number | null; library: string; path: string | null; candidates: Candidate[] }

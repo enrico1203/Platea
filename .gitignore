@@ -10,3 +10,4 @@ transcode/
 media/
 .env
 *.log
+WebApp/*.tsbuildinfo

@@ -19,6 +19,9 @@ Se la sessione si interrompe, alla ripresa ("continua") si riparte da qui: legge
   (nessun I/O bloccante sul runtime async, timeout ovunque, semafori su ogni risorsa scarsa).
   Scelte: runtime server `debian:trixie-slim` + `jellyfin-ffmpeg8` senza pacchetti consigliati
   (serve glibc per i driver GPU); web UI su `nginx:alpine` con soli file statici.
+- WebUI multilingua: per ora italiano e inglese, con un sistema di traduzione scalabile
+  (`WebApp/src/i18n/`: un file per lingua, chiavi tipizzate sull'italiano, `Intl` per numeri e date;
+  aggiungere una lingua = aggiungere un file e registrarlo in `locales.ts`). Aggiunto al piano.
 
 ## Note sull'ambiente
 

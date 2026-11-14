@@ -247,6 +247,9 @@ La web UI è una sola, progettata prima per lo schermo del telefono e poi allarg
 - I comandi del player sono pensati per il tocco: doppio tocco per saltare, trascinamento sulla barra, schermo intero.
 - Si installa nella schermata Home come app web, con icona e avvio a tutto schermo.
 - Anche la dashboard admin si usa da telefono.
+- Interfaccia multilingua: italiano e inglese dalla prima versione, con un sistema di traduzione scalabile
+  (un dizionario per lingua, chiavi tipizzate, formati di numeri, date e durate secondo la lingua).
+  Aggiungere una lingua significa aggiungere un file, senza toccare i componenti. I codici motivo restano in inglese.
 
 Un limite da conoscere: il browser di un telefono riproduce meno formati di un'app nativa, quindi remux e transcodifica scattano più spesso. È il motivo principale per fare le app native.
 

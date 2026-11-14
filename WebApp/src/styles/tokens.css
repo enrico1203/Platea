@@ -1,0 +1,34 @@
+/* Platea — token. Tema scuro predefinito; il chiaro usa gli stessi nomi. */
+:root, [data-theme="dark"] {
+  --bg: #050608; --surface-1: #0c0e11; --surface-2: #14171b; --surface-3: #1c2026;
+  --line: #22262d; --line-strong: #2f343c; --line-control: #68707c;
+  --ink: #f3f5f7; --ink-muted: #a2a9b4; --ink-subtle: #808893;
+  --blue: #2f66f5; --blue-hover: #2556e0; --on-blue: #ffffff; --blue-text: #6e9bff; --blue-soft: #0f1d3d;
+  --focus: #6e9bff;
+  --success: #3ccf8e; --warning: #f2b33d; --danger: #ff6b6b;
+  --success-soft: #3ccf8e1f; --warning-soft: #f2b33d1f; --danger-soft: #ff6b6b1f;
+  --method-direct: var(--success); --method-remux: var(--blue-text); --method-transcode: var(--warning);
+  --scrim: #000000b8; --poster-placeholder: #1a1d22;
+  --shadow-pop: 0 16px 40px rgba(0,0,0,0.6), 0 0 0 1px #2f343c;
+  --shadow-glow: 0 0 0 1px #2f66f5, 0 8px 32px rgba(47,102,245,0.35);
+  color-scheme: dark;
+}
+[data-theme="light"] {
+  --bg: #f6f7f9; --surface-1: #ffffff; --surface-2: #eef0f3; --surface-3: #e4e7ec;
+  --line: #dde1e6; --line-strong: #c9ced5; --line-control: #7f8793;
+  --ink: #0a0c0f; --ink-muted: #4a525e; --ink-subtle: #5f6773;
+  --blue: #1f5cf0; --blue-hover: #1a4fd2; --on-blue: #ffffff; --blue-text: #1a53d6; --blue-soft: #e5edff;
+  --focus: #1a53d6;
+  --success: #0a7347; --warning: #8a5300; --danger: #b92424;
+  --success-soft: #0a73471a; --warning-soft: #8a53001a; --danger-soft: #b924241a;
+  --scrim: #0a0c0f99; --poster-placeholder: #d9dde3;
+  --shadow-pop: 0 16px 40px rgba(10,12,15,0.14), 0 0 0 1px #dde1e6;
+  --shadow-glow: 0 0 0 1px #1f5cf0, 0 8px 24px rgba(31,92,240,0.2);
+  color-scheme: light;
+}
+:root {
+  --font-sans: "Geist Variable", Geist, ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 24px; --space-6: 32px; --space-7: 48px; --space-8: 64px;
+  --radius-xs: 4px; --radius-sm: 6px; --radius-md: 10px; --radius-lg: 14px; --radius-full: 999px;
+}
