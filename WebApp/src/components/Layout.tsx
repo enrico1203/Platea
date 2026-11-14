@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Home, Search, Film, Tv, LayoutDashboard, FolderOpen, Users, ListChecks, SearchCheck, Cpu, Settings, ScrollText, Server, Terminal, User, Info, LogOut, Library as LibraryIcon, ListVideo, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Home, Search, Film, Tv, LayoutDashboard, FolderOpen, Users, ListChecks, SearchCheck, Cpu, Settings, ScrollText, Server, Terminal, User, Info, LogOut, Library as LibraryIcon, ListVideo, PanelLeftClose, PanelLeftOpen, ArrowUp } from "lucide-react";
 import { Logo, Mark } from "./Logo";
 import { api, mediaUrl } from "../api/client";
 import type { Library, Page } from "../api/types";
@@ -33,6 +33,29 @@ function useCollapsed(): [boolean, () => void] {
     return !c;
   });
   return [collapsed, toggle];
+}
+
+/** Pulsante "torna su": compare dopo un po' di scorrimento. */
+function BackToTop() {
+  const t = useT();
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    let raf = 0;
+    const onScroll = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => setShow(window.scrollY > window.innerHeight * 0.8));
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => { window.removeEventListener("scroll", onScroll); cancelAnimationFrame(raf); };
+  }, []);
+  const reduce = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  return (
+    <button className={`back-to-top${show ? " is-visible" : ""}`} aria-label={t("nav.backToTop")} title={t("nav.backToTop")} tabIndex={show ? 0 : -1} aria-hidden={!show}
+      onClick={() => window.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" })}>
+      <ArrowUp />
+    </button>
+  );
 }
 
 export function Layout() {
@@ -95,6 +118,7 @@ export function Layout() {
         <main className="main">
           <Outlet />
         </main>
+        <BackToTop />
         <nav className="tabbar" aria-label={t("nav.main")}>
           <NavLink to="/" end><Home />{t("nav.home")}</NavLink>
           <NavLink to="/search"><Search />{t("nav.search")}</NavLink>

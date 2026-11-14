@@ -34,6 +34,7 @@ const en = {
     about: "About",
     logout: "Sign out",
     collapse: "Collapse menu",
+    backToTop: "Back to top",
     expand: "Expand menu",
   },
   auth: {
@@ -91,6 +92,8 @@ const en = {
     addLibrary: "Add library",
   },
   library: {
+    searchIn: "Search {name}",
+    searchPlaceholder: "Title, original title too",
     movies: "Movies",
     shows: "TV shows",
     kind: "Type",

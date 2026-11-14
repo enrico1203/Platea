@@ -13,7 +13,6 @@ use crate::jobs::{self, priority, JobKind};
 use crate::state::Shared;
 use crate::util::now_ms;
 use anyhow::bail;
-use platea_naming::title_similarity;
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashSet;
@@ -30,6 +29,11 @@ pub struct Candidate {
     pub overview: Option<String>,
     pub poster_path: Option<String>,
     pub popularity: f64,
+    /// Somiglianza del titolo (0–1, il migliore tra titolo, originale e traduzioni) e anno identico.
+    #[serde(skip)]
+    pub title_sim: f64,
+    #[serde(skip)]
+    pub year_exact: bool,
 }
 
 #[derive(sqlx::FromRow)]
@@ -58,12 +62,37 @@ fn year_of(date: Option<&str>) -> Option<i64> {
     date.filter(|d| d.len() >= 4).and_then(|d| d[0..4].parse().ok())
 }
 
-/// Punteggio di un candidato rispetto al nome letto dal file.
-pub fn score_candidate(query_title: &str, query_year: Option<i64>, c_title: &str, c_original: Option<&str>, c_year: Option<i64>, popularity: f64) -> f64 {
-    let mut sim = title_similarity(query_title, c_title);
-    if let Some(o) = c_original {
-        sim = sim.max(title_similarity(query_title, o));
+/// Somiglianza tra il nome del file e un titolo. Le uscite italiane aggiungono spesso un sottotitolo
+/// ("Pay the Ghost - Il male cammina tra noi", "Dirty Dancing - Balli proibiti"): se un titolo è l'inizio
+/// dell'altro, parola per parola, conta quasi come uguale.
+pub fn title_match(query: &str, candidate: &str) -> f64 {
+    let sim = platea_naming::title_similarity(query, candidate);
+    let q = platea_naming::normalize_title(query);
+    let c = platea_naming::normalize_title(candidate);
+    let (short, long) = if q.len() <= c.len() { (&q, &c) } else { (&c, &q) };
+    let words = short.split(' ').filter(|w| !w.is_empty()).count();
+    let enough = short.chars().filter(|c| c.is_alphanumeric()).count() >= 4 && (words >= 2 || short.len() >= 5);
+    let prefix = enough && long.starts_with(&format!("{short} "));
+    // "Asino per sempre Jackass Forever": titolo italiano e poi quello originale.
+    let suffix = enough && words >= 2 && long.ends_with(&format!(" {short}"));
+    if prefix || suffix {
+        sim.max(0.9)
+    } else {
+        sim
     }
+}
+
+/// Punteggio di un candidato rispetto al nome letto dal file (usato nei test e come riferimento).
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn score_candidate(query_title: &str, query_year: Option<i64>, c_title: &str, c_original: Option<&str>, c_year: Option<i64>, popularity: f64) -> f64 {
+    let mut sim = title_match(query_title, c_title);
+    if let Some(o) = c_original {
+        sim = sim.max(title_match(query_title, o));
+    }
+    score_from(sim, query_year, c_year, popularity)
+}
+
+fn score_from(sim: f64, query_year: Option<i64>, c_year: Option<i64>, popularity: f64) -> f64 {
     let year_part = match (query_year, c_year) {
         (Some(q), Some(c)) if q == c => 0.2,
         (Some(q), Some(c)) if (q - c).abs() == 1 => 0.12,
@@ -74,6 +103,39 @@ pub fn score_candidate(query_title: &str, query_year: Option<i64>, c_title: &str
     // Popolarità come spareggio: al massimo 0,05.
     let pop = (popularity.max(0.0).ln_1p() / 10.0).min(1.0) * 0.05;
     (sim * 0.75 + year_part + pop).clamp(0.0, 1.0)
+}
+
+/// Ricerche di ripiego per un nome lungo: prima l'inizio (togliendo parole dalla fine), poi la fine.
+/// Al massimo 6, mai sotto le 2 parole.
+pub fn partial_queries(title: &str) -> Vec<String> {
+    let words: Vec<&str> = title.split_whitespace().collect();
+    let n = words.len();
+    if n < 3 {
+        return vec![];
+    }
+    let mut out = Vec::new();
+    for k in (2..n).rev().take(4) {
+        out.push(words[..k].join(" "));
+    }
+    // La fine: titoli originali brevi ("Jackass Forever"), 2 o 3 parole.
+    for k in 2..=3.min(n - 1) {
+        out.push(words[n - k..].join(" "));
+    }
+    out.dedup();
+    out
+}
+
+/// Quando il candidato migliore si può accettare senza chiedere.
+/// - punteggio sopra la soglia e staccato dal secondo (la regola di sempre);
+/// - titolo identico (anche tradotto o originale) e anno identico: due voci TMDB con stesso titolo e anno
+///   sono quasi sempre duplicati, e vince la più popolare;
+/// - unico risultato di TMDB, anno identico e titolo abbastanza simile.
+pub fn auto_accept(cands: &[Candidate], threshold: f64) -> bool {
+    let Some(b) = cands.first() else { return false };
+    let second = cands.get(1).map(|c| c.score).unwrap_or(0.0);
+    (b.score >= threshold && (b.score - second >= 0.05 || second < threshold))
+        || (b.title_sim >= 0.99 && b.year_exact)
+        || (cands.len() == 1 && b.year_exact && b.title_sim >= 0.5)
 }
 
 fn candidates_from(results: &Value, movie: bool, title: &str, year: Option<i64>, rejected: &HashSet<String>) -> Vec<Candidate> {
@@ -94,20 +156,39 @@ fn candidates_from(results: &Value, movie: bool, title: &str, year: Option<i64>,
             };
             let cy = year_of(d);
             let pop = r["popularity"].as_f64().unwrap_or(0.0);
+            let sim = o.map(|o| title_match(title, o)).unwrap_or(0.0).max(title_match(title, t));
             Some(Candidate {
                 provider_id: id,
                 title: t.to_string(),
                 original_title: o.map(String::from),
                 year: cy,
-                score: score_candidate(title, year, t, o, cy, pop),
+                score: score_from(sim, year, cy, pop),
+                title_sim: sim,
+                year_exact: year.is_some() && year == cy,
                 overview: r["overview"].as_str().map(String::from),
                 poster_path: r["poster_path"].as_str().map(String::from),
                 popularity: pop,
             })
         })
         .collect();
-    out.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    sort_candidates(&mut out);
     out
+}
+
+fn sort_candidates(c: &mut [Candidate]) {
+    c.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal).then(b.popularity.partial_cmp(&a.popularity).unwrap_or(std::cmp::Ordering::Equal)));
+}
+
+/// Stessi risultati in un'altra lingua: per ogni candidato il titolo tradotto che somiglia di più al nome.
+fn merge_translations(base: &mut [Candidate], other: &[Candidate], year: Option<i64>) {
+    for c in base.iter_mut() {
+        if let Some(o) = other.iter().find(|o| o.provider_id == c.provider_id) {
+            if o.title_sim > c.title_sim {
+                c.title_sim = o.title_sim;
+                c.score = score_from(o.title_sim, year, c.year, c.popularity);
+            }
+        }
+    }
 }
 
 /// Cerca i candidati su TMDB per titolo e anno.
@@ -127,6 +208,36 @@ pub async fn search(state: &Shared, kind: &str, title: &str, year: Option<i64>, 
         // L'anno nel nome può essere sbagliato: nuova ricerca senza anno.
         let r = state.tmdb.get(&key, rps, path, &params[..2], language, 7 * DAY).await?;
         c = candidates_from(&r, movie, title, year, rejected);
+    }
+    if c.is_empty() {
+        // Nomi come "Now You See Me 2 I Maghi Del Crimine": titolo originale e sottotitolo italiano senza
+        // separatore. TMDB non trova la frase intera: si cerca con l'inizio o la fine del nome, e i
+        // candidati si confrontano sempre con il nome completo.
+        for q in partial_queries(title) {
+            let mut p = params.clone();
+            p[0].1 = q;
+            let r = state.tmdb.get(&key, rps, path, &p, language, 7 * DAY).await?;
+            c = candidates_from(&r, movie, title, year, rejected);
+            if !c.is_empty() {
+                break;
+            }
+        }
+    }
+    // Il nome del file è spesso in un'altra lingua rispetto alla libreria (cartelle in italiano, metadati
+    // in inglese): se nessun candidato è convincente si confrontano anche i titoli tradotti.
+    if !c.is_empty() && !auto_accept(&c, s.metadata.auto_match_threshold) {
+        let mut langs = vec![s.metadata.language.clone(), "en-US".to_string()];
+        langs.retain(|l| !l.eq_ignore_ascii_case(language));
+        langs.dedup();
+        for l in langs {
+            let p = if year.is_some() && c.iter().any(|x| x.year_exact) { &params[..] } else { &params[..2] };
+            let r = state.tmdb.get(&key, rps, path, p, &l, 7 * DAY).await?;
+            merge_translations(&mut c, &candidates_from(&r, movie, title, year, rejected), year);
+            sort_candidates(&mut c);
+            if auto_accept(&c, s.metadata.auto_match_threshold) {
+                break;
+            }
+        }
     }
     c.truncate(8);
     Ok(c)
@@ -216,10 +327,9 @@ pub async fn match_item(state: &Shared, item_id: i64) -> anyhow::Result<()> {
     let cands = search(state, &item.kind, &item.title, item.year, &language, &rejected).await?;
     let threshold = s.metadata.auto_match_threshold;
     let best = cands.first();
-    let second = cands.get(1).map(|c| c.score).unwrap_or(0.0);
     let _ = item.locked_fields;
     match best {
-        Some(b) if b.score >= threshold && (b.score - second >= 0.05 || second < threshold) => {
+        Some(b) if auto_accept(&cands, threshold) => {
             let id: i64 = b.provider_id.parse()?;
             let score = b.score;
             apply_tmdb(state, item_id, id, score, "matched").await?;
@@ -726,5 +836,51 @@ mod tests {
         assert!(original > 0.9);
         let close_year = score_candidate("Dune", Some(2020), "Dune", None, Some(2021), 100.0);
         assert!(close_year > 0.8);
+    }
+
+    #[test]
+    fn italian_subtitles_and_apostrophes() {
+        // Titolo inglese + sottotitolo italiano nel nome della cartella.
+        assert!(score_candidate("Pay The Ghost Il Male Cammina Tra Noi", Some(2015), "Pay the Ghost", None, Some(2015), 10.0) >= 0.8);
+        assert!(score_candidate("Dirty Dancing Balli Proibiti", Some(1987), "Dirty Dancing", None, Some(1987), 30.0) >= 0.8);
+        // "L Odissea" (apostrofo perso nel nome del file) = "L'Odissea".
+        assert!(title_match("L Odissea", "L'Odissea") > 0.99);
+        // Un sequel con un altro anno resta sotto la soglia.
+        assert!(score_candidate("Scream", Some(1996), "Scream 2", None, Some(1997), 30.0) < score_candidate("Scream", Some(1996), "Scream", None, Some(1996), 30.0));
+        assert!(score_candidate("The Matrix", Some(1999), "The Matrix Resurrections", None, Some(2021), 80.0) < 0.6);
+        // Titolo italiano seguito dall'originale.
+        assert!(title_match("Asino Per Sempre Jackass Forever", "Jackass Forever") >= 0.9);
+        assert_eq!(partial_queries("Now You See Me 2 I Maghi Del Crimine")[0], "Now You See Me 2 I Maghi Del");
+        assert!(partial_queries("Now You See Me 2 I Maghi Del Crimine").contains(&"Del Crimine".to_string()));
+        assert!(partial_queries("Due parole").is_empty());
+        // Una parola sola e corta non basta come prefisso.
+        assert!(title_match("Up", "Up in the Air") < 0.9);
+    }
+
+    fn cand(id: &str, score: f64, sim: f64, year_exact: bool) -> Candidate {
+        Candidate {
+            provider_id: id.into(),
+            title: id.into(),
+            original_title: None,
+            year: None,
+            score,
+            overview: None,
+            poster_path: None,
+            popularity: 0.0,
+            title_sim: sim,
+            year_exact,
+        }
+    }
+
+    #[test]
+    fn accept_rules() {
+        // Due voci con stesso titolo e anno (duplicati TMDB): si prende la prima.
+        assert!(auto_accept(&[cand("a", 0.96, 1.0, true), cand("b", 0.95, 1.0, true)], 0.8));
+        // Unico risultato con l'anno giusto e titolo simile (traduzione diversa).
+        assert!(auto_accept(&[cand("a", 0.6, 0.55, true)], 0.8));
+        // Unico risultato ma anno diverso: si chiede.
+        assert!(!auto_accept(&[cand("a", 0.6, 0.55, false)], 0.8));
+        // Due candidati vicini sotto il titolo identico: si chiede.
+        assert!(!auto_accept(&[cand("a", 0.85, 0.9, true), cand("b", 0.84, 0.9, true)], 0.8));
     }
 }

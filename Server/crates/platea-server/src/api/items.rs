@@ -165,6 +165,8 @@ struct ListQuery {
     decade: Option<i64>,
     /// Qualità video: 4k, 1080, 720, sd, hdr.
     video: Option<String>,
+    /// Testo da cercare nel titolo (anche originale), parola per parola con prefisso.
+    q: Option<String>,
     cursor: Option<String>,
     limit: Option<i64>,
 }
@@ -209,6 +211,9 @@ async fn list(State(state): State<Shared>, user: AuthUser, Query(q): Query<ListQ
         Some(_) => return Err(ApiError::BadRequest("kind: movie, series, season, episode, collection".into())),
         None if q.parent_id.is_none() => sql.push_str(" AND i.kind IN ('movie','series')"),
         None => {}
+    }
+    if let Some(m) = q.q.as_deref().and_then(fts_query) {
+        bind(&mut sql, " AND i.id IN (SELECT rowid FROM items_fts WHERE items_fts MATCH ?)", json!(m), &mut binds);
     }
     if let Some(g) = &q.genre {
         bind(

@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
+import { Search as SearchIcon } from "lucide-react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { Item, Library as Lib, Page } from "../api/types";
 import { PosterCard, PosterSkeleton } from "../components/PosterCard";
-import { Empty, SelectField } from "../components/ui";
+import { Empty, SelectField, TextField } from "../components/ui";
 import { useI18n } from "../i18n";
 
 const LETTERS = "#ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
@@ -18,6 +19,18 @@ export default function Library() {
   const [letter, setLetter] = useState("");
   const [decade, setDecade] = useState("");
   const [video, setVideo] = useState("");
+  // Ricerca nella libreria: nell'indirizzo, così "indietro" dal dettaglio ritrova i risultati.
+  const [urlParams, setUrlParams] = useSearchParams();
+  const [text, setText] = useState(() => urlParams.get("q") ?? "");
+  const [query, setQuery] = useState(() => (urlParams.get("q") ?? "").trim());
+  useEffect(() => {
+    const h = setTimeout(() => {
+      const v = text.trim();
+      setQuery(v);
+      setUrlParams(v ? { q: v } : {}, { replace: true });
+    }, 200);
+    return () => clearTimeout(h);
+  }, [text, setUrlParams]);
   const { data: lib } = useQuery({ queryKey: ["libraries", id], queryFn: () => api<Lib>(`/api/v1/libraries/${id}`) });
   const { data: genres } = useQuery({ queryKey: ["genres", id], queryFn: () => api<{ items: { name: string; count: number }[] }>(`/api/v1/genres?library_id=${id}`).then((r) => r.items) });
   const order = sort === "title" ? "asc" : "desc";
@@ -29,7 +42,8 @@ export default function Library() {
   if (genre) params.set("genre", genre);
   if (decade) params.set("decade", decade);
   if (video) params.set("video", video);
-  if (letter && sort === "title") params.set("letter", letter);
+  if (query) params.set("q", query);
+  else if (letter && sort === "title") params.set("letter", letter);
   const q = useInfiniteQuery({
     queryKey: ["items", params.toString()],
     queryFn: ({ pageParam }) => api<Page<Item>>(`/api/v1/items?${params}${pageParam ? `&cursor=${pageParam}` : ""}`),
@@ -74,13 +88,16 @@ export default function Library() {
           )}
         </div>
       </div>
-      {sort === "title" && (
+      <div className="library-search">
+        <TextField label={t("library.searchIn", { name: lib?.name ?? "" })} icon={<SearchIcon />} type="search" placeholder={t("library.searchPlaceholder")} value={text} onChange={(e) => setText(e.target.value)} />
+      </div>
+      {sort === "title" && !query && (
         <div className="letters" style={{ marginBottom: 24 }}>
           {LETTERS.map((l) => <button key={l} className={letter === l ? "active" : ""} onClick={() => setLetter(letter === l ? "" : l)}>{l}</button>)}
         </div>
       )}
       {q.isSuccess && items.length === 0 ? (
-        <Empty>{t("library.empty")}</Empty>
+        <Empty>{query ? t("search.none", { q: query }) : t("library.empty")}</Empty>
       ) : (
         <div className="poster-grid">
           {items.map((i) => <PosterCard key={i.id} item={i} />)}

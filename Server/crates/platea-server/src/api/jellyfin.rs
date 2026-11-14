@@ -40,6 +40,17 @@ pub fn router() -> Router<Shared> {
         .route("/Sessions/Logout", post(logout))
         .route("/Users/Me", get(me))
         .route("/Users/{user}", get(user_by_id))
+        .route("/Genres", get(genres_list))
+        .route("/Studios", get(empty_items))
+        .route("/Persons", get(empty_items))
+        .route("/Artists", get(empty_items))
+        .route("/MusicGenres", get(empty_items))
+        .route("/Items/Filters", get(filters))
+        .route("/Items/Filters2", get(filters))
+        .route("/Items/Counts", get(counts))
+        .route("/Library/VirtualFolders", get(virtual_folders))
+        .route("/Sessions", get(empty_array))
+        .route("/Plugins", get(empty_array))
         .route("/Users/{user}/Views", get(views))
         .route("/UserViews", get(views_q))
         .route("/Library/MediaFolders", get(views_q))
@@ -434,6 +445,93 @@ async fn library_dto(state: &Shared, id: i64, name: &str, kind: &str) -> Value {
         "BackdropImageTags": [],
         "UserData": { "PlaybackPositionTicks": 0, "PlayCount": 0, "IsFavorite": false, "Played": false, "Key": format!("lib{id}") },
     })
+}
+
+/// Elenchi che Platea non gestisce (studi, persone, musica): vuoti ma validi, così i client non si fermano.
+async fn empty_items(_user: AuthUser) -> Json<Value> {
+    Json(json!({ "Items": [], "TotalRecordCount": 0, "StartIndex": 0 }))
+}
+
+async fn empty_array(_user: AuthUser) -> Json<Value> {
+    Json(json!([]))
+}
+
+async fn genre_names(state: &Shared, user: &AuthUser) -> ApiResult<Vec<String>> {
+    Ok(sqlx::query_scalar(&format!(
+        "SELECT DISTINCT g.name FROM genres g JOIN item_genres ig ON ig.genre_id = g.id JOIN items i ON i.id = ig.item_id WHERE 1 {} ORDER BY g.name",
+        user.library_filter("i.library_id")
+    ))
+    .fetch_all(&state.db.read)
+    .await?)
+}
+
+async fn genres_list(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<Value>> {
+    let names = genre_names(&state, &user).await?;
+    let items: Vec<Value> = names
+        .iter()
+        .map(|n| json!({ "Name": n, "Id": format!("{:x}", md5_like(n)), "Type": "Genre", "ServerId": state.server_id, "ImageTags": {} }))
+        .collect();
+    let n = items.len();
+    Ok(Json(json!({ "Items": items, "TotalRecordCount": n, "StartIndex": 0 })))
+}
+
+/// Identificativo stabile di un genere dal nome (i generi non hanno un ID pubblico in Platea).
+fn md5_like(s: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    s.hash(&mut h);
+    h.finish()
+}
+
+async fn filters(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<Value>> {
+    let genres = genre_names(&state, &user).await?;
+    let years: Vec<i64> = sqlx::query_scalar(&format!(
+        "SELECT DISTINCT i.year FROM items i WHERE i.year IS NOT NULL AND i.kind IN ('movie','series') {} ORDER BY i.year DESC",
+        user.library_filter("i.library_id")
+    ))
+    .fetch_all(&state.db.read)
+    .await?;
+    let ratings: Vec<String> = sqlx::query_scalar(&format!(
+        "SELECT DISTINCT i.official_rating FROM items i WHERE i.official_rating IS NOT NULL {} ORDER BY 1",
+        user.library_filter("i.library_id")
+    ))
+    .fetch_all(&state.db.read)
+    .await?;
+    let genre_items: Vec<Value> = genres.iter().map(|n| json!({ "Name": n, "Id": format!("{:x}", md5_like(n)) })).collect();
+    Ok(Json(json!({ "Genres": genre_items, "Tags": [], "OfficialRatings": ratings, "Years": years })))
+}
+
+async fn counts(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<Value>> {
+    let rows: Vec<(String, i64)> =
+        sqlx::query_as(&format!("SELECT i.kind, COUNT(*) FROM items i WHERE 1 {} GROUP BY i.kind", user.library_filter("i.library_id")))
+                    .fetch_all(&state.db.read)
+            .await?;
+    let get = |k: &str| rows.iter().find(|(x, _)| x == k).map(|(_, n)| *n).unwrap_or(0);
+    Ok(Json(json!({
+        "MovieCount": get("movie"), "SeriesCount": get("series"), "EpisodeCount": get("episode"), "BoxSetCount": get("collection"),
+        "ArtistCount": 0, "ProgramCount": 0, "TrailerCount": 0, "SongCount": 0, "AlbumCount": 0, "MusicVideoCount": 0, "BookCount": 0, "ItemCount": get("movie") + get("series") + get("episode"),
+    })))
+}
+
+/// Cartelle delle librerie, nella forma di Jellyfin (alcuni client le leggono anche senza essere amministratori).
+async fn virtual_folders(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<Value>> {
+    let libs: Vec<(i64, String, String)> =
+        sqlx::query_as(&format!("SELECT id, name, kind FROM libraries i WHERE 1 {} ORDER BY name", user.library_filter("i.id")))
+                    .fetch_all(&state.db.read)
+            .await?;
+    let out: Vec<Value> = libs
+        .into_iter()
+        .map(|(id, name, kind)| {
+            json!({
+                "Name": name,
+                "Locations": [],
+                "CollectionType": if kind == "movies" { "movies" } else { "tvshows" },
+                "ItemId": guid(&state, NS_LIBRARY, id),
+                "RefreshStatus": "Idle",
+            })
+        })
+        .collect();
+    Ok(Json(json!(out)))
 }
 
 async fn views_list(state: &Shared, user: &AuthUser) -> ApiResult<Json<Value>> {
@@ -942,6 +1040,10 @@ async fn query_items(state: &Shared, user: &AuthUser, q: ItemsQuery) -> ApiResul
                 .collect()
         })
         .unwrap_or_default();
+    // Solo tipi che Platea non ha (Playlist, Audio, Photo…): nessun risultato, non "tutto".
+    if q.include_item_types.as_deref().is_some_and(|t| !t.trim().is_empty()) && types.is_empty() {
+        return Ok(Json(json!({ "Items": [], "TotalRecordCount": 0, "StartIndex": 0 })));
+    }
     let excluded: Vec<String> = q.exclude_item_types.as_deref().map(|t| t.split(',').map(|x| x.trim().to_lowercase()).collect()).unwrap_or_default();
     // Ids espliciti.
     if let Some(ids) = &q.ids {

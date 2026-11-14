@@ -35,6 +35,7 @@ const it = {
     about: "Informazioni",
     logout: "Esci",
     collapse: "Comprimi il menu",
+    backToTop: "Torna su",
     expand: "Espandi il menu",
   },
   auth: {
@@ -92,6 +93,8 @@ const it = {
     addLibrary: "Aggiungi libreria",
   },
   library: {
+    searchIn: "Cerca in {name}",
+    searchPlaceholder: "Titolo, anche originale",
     movies: "Film",
     shows: "Serie TV",
     kind: "Tipo",

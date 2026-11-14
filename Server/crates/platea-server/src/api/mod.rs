@@ -195,6 +195,8 @@ fn compress_predicate() -> impl tower_http::compression::Predicate {
 
 async fn fallback(req: Request<Body>) -> Response {
     let path = req.uri().path().to_string();
+    // Un client (Infuse, un'app Jellyfin) che chiama un percorso non implementato: utile per capire cosa manca.
+    tracing::info!(method = %req.method(), path = %path, "percorso non gestito");
     (StatusCode::NOT_FOUND, axum::Json(json!({ "error": "NotFound", "message": format!("Percorso non trovato: {path}") }))).into_response()
 }
 
