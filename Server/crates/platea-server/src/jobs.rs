@@ -26,12 +26,26 @@ pub mod priority {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum JobKind {
-    ScanLibrary { library_id: i64, #[serde(default)] subpath: Option<String> },
-    ProbeFile { file_id: i64 },
-    ExtractKeyframes { file_id: i64 },
-    MatchItem { item_id: i64 },
-    RefreshMetadata { item_id: i64 },
-    DownloadImage { image_id: i64 },
+    ScanLibrary {
+        library_id: i64,
+        #[serde(default)]
+        subpath: Option<String>,
+    },
+    ProbeFile {
+        file_id: i64,
+    },
+    ExtractKeyframes {
+        file_id: i64,
+    },
+    MatchItem {
+        item_id: i64,
+    },
+    RefreshMetadata {
+        item_id: i64,
+    },
+    DownloadImage {
+        image_id: i64,
+    },
     CleanupMissing,
 }
 
@@ -90,12 +104,7 @@ impl JobQueue {
         lanes.insert("metadata", Arc::new(Semaphore::new(4)));
         lanes.insert("images", Arc::new(Semaphore::new(4)));
         lanes.insert("maintenance", Arc::new(Semaphore::new(1)));
-        JobQueue {
-            notify: Arc::new(Notify::new()),
-            lanes: Arc::new(lanes),
-            probe_lanes: Default::default(),
-            probe_rate: Default::default(),
-        }
+        JobQueue { notify: Arc::new(Notify::new()), lanes: Arc::new(lanes), probe_lanes: Default::default(), probe_rate: Default::default() }
     }
 
     pub fn wake(&self) {
@@ -115,13 +124,7 @@ pub async fn enqueue(state: &Shared, job: JobKind, priority: i64, library_id: Op
     enqueue_with(&state.db.write, &state.jobs, job, priority, library_id).await
 }
 
-pub async fn enqueue_with(
-    pool: &sqlx::SqlitePool,
-    queue: &JobQueue,
-    job: JobKind,
-    priority: i64,
-    library_id: Option<i64>,
-) -> anyhow::Result<()> {
+pub async fn enqueue_with(pool: &sqlx::SqlitePool, queue: &JobQueue, job: JobKind, priority: i64, library_id: Option<i64>) -> anyhow::Result<()> {
     let now = now_ms();
     let payload = serde_json::to_string(&job)?;
     let dedupe = job.dedupe_key();
@@ -156,10 +159,7 @@ struct JobRow {
 
 /// All'avvio i lavori rimasti "in esecuzione" da un arresto brusco tornano in coda.
 pub async fn recover(state: &Shared) -> anyhow::Result<()> {
-    let n = sqlx::query("UPDATE jobs SET state = 'queued', started_at = NULL WHERE state = 'running'")
-        .execute(&state.db.write)
-        .await?
-        .rows_affected();
+    let n = sqlx::query("UPDATE jobs SET state = 'queued', started_at = NULL WHERE state = 'running'").execute(&state.db.write).await?.rows_affected();
     if n > 0 {
         tracing::info!(jobs = n, "lavori interrotti rimessi in coda");
     }
@@ -263,14 +263,13 @@ enum ProbeGate {
 }
 
 async fn probe_gate(state: &Shared, library_id: i64) -> ProbeGate {
-    let lib: Option<(i64, Option<i64>, Option<i64>, Option<i64>, i64)> = sqlx::query_as(
-        "SELECT probe_concurrency, probe_per_minute, probe_window_start, probe_window_end, probe_pause_on_play FROM libraries WHERE id = ?",
-    )
-    .bind(library_id)
-    .fetch_optional(&state.db.read)
-    .await
-    .ok()
-    .flatten();
+    let lib: Option<(i64, Option<i64>, Option<i64>, Option<i64>, i64)> =
+        sqlx::query_as("SELECT probe_concurrency, probe_per_minute, probe_window_start, probe_window_end, probe_pause_on_play FROM libraries WHERE id = ?")
+            .bind(library_id)
+            .fetch_optional(&state.db.read)
+            .await
+            .ok()
+            .flatten();
     let Some((concurrency, per_minute, win_start, win_end, pause_on_play)) = lib else {
         return ProbeGate::Busy;
     };
@@ -320,11 +319,7 @@ fn current_hour() -> i64 {
 async fn finish(state: &Shared, id: i64, result: Result<(), String>, attempts: i64, max_attempts: i64) {
     let now = now_ms();
     let r = match result {
-        Ok(()) => sqlx::query("UPDATE jobs SET state = 'done', finished_at = ?, error = NULL WHERE id = ?")
-            .bind(now)
-            .bind(id)
-            .execute(&state.db.write)
-            .await,
+        Ok(()) => sqlx::query("UPDATE jobs SET state = 'done', finished_at = ?, error = NULL WHERE id = ?").bind(now).bind(id).execute(&state.db.write).await,
         Err(e) if attempts < max_attempts => {
             // Nuovo tentativo con attesa crescente: 30 s, 2 min, 8 min...
             let delay = 30_000i64 * 4i64.pow((attempts - 1).clamp(0, 6) as u32);
@@ -335,12 +330,9 @@ async fn finish(state: &Shared, id: i64, result: Result<(), String>, attempts: i
                 .execute(&state.db.write)
                 .await
         }
-        Err(e) => sqlx::query("UPDATE jobs SET state = 'failed', finished_at = ?, error = ? WHERE id = ?")
-            .bind(now)
-            .bind(&e)
-            .bind(id)
-            .execute(&state.db.write)
-            .await,
+        Err(e) => {
+            sqlx::query("UPDATE jobs SET state = 'failed', finished_at = ?, error = ? WHERE id = ?").bind(now).bind(&e).bind(id).execute(&state.db.write).await
+        }
     };
     if let Err(e) = r {
         tracing::warn!(error = %e, "aggiornamento dello stato del lavoro non riuscito");
@@ -387,9 +379,7 @@ pub async fn run_scheduler(state: Shared) {
 
 async fn schedule_scans(state: &Shared) -> anyhow::Result<()> {
     let libs: Vec<(i64, Option<i64>, Option<i64>)> =
-        sqlx::query_as("SELECT id, scan_interval_minutes, last_scan_at FROM libraries WHERE scan_interval_minutes > 0")
-            .fetch_all(&state.db.read)
-            .await?;
+        sqlx::query_as("SELECT id, scan_interval_minutes, last_scan_at FROM libraries WHERE scan_interval_minutes > 0").fetch_all(&state.db.read).await?;
     let now = now_ms();
     for (id, interval, last) in libs {
         let interval_ms = interval.unwrap_or(0) * 60_000;

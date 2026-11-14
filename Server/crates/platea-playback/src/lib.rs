@@ -126,10 +126,7 @@ impl SubtitleInfo {
 }
 
 pub fn is_image_subtitle(codec: &str) -> bool {
-    matches!(
-        codec,
-        "hdmv_pgs_subtitle" | "pgs" | "pgssub" | "dvd_subtitle" | "dvdsub" | "dvb_subtitle" | "dvbsub" | "xsub" | "vobsub"
-    )
+    matches!(codec, "hdmv_pgs_subtitle" | "pgs" | "pgssub" | "dvd_subtitle" | "dvdsub" | "dvb_subtitle" | "dvbsub" | "xsub" | "vobsub")
 }
 
 /// Nome breve per il confronto con il profilo: `hdmv_pgs_subtitle` → `pgs`.
@@ -277,11 +274,17 @@ pub enum AudioAction {
 pub enum SubtitleDelivery {
     None,
     /// Consegnato a parte in WebVTT, senza toccare il video.
-    External { index: u32 },
+    External {
+        index: u32,
+    },
     /// Il client lo legge dal file originale (direct play di un contenitore che lo contiene).
-    Embedded { index: u32 },
+    Embedded {
+        index: u32,
+    },
     /// Impresso nel video.
-    BurnIn { index: u32 },
+    BurnIn {
+        index: u32,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -504,12 +507,7 @@ pub fn decide(media: &MediaInfo, profile: &DeviceProfile, req: &PlaybackRequest)
         (None, _) => AudioAction::None,
         (Some(_), None) => AudioAction::Copy,
         (Some(a), Some(_)) => {
-            let max_ch = profile
-                .audio_codecs
-                .iter()
-                .find(|s| s.codec == "aac")
-                .and_then(|s| s.max_channels)
-                .unwrap_or(2);
+            let max_ch = profile.audio_codecs.iter().find(|s| s.codec == "aac").and_then(|s| s.max_channels).unwrap_or(2);
             let channels = a.channels.clamp(1, max_ch.max(1));
             AudioAction::Transcode { codec: "aac".into(), channels, bitrate: if channels > 2 { 384_000 } else { 192_000 } }
         }
@@ -557,10 +555,7 @@ pub fn decide(media: &MediaInfo, profile: &DeviceProfile, req: &PlaybackRequest)
     let (src_w, src_h) = media.video.as_ref().map(|v| (v.width, v.height)).unwrap_or((1920, 1080));
     // Codec di uscita: H.264 se il client lo accetta (il più economico da codificare e il più compatibile),
     // altrimenti HEVC o AV1 quando client e server li condividono.
-    let out_codec = ["h264", "hevc", "av1"]
-        .into_iter()
-        .find(|c| has(&profile.hls_video_codecs, c) && has(&req.server_video_encoders, c))
-        .unwrap_or("h264");
+    let out_codec = ["h264", "hevc", "av1"].into_iter().find(|c| has(&profile.hls_video_codecs, c) && has(&req.server_video_encoders, c)).unwrap_or("h264");
     let support = profile.video_codecs.iter().find(|s| s.codec == out_codec);
     let max_w = support.and_then(|s| s.max_width).unwrap_or(u32::MAX).min(src_w.max(1));
     let max_h = support.and_then(|s| s.max_height).unwrap_or(u32::MAX).min(src_h.max(1));
@@ -581,14 +576,7 @@ pub fn decide(media: &MediaInfo, profile: &DeviceProfile, req: &PlaybackRequest)
     Ok(Decision {
         method: Method::Transcode,
         reasons: all,
-        video: VideoAction::Transcode {
-            codec: out_codec.into(),
-            max_width: max_w,
-            max_height: max_h,
-            bitrate,
-            tonemap,
-            burn_subtitle: burn_in,
-        },
+        video: VideoAction::Transcode { codec: out_codec.into(), max_width: max_w, max_height: max_h, bitrate, tonemap, burn_subtitle: burn_in },
         audio: audio_action,
         audio_index: audio.map(|a| a.index),
         subtitle: subtitle_delivery,

@@ -18,22 +18,15 @@ use std::time::{Duration, Instant};
 pub async fn hash_password(password: String) -> anyhow::Result<String> {
     tokio::task::spawn_blocking(move || {
         let salt = SaltString::generate(&mut argon2::password_hash::rand_core::OsRng);
-        Argon2::default()
-            .hash_password(password.as_bytes(), &salt)
-            .map(|h| h.to_string())
-            .map_err(|e| anyhow::anyhow!("hash della password: {e}"))
+        Argon2::default().hash_password(password.as_bytes(), &salt).map(|h| h.to_string()).map_err(|e| anyhow::anyhow!("hash della password: {e}"))
     })
     .await?
 }
 
 pub async fn verify_password(password: String, hash: String) -> bool {
-    tokio::task::spawn_blocking(move || {
-        PasswordHash::new(&hash)
-            .map(|h| Argon2::default().verify_password(password.as_bytes(), &h).is_ok())
-            .unwrap_or(false)
-    })
-    .await
-    .unwrap_or(false)
+    tokio::task::spawn_blocking(move || PasswordHash::new(&hash).map(|h| Argon2::default().verify_password(password.as_bytes(), &h).is_ok()).unwrap_or(false))
+        .await
+        .unwrap_or(false)
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -171,8 +164,7 @@ pub async fn load_permissions(state: &Shared, user_id: i64) -> anyhow::Result<Op
     .bind(user_id)
     .fetch_optional(&state.db.read)
     .await?;
-    let Some((username, is_admin, all_libraries, allow_remux, allow_transcode, max_bitrate, max_streams, allow_remote, manage_devices, disabled)) = row
-    else {
+    let Some((username, is_admin, all_libraries, allow_remux, allow_transcode, max_bitrate, max_streams, allow_remote, manage_devices, disabled)) = row else {
         return Ok(None);
     };
     if disabled != 0 {
@@ -181,10 +173,7 @@ pub async fn load_permissions(state: &Shared, user_id: i64) -> anyhow::Result<Op
     let library_ids: Vec<i64> = if all_libraries != 0 {
         vec![]
     } else {
-        sqlx::query_scalar("SELECT library_id FROM user_library_access WHERE user_id = ?")
-            .bind(user_id)
-            .fetch_all(&state.db.read)
-            .await?
+        sqlx::query_scalar("SELECT library_id FROM user_library_access WHERE user_id = ?").bind(user_id).fetch_all(&state.db.read).await?
     };
     Ok(Some((
         username,
@@ -223,11 +212,10 @@ pub async fn resolve_token(state: &Shared, token: &str, ip: Option<IpAddr>) -> A
             }
         }
     }
-    let row: Option<(i64, i64, String, String, String)> =
-        sqlx::query_as("SELECT id, user_id, device_id, device_name, client FROM tokens WHERE token_hash = ?")
-            .bind(&hash)
-            .fetch_optional(&state.db.read)
-            .await?;
+    let row: Option<(i64, i64, String, String, String)> = sqlx::query_as("SELECT id, user_id, device_id, device_name, client FROM tokens WHERE token_hash = ?")
+        .bind(&hash)
+        .fetch_optional(&state.db.read)
+        .await?;
     let Some((token_id, user_id, device_id, device_name, client)) = row else {
         return Err(ApiError::Unauthorized);
     };
@@ -243,12 +231,7 @@ pub async fn resolve_token(state: &Shared, token: &str, ip: Option<IpAddr>) -> A
     }
     let user = AuthUser { user_id, token_id, username, is_admin, perms, device_id, device_name, client, ip };
     touch_token(state, token_id, ip);
-    state
-        .token_cache
-        .map
-        .lock()
-        .unwrap()
-        .insert(hash, CachedAuth { user: user.clone(), at: Instant::now(), last_touch_ms: now });
+    state.token_cache.map.lock().unwrap().insert(hash, CachedAuth { user: user.clone(), at: Instant::now(), last_touch_ms: now });
     Ok(user)
 }
 
@@ -304,11 +287,7 @@ pub async fn issue_token(
     let token = random_hex(32);
     let now = now_ms();
     // Un dispositivo ha un solo token per utente: un nuovo login sostituisce il precedente.
-    sqlx::query("DELETE FROM tokens WHERE user_id = ? AND device_id = ?")
-        .bind(user_id)
-        .bind(device_id)
-        .execute(&state.db.write)
-        .await?;
+    sqlx::query("DELETE FROM tokens WHERE user_id = ? AND device_id = ?").bind(user_id).bind(device_id).execute(&state.db.write).await?;
     let id = sqlx::query(
         "INSERT INTO tokens (token_hash, user_id, device_id, device_name, client, client_version, created_at, last_used_at, last_ip)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",

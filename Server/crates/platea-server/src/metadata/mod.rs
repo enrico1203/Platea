@@ -130,12 +130,10 @@ pub async fn search(state: &Shared, kind: &str, title: &str, year: Option<i64>, 
 }
 
 pub async fn match_item(state: &Shared, item_id: i64) -> anyhow::Result<()> {
-    let Some(item) = sqlx::query_as::<_, ItemRow>(
-        "SELECT id, library_id, kind, title, year, locked_fields, match_state FROM items WHERE id = ?",
-    )
-    .bind(item_id)
-    .fetch_optional(&state.db.read)
-    .await?
+    let Some(item) = sqlx::query_as::<_, ItemRow>("SELECT id, library_id, kind, title, year, locked_fields, match_state FROM items WHERE id = ?")
+        .bind(item_id)
+        .fetch_optional(&state.db.read)
+        .await?
     else {
         return Ok(());
     };
@@ -156,10 +154,8 @@ pub async fn match_item(state: &Shared, item_id: i64) -> anyhow::Result<()> {
     let rps = s.metadata.tmdb_requests_per_second;
 
     // 1. Identificativo esplicito.
-    let ids: Vec<(String, String)> = sqlx::query_as("SELECT provider, value FROM external_ids WHERE item_id = ?")
-        .bind(item_id)
-        .fetch_all(&state.db.read)
-        .await?;
+    let ids: Vec<(String, String)> =
+        sqlx::query_as("SELECT provider, value FROM external_ids WHERE item_id = ?").bind(item_id).fetch_all(&state.db.read).await?;
     let mut tmdb_id: Option<i64> = ids.iter().find(|(p, _)| p == "tmdb").and_then(|(_, v)| v.parse().ok());
     if tmdb_id.is_none() {
         for (p, v) in &ids {
@@ -182,12 +178,8 @@ pub async fn match_item(state: &Shared, item_id: i64) -> anyhow::Result<()> {
     }
 
     // 2. Ricerca con punteggio.
-    let rejected: HashSet<String> = sqlx::query_scalar("SELECT provider_id FROM rejected_matches WHERE item_id = ?")
-        .bind(item_id)
-        .fetch_all(&state.db.read)
-        .await?
-        .into_iter()
-        .collect();
+    let rejected: HashSet<String> =
+        sqlx::query_scalar("SELECT provider_id FROM rejected_matches WHERE item_id = ?").bind(item_id).fetch_all(&state.db.read).await?.into_iter().collect();
     let cands = search(state, &item.kind, &item.title, item.year, &language, &rejected).await?;
     let threshold = s.metadata.auto_match_threshold;
     let best = cands.first();
@@ -233,10 +225,8 @@ pub async fn match_item(state: &Shared, item_id: i64) -> anyhow::Result<()> {
 }
 
 pub async fn refresh_item(state: &Shared, item_id: i64) -> anyhow::Result<()> {
-    let id: Option<String> = sqlx::query_scalar("SELECT value FROM external_ids WHERE item_id = ? AND provider = 'tmdb'")
-        .bind(item_id)
-        .fetch_optional(&state.db.read)
-        .await?;
+    let id: Option<String> =
+        sqlx::query_scalar("SELECT value FROM external_ids WHERE item_id = ? AND provider = 'tmdb'").bind(item_id).fetch_optional(&state.db.read).await?;
     match id.and_then(|v| v.parse::<i64>().ok()) {
         Some(tmdb) => {
             let st: String = sqlx::query_scalar("SELECT match_state FROM items WHERE id = ?").bind(item_id).fetch_one(&state.db.read).await?;
@@ -280,12 +270,10 @@ fn release_rating(details: &Value, country: &str, movie: bool) -> Option<String>
 
 /// Scarica i dettagli da TMDB e li applica all'elemento (e, per le serie, a stagioni ed episodi presenti).
 pub async fn apply_tmdb(state: &Shared, item_id: i64, tmdb_id: i64, score: f64, match_state: &str) -> anyhow::Result<()> {
-    let Some(item) = sqlx::query_as::<_, ItemRow>(
-        "SELECT id, library_id, kind, title, year, locked_fields, match_state FROM items WHERE id = ?",
-    )
-    .bind(item_id)
-    .fetch_optional(&state.db.read)
-    .await?
+    let Some(item) = sqlx::query_as::<_, ItemRow>("SELECT id, library_id, kind, title, year, locked_fields, match_state FROM items WHERE id = ?")
+        .bind(item_id)
+        .fetch_optional(&state.db.read)
+        .await?
     else {
         return Ok(());
     };
@@ -369,11 +357,7 @@ pub async fn apply_tmdb(state: &Shared, item_id: i64, tmdb_id: i64, score: f64, 
         .execute(&mut *tx)
         .await?;
     if let Some(imdb) = d["external_ids"]["imdb_id"].as_str().or(d["imdb_id"].as_str()).filter(|s| !s.is_empty()) {
-        sqlx::query("INSERT OR REPLACE INTO external_ids (item_id, provider, value) VALUES (?, 'imdb', ?)")
-            .bind(item_id)
-            .bind(imdb)
-            .execute(&mut *tx)
-            .await?;
+        sqlx::query("INSERT OR REPLACE INTO external_ids (item_id, provider, value) VALUES (?, 'imdb', ?)").bind(item_id).bind(imdb).execute(&mut *tx).await?;
     }
     if let Some(tvdb) = d["external_ids"]["tvdb_id"].as_i64() {
         sqlx::query("INSERT OR REPLACE INTO external_ids (item_id, provider, value) VALUES (?, 'tvdb', ?)")
@@ -412,12 +396,19 @@ pub async fn apply_tmdb(state: &Shared, item_id: i64, tmdb_id: i64, score: f64, 
     }
     // Persone: cast principale e registi/sceneggiatori. Le foto si scaricano solo quando una pagina le mostra.
     sqlx::query("DELETE FROM item_people WHERE item_id = ?").bind(item_id).execute(&mut *tx).await?;
-    let credits = if movie { &d["credits"] } else if d["aggregate_credits"].is_object() { &d["aggregate_credits"] } else { &d["credits"] };
+    let credits = if movie {
+        &d["credits"]
+    } else if d["aggregate_credits"].is_object() {
+        &d["aggregate_credits"]
+    } else {
+        &d["credits"]
+    };
     let mut order = 0i64;
     for c in credits["cast"].as_array().map(|a| a.as_slice()).unwrap_or(&[]).iter().take(20) {
-        let character = c["character"].as_str().map(String::from).or_else(|| {
-            c["roles"].as_array().and_then(|r| r.first()).and_then(|r| r["character"].as_str()).map(String::from)
-        });
+        let character = c["character"]
+            .as_str()
+            .map(String::from)
+            .or_else(|| c["roles"].as_array().and_then(|r| r.first()).and_then(|r| r["character"].as_str()).map(String::from));
         upsert_person(&mut tx, item_id, c, "actor", character.as_deref(), order).await?;
         order += 1;
     }
@@ -473,7 +464,14 @@ fn pick_logo(logos: &Value, lang: &str) -> Option<String> {
     by(Some(lang)).or_else(|| by(Some("en"))).or_else(|| list.first().and_then(|x| x["file_path"].as_str()).map(String::from))
 }
 
-async fn upsert_person(tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>, item_id: i64, c: &Value, role: &str, character: Option<&str>, order: i64) -> anyhow::Result<()> {
+async fn upsert_person(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    item_id: i64,
+    c: &Value,
+    role: &str,
+    character: Option<&str>,
+    order: i64,
+) -> anyhow::Result<()> {
     let (Some(tmdb), Some(name)) = (c["id"].as_i64(), c["name"].as_str()) else { return Ok(()) };
     let profile = c["profile_path"].as_str();
     sqlx::query(
@@ -495,10 +493,8 @@ async fn upsert_person(tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>, item_id: i6
         .execute(&mut **tx)
         .await?;
     if let Some(p) = profile {
-        let exists: Option<i64> = sqlx::query_scalar("SELECT id FROM images WHERE person_id = ? AND kind = 'profile'")
-            .bind(pid)
-            .fetch_optional(&mut **tx)
-            .await?;
+        let exists: Option<i64> =
+            sqlx::query_scalar("SELECT id FROM images WHERE person_id = ? AND kind = 'profile'").bind(pid).fetch_optional(&mut **tx).await?;
         if exists.is_none() {
             sqlx::query("INSERT INTO images (person_id, kind, source_url, state) VALUES (?, 'profile', ?, 'pending')")
                 .bind(pid)
@@ -521,19 +517,12 @@ async fn set_image(
 ) -> anyhow::Result<Option<i64>> {
     let Some(path) = path.filter(|p| !p.is_empty()) else { return Ok(None) };
     let url = format!("{}/{size}{path}", tmdb::IMAGE_BASE);
-    let existing: Option<(i64, String)> = sqlx::query_as("SELECT id, source_url FROM images WHERE item_id = ? AND kind = ?")
-        .bind(item_id)
-        .bind(kind)
-        .fetch_optional(&mut **tx)
-        .await?;
+    let existing: Option<(i64, String)> =
+        sqlx::query_as("SELECT id, source_url FROM images WHERE item_id = ? AND kind = ?").bind(item_id).bind(kind).fetch_optional(&mut **tx).await?;
     match existing {
         Some((_, u)) if u == url => Ok(None),
         Some((id, _)) => {
-            sqlx::query("UPDATE images SET source_url = ?, state = 'pending', local_path = NULL WHERE id = ?")
-                .bind(&url)
-                .bind(id)
-                .execute(&mut **tx)
-                .await?;
+            sqlx::query("UPDATE images SET source_url = ?, state = 'pending', local_path = NULL WHERE id = ?").bind(&url).bind(id).execute(&mut **tx).await?;
             Ok(Some(id))
         }
         None => {
@@ -551,12 +540,11 @@ async fn set_image(
 
 /// Serie: una richiesta per stagione, applicata a stagioni ed episodi già in libreria.
 async fn apply_seasons(state: &Shared, series_id: i64, tmdb_id: i64, key: &str, rps: u32, language: &str) -> anyhow::Result<()> {
-    let seasons: Vec<(i64, i64, String)> = sqlx::query_as(
-        "SELECT id, index_number, locked_fields FROM items WHERE parent_id = ? AND kind = 'season' AND index_number IS NOT NULL",
-    )
-    .bind(series_id)
-    .fetch_all(&state.db.read)
-    .await?;
+    let seasons: Vec<(i64, i64, String)> =
+        sqlx::query_as("SELECT id, index_number, locked_fields FROM items WHERE parent_id = ? AND kind = 'season' AND index_number IS NOT NULL")
+            .bind(series_id)
+            .fetch_all(&state.db.read)
+            .await?;
     let library_id: i64 = sqlx::query_scalar("SELECT library_id FROM items WHERE id = ?").bind(series_id).fetch_one(&state.db.read).await?;
     for (season_id, number, lf) in seasons {
         let d = match state.tmdb.get(key, rps, &format!("/tv/{tmdb_id}/season/{number}"), &[], language, DAY).await {
@@ -589,12 +577,11 @@ async fn apply_seasons(state: &Shared, series_id: i64, tmdb_id: i64, key: &str, 
         if let Some(id) = set_image(&mut tx, Some(season_id), None, "poster", d["poster_path"].as_str(), "w780").await? {
             imgs.push(id);
         }
-        let episodes: Vec<(i64, i64, String)> = sqlx::query_as(
-            "SELECT id, index_number, locked_fields FROM items WHERE parent_id = ? AND kind = 'episode' AND index_number IS NOT NULL",
-        )
-        .bind(season_id)
-        .fetch_all(&mut *tx)
-        .await?;
+        let episodes: Vec<(i64, i64, String)> =
+            sqlx::query_as("SELECT id, index_number, locked_fields FROM items WHERE parent_id = ? AND kind = 'episode' AND index_number IS NOT NULL")
+                .bind(season_id)
+                .fetch_all(&mut *tx)
+                .await?;
         let tmdb_eps = d["episodes"].as_array().cloned().unwrap_or_default();
         for (ep_id, n, elf) in episodes {
             let Some(e) = tmdb_eps.iter().find(|e| e["episode_number"].as_i64() == Some(n)) else { continue };
@@ -656,11 +643,9 @@ pub async fn schedule_refresh(state: &Shared) -> anyhow::Result<()> {
 
 /// Accoda l'associazione di tutti gli elementi ancora in attesa (per esempio dopo aver impostato la chiave).
 pub async fn enqueue_pending(state: &Shared) -> anyhow::Result<usize> {
-    let rows: Vec<(i64, i64)> = sqlx::query_as(
-        "SELECT id, library_id FROM items WHERE kind IN ('movie','series') AND match_state IN ('pending','unmatched')",
-    )
-    .fetch_all(&state.db.read)
-    .await?;
+    let rows: Vec<(i64, i64)> = sqlx::query_as("SELECT id, library_id FROM items WHERE kind IN ('movie','series') AND match_state IN ('pending','unmatched')")
+        .fetch_all(&state.db.read)
+        .await?;
     let n = rows.len();
     for (id, lib) in rows {
         jobs::enqueue(state, JobKind::MatchItem { item_id: id }, priority::METADATA, Some(lib)).await?;

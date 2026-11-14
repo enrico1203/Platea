@@ -152,11 +152,7 @@ pub fn router(state: Shared) -> Router {
         async move { axum::Json(d) }
     });
 
-    let mut app: Router<Shared> = api
-        .router
-        .route("/api/v1/openapi.json", doc_route)
-        .merge(jellyfin::router())
-        .fallback(fallback);
+    let mut app: Router<Shared> = api.router.route("/api/v1/openapi.json", doc_route).merge(jellyfin::router()).fallback(fallback);
 
     if let Some(dir) = state.boot.web_dir.clone() {
         let index = dir.join("index.html");
@@ -165,12 +161,10 @@ pub fn router(state: Shared) -> Router {
 
     app.layer(middleware::from_fn_with_state(state.clone(), cors))
         .layer(CompressionLayer::new().gzip(true).compress_when(compress_predicate()))
-        .layer(
-            TraceLayer::new_for_http().make_span_with(|req: &Request<Body>| {
-                // Nel log solo il percorso: mai la query, che può contenere un token.
-                tracing::debug_span!("http", method = %req.method(), path = %req.uri().path())
-            }),
-        )
+        .layer(TraceLayer::new_for_http().make_span_with(|req: &Request<Body>| {
+            // Nel log solo il percorso: mai la query, che può contenere un token.
+            tracing::debug_span!("http", method = %req.method(), path = %req.uri().path())
+        }))
         .layer(tower_http::limit::RequestBodyLimitLayer::new(16 * 1024 * 1024))
         .with_state(state)
 }
@@ -187,11 +181,7 @@ fn compress_predicate() -> impl tower_http::compression::Predicate {
 
 async fn fallback(req: Request<Body>) -> Response {
     let path = req.uri().path().to_string();
-    (
-        StatusCode::NOT_FOUND,
-        axum::Json(json!({ "error": "NotFound", "message": format!("Percorso non trovato: {path}") })),
-    )
-        .into_response()
+    (StatusCode::NOT_FOUND, axum::Json(json!({ "error": "NotFound", "message": format!("Percorso non trovato: {path}") }))).into_response()
 }
 
 /// CORS con origini consentite dalla dashboard, applicate a caldo.

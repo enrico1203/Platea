@@ -13,10 +13,8 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::Serialize;
 
-pub const VIDEO_EXTENSIONS: &[&str] = &[
-    "mkv", "mp4", "m4v", "avi", "mov", "wmv", "ts", "m2ts", "mts", "webm", "mpg", "mpeg", "flv",
-    "ogv", "3gp", "vob", "iso", "divx", "asf",
-];
+pub const VIDEO_EXTENSIONS: &[&str] =
+    &["mkv", "mp4", "m4v", "avi", "mov", "wmv", "ts", "m2ts", "mts", "webm", "mpg", "mpeg", "flv", "ogv", "3gp", "vob", "iso", "divx", "asf"];
 
 pub const SUBTITLE_EXTENSIONS: &[&str] = &["srt", "vtt", "ass", "ssa", "sub", "sup"];
 
@@ -72,16 +70,11 @@ pub struct EpisodeName {
     pub series_key: String,
 }
 
-static RE_TMDB: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?i)[\[{(]tmdb(?:id)?[-=: ]?(\d+)[\]})]").unwrap());
-static RE_IMDB: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?i)[\[{(]imdb(?:id)?[-=: ]?(tt\d+)[\]})]").unwrap());
+static RE_TMDB: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)[\[{(]tmdb(?:id)?[-=: ]?(\d+)[\]})]").unwrap());
+static RE_IMDB: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)[\[{(]imdb(?:id)?[-=: ]?(tt\d+)[\]})]").unwrap());
 static RE_IMDB_BARE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b(tt\d{7,9})\b").unwrap());
-static RE_TVDB: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?i)[\[{(]tvdb(?:id)?[-=: ]?(\d+)[\]})]").unwrap());
-static RE_ANY_ID_TAG: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?i)[\[{(](?:tmdb|imdb|tvdb)(?:id)?[-=: ]?[a-z0-9]+[\]})]").unwrap()
-});
+static RE_TVDB: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)[\[{(]tvdb(?:id)?[-=: ]?(\d+)[\]})]").unwrap());
+static RE_ANY_ID_TAG: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)[\[{(](?:tmdb|imdb|tvdb)(?:id)?[-=: ]?[a-z0-9]+[\]})]").unwrap());
 static RE_YEAR_PAREN: Lazy<Regex> = Lazy::new(|| Regex::new(r"[(\[]((?:19|20)\d\d)[)\]]").unwrap());
 static RE_YEAR: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b((?:19|20)\d\d)\b").unwrap());
 static RE_BRACKETS: Lazy<Regex> = Lazy::new(|| Regex::new(r"\[[^\]]*\]|\{[^}]*\}").unwrap());
@@ -105,32 +98,34 @@ static RE_QUALITY: Lazy<Regex> = Lazy::new(|| {
     .unwrap()
 });
 
-static RE_SXXEXX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?i)\bs(\d{1,4})[ ._-]?e(\d{1,4})((?:(?:[ ._-]?-?[ ._-]?e|-)\d{1,4})*)").unwrap()
-});
+static RE_SXXEXX: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)\bs(\d{1,4})[ ._-]?e(\d{1,4})((?:(?:[ ._-]?-?[ ._-]?e|-)\d{1,4})*)").unwrap());
 static RE_EXTRA_EP: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)(?:e|-)(\d{1,4})").unwrap());
-static RE_NXNN: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?i)\b(\d{1,2})x(\d{2,3})((?:-(?:\d{1,2}x)?\d{2,3})*)\b").unwrap());
-static RE_DATE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"\b((?:19|20)\d\d)[.\-_ ](\d\d)[.\-_ ](\d\d)\b").unwrap());
-static RE_SEASON_DIR: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?i)^(?:season|stagione|staffel|saison|temporada|series|s)[ ._-]*(\d{1,4})\b").unwrap()
-});
-static RE_SPECIALS_DIR: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?i)^(?:specials?|speciali|extras? speciali)$").unwrap());
-static RE_ABSOLUTE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?:^|[ ._])(?:-|ep|episode|episodio|#)?[ ._]?(\d{2,4})(?:v\d)?(?:[ ._]|$)").unwrap());
-static RE_EPISODE_WORD: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?i)\b(?:episode|episodio|ep|e)[ ._-]?(\d{1,4})\b").unwrap());
+static RE_NXNN: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)\b(\d{1,2})x(\d{2,3})((?:-(?:\d{1,2}x)?\d{2,3})*)\b").unwrap());
+static RE_DATE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b((?:19|20)\d\d)[.\-_ ](\d\d)[.\-_ ](\d\d)\b").unwrap());
+static RE_SEASON_DIR: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)^(?:season|stagione|staffel|saison|temporada|series|s)[ ._-]*(\d{1,4})\b").unwrap());
+static RE_SPECIALS_DIR: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)^(?:specials?|speciali|extras? speciali)$").unwrap());
+static RE_ABSOLUTE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?:^|[ ._])(?:-|ep|episode|episodio|#)?[ ._]?(\d{2,4})(?:v\d)?(?:[ ._]|$)").unwrap());
+static RE_EPISODE_WORD: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)\b(?:episode|episodio|ep|e)[ ._-]?(\d{1,4})\b").unwrap());
 
 const EXTRA_DIRS: &[&str] = &[
-    "extras", "extra", "featurettes", "behind the scenes", "deleted scenes", "interviews",
-    "scenes", "shorts", "trailers", "trailer", "samples", "sample", "clips", "other", "contenuti speciali",
+    "extras",
+    "extra",
+    "featurettes",
+    "behind the scenes",
+    "deleted scenes",
+    "interviews",
+    "scenes",
+    "shorts",
+    "trailers",
+    "trailer",
+    "samples",
+    "sample",
+    "clips",
+    "other",
+    "contenuti speciali",
 ];
-const EXTRA_SUFFIXES: &[&str] = &[
-    "-trailer", "-sample", "-featurette", "-behindthescenes", "-deleted", "-interview", "-scene",
-    "-short", "-clip", "-other", ".sample", "-extra",
-];
+const EXTRA_SUFFIXES: &[&str] =
+    &["-trailer", "-sample", "-featurette", "-behindthescenes", "-deleted", "-interview", "-scene", "-short", "-clip", "-other", ".sample", "-extra"];
 
 /// Estensione in minuscolo, senza punto.
 pub fn extension(name: &str) -> Option<String> {
@@ -318,11 +313,7 @@ pub fn parse_movie(rel_path: &str) -> MovieName {
         }
     }
 
-    let (title, year) = if use_folder {
-        (folder_title, folder_year.or(file_year))
-    } else {
-        (file_title, file_year)
-    };
+    let (title, year) = if use_folder { (folder_title, folder_year.or(file_year)) } else { (file_title, file_year) };
 
     let version = detect_version(stem, folder.filter(|_| use_folder));
     let group_key = if use_folder {
@@ -480,16 +471,7 @@ pub fn parse_episode(rel_path: &str) -> Option<EpisodeName> {
         return None;
     }
 
-    Some(EpisodeName {
-        series_title,
-        series_year,
-        series_ids,
-        season,
-        episodes,
-        air_date,
-        absolute,
-        series_key,
-    })
+    Some(EpisodeName { series_title, series_year, series_ids, season, episodes, air_date, absolute, series_key })
 }
 
 fn expand_range(episodes: &mut Vec<u32>, n: u32) {
@@ -504,9 +486,8 @@ fn expand_range(episodes: &mut Vec<u32>, n: u32) {
 }
 
 fn strip_quality_numbers(s: &str) -> String {
-    static RE: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(r"(?i)\b(?:2160p|1080p|1080i|720p|576p|480p|x26[45]|h\.?26[45]|10bit|8bit|5\.1|7\.1|(?:19|20)\d\d)\b").unwrap()
-    });
+    static RE: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r"(?i)\b(?:2160p|1080p|1080i|720p|576p|480p|x26[45]|h\.?26[45]|10bit|8bit|5\.1|7\.1|(?:19|20)\d\d)\b").unwrap());
     RE.replace_all(s, " ").to_string()
 }
 
@@ -556,8 +537,8 @@ fn fold_char(c: char) -> char {
 /// Titolo per l'ordinamento: senza articolo iniziale, normalizzato.
 pub fn sort_title(title: &str) -> String {
     const ARTICLES: &[&str] = &[
-        "the ", "a ", "an ", "il ", "lo ", "la ", "i ", "gli ", "le ", "un ", "uno ", "una ",
-        "l'", "un'", "der ", "die ", "das ", "el ", "los ", "las ", "les ",
+        "the ", "a ", "an ", "il ", "lo ", "la ", "i ", "gli ", "le ", "un ", "uno ", "una ", "l'", "un'", "der ", "die ", "das ", "el ", "los ", "las ",
+        "les ",
     ];
     let lower = title.to_lowercase();
     let mut rest = lower.as_str();
@@ -613,9 +594,7 @@ pub fn subtitle_language(file: &str) -> (Option<String>, bool, bool) {
         match p.as_str() {
             "forced" | "forzati" => forced = true,
             "sdh" | "cc" | "hi" => sdh = true,
-            _ if (p.len() == 2 || p.len() == 3) && p.chars().all(|c| c.is_ascii_alphabetic()) && lang.is_none() => {
-                lang = Some(p)
-            }
+            _ if (p.len() == 2 || p.len() == 3) && p.chars().all(|c| c.is_ascii_alphabetic()) && lang.is_none() => lang = Some(p),
             _ => {}
         }
     }

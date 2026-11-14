@@ -54,7 +54,14 @@ impl Default for NetworkSettings {
         NetworkSettings {
             allowed_origins: vec!["*".into()],
             trusted_proxies: vec!["127.0.0.1".into(), "::1".into(), "172.16.0.0/12".into(), "10.0.0.0/8".into(), "192.168.0.0/16".into()],
-            local_networks: vec!["10.0.0.0/8".into(), "172.16.0.0/12".into(), "192.168.0.0/16".into(), "127.0.0.0/8".into(), "::1/128".into(), "fc00::/7".into()],
+            local_networks: vec![
+                "10.0.0.0/8".into(),
+                "172.16.0.0/12".into(),
+                "192.168.0.0/16".into(),
+                "127.0.0.0/8".into(),
+                "::1/128".into(),
+                "fc00::/7".into(),
+            ],
             remote_max_bitrate_mbps: 0,
         }
     }
@@ -259,10 +266,7 @@ pub struct Settings {
 }
 
 fn load_group<T: DeserializeOwned + Default>(rows: &[(String, String)], name: &str) -> T {
-    rows.iter()
-        .find(|(g, _)| g == name)
-        .and_then(|(_, v)| serde_json::from_str(v).ok())
-        .unwrap_or_default()
+    rows.iter().find(|(g, _)| g == name).and_then(|(_, v)| serde_json::from_str(v).ok()).unwrap_or_default()
 }
 
 impl Settings {

@@ -60,7 +60,8 @@ async fn overview(State(state): State<Shared>, _a: AdminUser) -> ApiResult<Json<
     .fetch_one(&state.db.read)
     .await?;
     let mut alerts: Vec<Value> = Vec::new();
-    let mount_missing: Vec<(String, Option<String>)> = sqlx::query_as("SELECT name, last_scan_message FROM libraries WHERE last_scan_status = 'mount_missing'").fetch_all(&state.db.read).await?;
+    let mount_missing: Vec<(String, Option<String>)> =
+        sqlx::query_as("SELECT name, last_scan_message FROM libraries WHERE last_scan_status = 'mount_missing'").fetch_all(&state.db.read).await?;
     for (name, msg) in mount_missing {
         alerts.push(json!({ "level": "danger", "code": "MountMissing", "message": format!("Libreria {name}: {}", msg.unwrap_or_default()) }));
     }
@@ -180,10 +181,7 @@ async fn settings_get(State(state): State<Shared>, _a: AdminUser) -> ApiResult<J
 async fn settings_put(State(state): State<Shared>, AdminUser(admin): AdminUser, Path(group): Path<String>, Json(v): Json<Value>) -> ApiResult<Json<Value>> {
     let before_key = state.settings.get().metadata.tmdb_api_key.clone();
     let (prev, next) = state.settings.update(&group, v).await.map_err(ApiError::BadRequest)?;
-    state
-        .db
-        .activity(Some(admin.user_id), "settings", &format!("{} ha modificato le impostazioni {group}: {prev} → {next}", admin.username), None)
-        .await;
+    state.db.activity(Some(admin.user_id), "settings", &format!("{} ha modificato le impostazioni {group}: {prev} → {next}", admin.username), None).await;
     after_settings_change(&state, &group, &before_key).await;
     Ok(Json(json!({ "values": state.settings.values_public() })))
 }
@@ -210,7 +208,8 @@ async fn after_settings_change(state: &Shared, group: &str, before_key: &str) {
 }
 
 async fn settings_export(State(state): State<Shared>, _a: AdminUser) -> ApiResult<Response> {
-    let body = serde_json::to_vec_pretty(&json!({ "platea": crate::state::VERSION, "exported_at": now_ms(), "settings": state.settings.export() })).unwrap_or_default();
+    let body = serde_json::to_vec_pretty(&json!({ "platea": crate::state::VERSION, "exported_at": now_ms(), "settings": state.settings.export() }))
+        .unwrap_or_default();
     Ok(Response::builder()
         .header(header::CONTENT_TYPE, "application/json")
         .header(header::CONTENT_DISPOSITION, "attachment; filename=\"platea-config.json\"")
@@ -230,7 +229,10 @@ async fn settings_import(State(state): State<Shared>, AdminUser(admin): AdminUse
             applied.push(g);
         }
     }
-    state.db.activity(Some(admin.user_id), "settings_import", &format!("{} ha importato la configurazione ({})", admin.username, applied.join(", ")), None).await;
+    state
+        .db
+        .activity(Some(admin.user_id), "settings_import", &format!("{} ha importato la configurazione ({})", admin.username, applied.join(", ")), None)
+        .await;
     Ok(Json(json!({ "applied": applied })))
 }
 
@@ -243,12 +245,11 @@ async fn review(State(state): State<Shared>, _a: AdminUser) -> ApiResult<Json<Va
     .await?;
     let mut out = Vec::new();
     for (id, kind, title, year, ms, score, lib) in rows {
-        let file: Option<String> = sqlx::query_scalar(
-            "SELECT f.relative_path FROM media_files f JOIN items e ON e.id = f.item_id WHERE e.id = ?1 OR e.series_id = ?1 LIMIT 1",
-        )
-        .bind(id)
-        .fetch_optional(&state.db.read)
-        .await?;
+        let file: Option<String> =
+            sqlx::query_scalar("SELECT f.relative_path FROM media_files f JOIN items e ON e.id = f.item_id WHERE e.id = ?1 OR e.series_id = ?1 LIMIT 1")
+                .bind(id)
+                .fetch_optional(&state.db.read)
+                .await?;
         let cands: Vec<(String, String, Option<i64>, f64, Option<String>)> =
             sqlx::query_as("SELECT provider_id, title, year, score, poster_path FROM match_candidates WHERE item_id = ? ORDER BY score DESC LIMIT 5")
                 .bind(id)
@@ -309,19 +310,22 @@ async fn activity(State(state): State<Shared>, _a: AdminUser, Query(q): Query<Pa
     .bind(q.before.unwrap_or(i64::MAX))
     .fetch_all(&state.db.read)
     .await?;
-    Ok(Json(json!({ "items": rows.into_iter().map(|(id, at, _uid, kind, msg, ip, user)| json!({ "id": id, "at": at, "kind": kind, "message": msg, "ip": ip, "user": user })).collect::<Vec<_>>() })))
+    Ok(Json(
+        json!({ "items": rows.into_iter().map(|(id, at, _uid, kind, msg, ip, user)| json!({ "id": id, "at": at, "kind": kind, "message": msg, "ip": ip, "user": user })).collect::<Vec<_>>() }),
+    ))
 }
 
 async fn history(State(state): State<Shared>, _a: AdminUser, Query(q): Query<PageQuery>) -> ApiResult<Json<Value>> {
     let limit = clamp_limit(q.limit, 100);
-    let rows: Vec<(i64, Option<String>, Option<String>, Option<String>, Option<String>, String, Option<String>, i64, Option<i64>, i64)> = sqlx::query_as(&format!(
-        "SELECT h.id, u.username, i.title, h.client, h.device_name, h.method, h.reason, h.started_at, h.ended_at, h.watched_ms
+    let rows: Vec<(i64, Option<String>, Option<String>, Option<String>, Option<String>, String, Option<String>, i64, Option<i64>, i64)> =
+        sqlx::query_as(&format!(
+            "SELECT h.id, u.username, i.title, h.client, h.device_name, h.method, h.reason, h.started_at, h.ended_at, h.watched_ms
          FROM playback_history h LEFT JOIN users u ON u.id = h.user_id LEFT JOIN items i ON i.id = h.item_id
          WHERE h.id < ? ORDER BY h.id DESC LIMIT {limit}"
-    ))
-    .bind(q.before.unwrap_or(i64::MAX))
-    .fetch_all(&state.db.read)
-    .await?;
+        ))
+        .bind(q.before.unwrap_or(i64::MAX))
+        .fetch_all(&state.db.read)
+        .await?;
     let stats: Vec<(String, i64)> = sqlx::query_as("SELECT method, COUNT(*) FROM playback_history WHERE started_at > ? GROUP BY method")
         .bind(now_ms() - 30 * 86_400_000)
         .fetch_all(&state.db.read)

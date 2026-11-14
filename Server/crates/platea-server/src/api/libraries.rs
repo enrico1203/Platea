@@ -48,7 +48,8 @@ struct LibRow {
 const COLS: &str = "id, name, kind, scan_profile, language, country, scan_interval_minutes, probe_concurrency, probe_per_minute, probe_window_start, probe_window_end, probe_pause_on_play, extract_keyframes, created_at, last_scan_at, last_scan_status, last_scan_message";
 
 async fn view(state: &Shared, l: LibRow, admin: bool) -> ApiResult<Value> {
-    let paths: Vec<String> = sqlx::query_scalar("SELECT path FROM library_paths WHERE library_id = ? ORDER BY path").bind(l.id).fetch_all(&state.db.read).await?;
+    let paths: Vec<String> =
+        sqlx::query_scalar("SELECT path FROM library_paths WHERE library_id = ? ORDER BY path").bind(l.id).fetch_all(&state.db.read).await?;
     let (items, files): (i64, i64) = sqlx::query_as(
         "SELECT (SELECT COUNT(*) FROM items WHERE library_id = ?1 AND kind IN ('movie','series')),
                 (SELECT COUNT(*) FROM media_files f JOIN library_paths p ON p.id = f.library_path_id WHERE p.library_id = ?1)",
@@ -92,9 +93,8 @@ async fn view(state: &Shared, l: LibRow, admin: bool) -> ApiResult<Value> {
 }
 
 async fn list(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<Value>> {
-    let rows: Vec<LibRow> = sqlx::query_as(&format!("SELECT {COLS} FROM libraries WHERE 1 {} ORDER BY name", user.library_filter("id")))
-        .fetch_all(&state.db.read)
-        .await?;
+    let rows: Vec<LibRow> =
+        sqlx::query_as(&format!("SELECT {COLS} FROM libraries WHERE 1 {} ORDER BY name", user.library_filter("id"))).fetch_all(&state.db.read).await?;
     let mut out = Vec::new();
     for r in rows {
         out.push(view(&state, r, user.is_admin).await?);
@@ -111,7 +111,11 @@ async fn get_one(State(state): State<Shared>, user: AuthUser, Path(id): Path<Str
     if !user.can_see_library(lid) {
         return Err(ApiError::not_found("Libreria"));
     }
-    let r: LibRow = sqlx::query_as(&format!("SELECT {COLS} FROM libraries WHERE id = ?")).bind(lid).fetch_optional(&state.db.read).await?.ok_or_else(|| ApiError::not_found("Libreria"))?;
+    let r: LibRow = sqlx::query_as(&format!("SELECT {COLS} FROM libraries WHERE id = ?"))
+        .bind(lid)
+        .fetch_optional(&state.db.read)
+        .await?
+        .ok_or_else(|| ApiError::not_found("Libreria"))?;
     Ok(Json(view(&state, r, user.is_admin).await?))
 }
 
@@ -264,7 +268,11 @@ async fn update(State(state): State<Shared>, AdminUser(admin): AdminUser, Path(i
     let lid = decode(&state, &id)?;
     apply_patch(&state, lid, p).await?;
     state.db.activity(Some(admin.user_id), "library_updated", &format!("{} ha modificato una libreria", admin.username), None).await;
-    let r: LibRow = sqlx::query_as(&format!("SELECT {COLS} FROM libraries WHERE id = ?")).bind(lid).fetch_optional(&state.db.read).await?.ok_or_else(|| ApiError::not_found("Libreria"))?;
+    let r: LibRow = sqlx::query_as(&format!("SELECT {COLS} FROM libraries WHERE id = ?"))
+        .bind(lid)
+        .fetch_optional(&state.db.read)
+        .await?
+        .ok_or_else(|| ApiError::not_found("Libreria"))?;
     Ok(Json(view(&state, r, true).await?))
 }
 

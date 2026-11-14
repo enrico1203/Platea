@@ -7,8 +7,13 @@ use axum::Json;
 use serde_json::{json, Value};
 
 pub fn routes(api: Api) -> Api {
-    api.get("/api/v1/system/info", "Sistema", Access::Public, "Nome, identificativo e versione del server; stato della configurazione iniziale", info)
-        .get("/api/v1/health", "Sistema", Access::Public, "Stato di salute", health)
+    api.get("/api/v1/system/info", "Sistema", Access::Public, "Nome, identificativo e versione del server; stato della configurazione iniziale", info).get(
+        "/api/v1/health",
+        "Sistema",
+        Access::Public,
+        "Stato di salute",
+        health,
+    )
 }
 
 async fn info(State(state): State<Shared>) -> Json<Value> {

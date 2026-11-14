@@ -80,7 +80,11 @@ fn decode(state: &Shared, id: &str) -> ApiResult<i64> {
 
 async fn get_one(State(state): State<Shared>, _a: AdminUser, Path(id): Path<String>) -> ApiResult<Json<Value>> {
     let id = decode(&state, &id)?;
-    let r: UserRow = sqlx::query_as(&format!("SELECT {USER_COLS} FROM users WHERE id = ?")).bind(id).fetch_optional(&state.db.read).await?.ok_or_else(|| ApiError::not_found("Utente"))?;
+    let r: UserRow = sqlx::query_as(&format!("SELECT {USER_COLS} FROM users WHERE id = ?"))
+        .bind(id)
+        .fetch_optional(&state.db.read)
+        .await?
+        .ok_or_else(|| ApiError::not_found("Utente"))?;
     Ok(Json(view(&state, r).await?))
 }
 
@@ -106,7 +110,8 @@ async fn create(State(state): State<Shared>, AdminUser(admin): AdminUser, Json(p
     let username = validate_username(p.username.as_deref().unwrap_or(""))?;
     let password = p.password.clone().unwrap_or_default();
     validate_password(&state, &password)?;
-    let exists: Option<i64> = sqlx::query_scalar("SELECT id FROM users WHERE username_lower = ?").bind(username.to_lowercase()).fetch_optional(&state.db.read).await?;
+    let exists: Option<i64> =
+        sqlx::query_scalar("SELECT id FROM users WHERE username_lower = ?").bind(username.to_lowercase()).fetch_optional(&state.db.read).await?;
     if exists.is_some() {
         return Err(ApiError::Conflict(format!("Esiste già un utente {username}")));
     }
@@ -130,7 +135,11 @@ async fn admin_count(state: &Shared) -> ApiResult<i64> {
 }
 
 async fn apply_patch(state: &Shared, id: i64, p: UserPatch) -> ApiResult<()> {
-    let is_admin: i64 = sqlx::query_scalar("SELECT is_admin FROM users WHERE id = ?").bind(id).fetch_optional(&state.db.read).await?.ok_or_else(|| ApiError::not_found("Utente"))?;
+    let is_admin: i64 = sqlx::query_scalar("SELECT is_admin FROM users WHERE id = ?")
+        .bind(id)
+        .fetch_optional(&state.db.read)
+        .await?
+        .ok_or_else(|| ApiError::not_found("Utente"))?;
     let demoting = is_admin != 0 && (p.is_admin == Some(false) || p.disabled == Some(true));
     if demoting && admin_count(state).await? <= 1 {
         return Err(ApiError::Conflict("È l'ultimo amministratore: non si può declassare né disattivare".into()));
@@ -138,7 +147,8 @@ async fn apply_patch(state: &Shared, id: i64, p: UserPatch) -> ApiResult<()> {
     let mut tx = state.db.write.begin().await?;
     if let Some(u) = &p.username {
         let u = validate_username(u)?;
-        let clash: Option<i64> = sqlx::query_scalar("SELECT id FROM users WHERE username_lower = ? AND id <> ?").bind(u.to_lowercase()).bind(id).fetch_optional(&mut *tx).await?;
+        let clash: Option<i64> =
+            sqlx::query_scalar("SELECT id FROM users WHERE username_lower = ? AND id <> ?").bind(u.to_lowercase()).bind(id).fetch_optional(&mut *tx).await?;
         if clash.is_some() {
             return Err(ApiError::Conflict(format!("Esiste già un utente {u}")));
         }
@@ -176,7 +186,11 @@ async fn apply_patch(state: &Shared, id: i64, p: UserPatch) -> ApiResult<()> {
         sqlx::query("DELETE FROM user_library_access WHERE user_id = ?").bind(id).execute(&mut *tx).await?;
         for l in libs {
             if let Some(lid) = state.ids.decode(&l) {
-                sqlx::query("INSERT OR IGNORE INTO user_library_access (user_id, library_id) SELECT ?, id FROM libraries WHERE id = ?").bind(id).bind(lid).execute(&mut *tx).await?;
+                sqlx::query("INSERT OR IGNORE INTO user_library_access (user_id, library_id) SELECT ?, id FROM libraries WHERE id = ?")
+                    .bind(id)
+                    .bind(lid)
+                    .execute(&mut *tx)
+                    .await?;
             }
         }
     }

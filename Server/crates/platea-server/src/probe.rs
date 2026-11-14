@@ -66,19 +66,27 @@ impl ProbeStream {
             return Some(b);
         }
         let pf = self.pix_fmt.as_deref()?;
-        Some(if pf.contains("12") { 12 } else if pf.contains("10") { 10 } else { 8 })
+        Some(if pf.contains("12") {
+            12
+        } else if pf.contains("10") {
+            10
+        } else {
+            8
+        })
     }
 
     pub fn hdr(&self) -> Option<String> {
-        let dovi = self.side_data_list.iter().any(|s| {
-            s.get("side_data_type").and_then(|t| t.as_str()).is_some_and(|t| t.contains("DOVI") || t.contains("Dolby Vision"))
-        });
+        let dovi = self
+            .side_data_list
+            .iter()
+            .any(|s| s.get("side_data_type").and_then(|t| t.as_str()).is_some_and(|t| t.contains("DOVI") || t.contains("Dolby Vision")));
         if dovi || self.codec_name == "dvhe" || self.codec_name == "dvh1" {
             return Some("dovi".into());
         }
-        let hdr10plus = self.side_data_list.iter().any(|s| {
-            s.get("side_data_type").and_then(|t| t.as_str()).is_some_and(|t| t.contains("HDR10+") || t.contains("HDR Dynamic Metadata SMPTE2094-40"))
-        });
+        let hdr10plus = self
+            .side_data_list
+            .iter()
+            .any(|s| s.get("side_data_type").and_then(|t| t.as_str()).is_some_and(|t| t.contains("HDR10+") || t.contains("HDR Dynamic Metadata SMPTE2094-40")));
         match self.color_transfer.as_deref() {
             Some("smpte2084") if hdr10plus => Some("hdr10plus".into()),
             Some("smpte2084") => Some("hdr10".into()),
@@ -168,10 +176,8 @@ pub async fn file_abs_path(state: &Shared, file_id: i64) -> anyhow::Result<Optio
 
 pub async fn probe_file_job(state: &Shared, file_id: i64) -> anyhow::Result<()> {
     let Some((abs, rel, _size, _mtime, library_id)) = file_abs_path(state, file_id).await? else { return Ok(()) };
-    let probe_state: Option<String> = sqlx::query_scalar("SELECT probe_state FROM media_files WHERE id = ?")
-        .bind(file_id)
-        .fetch_optional(&state.db.read)
-        .await?;
+    let probe_state: Option<String> =
+        sqlx::query_scalar("SELECT probe_state FROM media_files WHERE id = ?").bind(file_id).fetch_optional(&state.db.read).await?;
     if probe_state.as_deref() == Some("done") {
         return Ok(());
     }
@@ -194,14 +200,11 @@ pub async fn probe_file_job(state: &Shared, file_id: i64) -> anyhow::Result<()> 
     tracing::debug!(file = %rel, ms = t0.elapsed().as_millis() as u64, "analisi completata");
 
     // Indice dei keyframe per il remux: subito sui dischi locali se la libreria lo prevede.
-    let lib: Option<(i64, String)> = sqlx::query_as("SELECT extract_keyframes, scan_profile FROM libraries WHERE id = ?")
-        .bind(library_id)
-        .fetch_optional(&state.db.read)
-        .await?;
+    let lib: Option<(i64, String)> =
+        sqlx::query_as("SELECT extract_keyframes, scan_profile FROM libraries WHERE id = ?").bind(library_id).fetch_optional(&state.db.read).await?;
     if let Some((kf, profile)) = lib {
         if kf != 0 && profile == "local" {
-            crate::jobs::enqueue(state, crate::jobs::JobKind::ExtractKeyframes { file_id }, crate::jobs::priority::MAINTENANCE, Some(library_id))
-                .await?;
+            crate::jobs::enqueue(state, crate::jobs::JobKind::ExtractKeyframes { file_id }, crate::jobs::priority::MAINTENANCE, Some(library_id)).await?;
         }
     }
     state.events.publish("item.probed", serde_json::json!({ "file_id": state.ids.encode(file_id) }));
@@ -259,33 +262,26 @@ pub async fn save_probe(state: &Shared, file_id: i64, rel: &str, out: &ProbeOutp
         .execute(&mut *tx)
         .await?;
     }
-    sqlx::query(
-        "UPDATE media_files SET container = ?, duration_ms = ?, bitrate = ?, probe_state = 'done', probe_error = NULL, probed_at = ? WHERE id = ?",
-    )
-    .bind(&container)
-    .bind(duration_ms)
-    .bind(bitrate)
-    .bind(now)
-    .bind(file_id)
-    .execute(&mut *tx)
-    .await?;
-    sqlx::query(
-        "UPDATE items SET runtime_ms = COALESCE(runtime_ms, ?) WHERE id = (SELECT item_id FROM media_files WHERE id = ?)",
-    )
-    .bind(duration_ms)
-    .bind(file_id)
-    .execute(&mut *tx)
-    .await?;
+    sqlx::query("UPDATE media_files SET container = ?, duration_ms = ?, bitrate = ?, probe_state = 'done', probe_error = NULL, probed_at = ? WHERE id = ?")
+        .bind(&container)
+        .bind(duration_ms)
+        .bind(bitrate)
+        .bind(now)
+        .bind(file_id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("UPDATE items SET runtime_ms = COALESCE(runtime_ms, ?) WHERE id = (SELECT item_id FROM media_files WHERE id = ?)")
+        .bind(duration_ms)
+        .bind(file_id)
+        .execute(&mut *tx)
+        .await?;
     tx.commit().await?;
     Ok(())
 }
 
 /// Analisi immediata con priorità massima: per un file riprodotto prima della sua analisi in coda.
 pub async fn ensure_probed(state: &Shared, file_id: i64) -> anyhow::Result<()> {
-    let st: Option<String> = sqlx::query_scalar("SELECT probe_state FROM media_files WHERE id = ?")
-        .bind(file_id)
-        .fetch_optional(&state.db.read)
-        .await?;
+    let st: Option<String> = sqlx::query_scalar("SELECT probe_state FROM media_files WHERE id = ?").bind(file_id).fetch_optional(&state.db.read).await?;
     match st.as_deref() {
         Some("done") => Ok(()),
         None => bail!("file non trovato"),
@@ -300,10 +296,8 @@ pub async fn ensure_probed(state: &Shared, file_id: i64) -> anyhow::Result<()> {
 
 /// Indice dei keyframe del primo video, in millisecondi. Legge i pacchetti senza decodificare.
 pub async fn extract_keyframes_job(state: &Shared, file_id: i64) -> anyhow::Result<Vec<i64>> {
-    if let Some(blob) = sqlx::query_scalar::<_, Vec<u8>>("SELECT times_ms FROM keyframes WHERE file_id = ?")
-        .bind(file_id)
-        .fetch_optional(&state.db.read)
-        .await?
+    if let Some(blob) =
+        sqlx::query_scalar::<_, Vec<u8>>("SELECT times_ms FROM keyframes WHERE file_id = ?").bind(file_id).fetch_optional(&state.db.read).await?
     {
         return Ok(decode_keyframes(&blob));
     }
@@ -317,9 +311,7 @@ pub async fn extract_keyframes_job(state: &Shared, file_id: i64) -> anyhow::Resu
         .stderr(Stdio::null())
         .kill_on_drop(true);
     let child = cmd.spawn().context("avvio di ffprobe per i keyframe")?;
-    let out = tokio::time::timeout(Duration::from_secs(900), child.wait_with_output())
-        .await
-        .context("estrazione dei keyframe oltre il tempo limite")??;
+    let out = tokio::time::timeout(Duration::from_secs(900), child.wait_with_output()).await.context("estrazione dei keyframe oltre il tempo limite")??;
     if !out.status.success() {
         bail!("ffprobe non è riuscito a leggere i keyframe");
     }
@@ -357,7 +349,7 @@ pub fn encode_keyframes(times: &[i64]) -> Vec<u8> {
 }
 
 pub fn decode_keyframes(b: &[u8]) -> Vec<i64> {
-    b.chunks_exact(4).map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]) as i64).collect()
+    b.as_chunks::<4>().0.iter().map(|c| u32::from_le_bytes(*c) as i64).collect()
 }
 
 #[cfg(test)]
@@ -378,10 +370,7 @@ mod tests {
     fn hdr_detection() {
         let s = ProbeStream { color_transfer: Some("smpte2084".into()), ..Default::default() };
         assert_eq!(s.hdr().as_deref(), Some("hdr10"));
-        let s = ProbeStream {
-            side_data_list: vec![serde_json::json!({"side_data_type": "DOVI configuration record"})],
-            ..Default::default()
-        };
+        let s = ProbeStream { side_data_list: vec![serde_json::json!({"side_data_type": "DOVI configuration record"})], ..Default::default() };
         assert_eq!(s.hdr().as_deref(), Some("dovi"));
         let s = ProbeStream { pix_fmt: Some("yuv420p10le".into()), ..Default::default() };
         assert_eq!(s.bit_depth(), Some(10));

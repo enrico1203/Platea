@@ -42,10 +42,7 @@ impl Db {
         // Copia di sicurezza prima di ogni migrazione da applicare.
         let pending = Self::pending_migrations(&write).await.unwrap_or(0);
         if pending > 0 && path.exists() && std::fs::metadata(&path).map(|m| m.len() > 0).unwrap_or(false) {
-            let applied: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
-                .fetch_one(&write)
-                .await
-                .unwrap_or(0);
+            let applied: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations").fetch_one(&write).await.unwrap_or(0);
             if applied > 0 {
                 let backup = boot.data_dir.join(format!("platea.db.bak-{}", crate::util::now_ms()));
                 sqlx::query(&format!("VACUUM INTO '{}'", backup.display().to_string().replace('\'', "''")))
@@ -70,11 +67,7 @@ impl Db {
     }
 
     async fn pending_migrations(pool: &SqlitePool) -> anyhow::Result<usize> {
-        let exists: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='_sqlx_migrations'",
-        )
-        .fetch_one(pool)
-        .await?;
+        let exists: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='_sqlx_migrations'").fetch_one(pool).await?;
         if exists == 0 {
             return Ok(MIGRATOR.iter().count());
         }
@@ -83,10 +76,7 @@ impl Db {
     }
 
     pub async fn state_get(&self, key: &str) -> anyhow::Result<Option<String>> {
-        Ok(sqlx::query_scalar("SELECT value FROM server_state WHERE key = ?")
-            .bind(key)
-            .fetch_optional(&self.read)
-            .await?)
+        Ok(sqlx::query_scalar("SELECT value FROM server_state WHERE key = ?").bind(key).fetch_optional(&self.read).await?)
     }
 
     pub async fn state_set(&self, key: &str, value: &str) -> anyhow::Result<()> {

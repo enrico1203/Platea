@@ -143,7 +143,16 @@ pub async fn load_file(state: &Shared, file_id: i64) -> ApiResult<FileInfo> {
                     default: s.is_default != 0,
                     external: s.is_external != 0,
                 });
-                subs_meta.push((s.stream_index, s.codec.clone(), s.language.clone(), s.title.clone(), s.is_external != 0, s.external_path.clone(), s.is_forced != 0, s.is_default != 0));
+                subs_meta.push((
+                    s.stream_index,
+                    s.codec.clone(),
+                    s.language.clone(),
+                    s.title.clone(),
+                    s.is_external != 0,
+                    s.external_path.clone(),
+                    s.is_forced != 0,
+                    s.is_default != 0,
+                ));
             }
             _ => {}
         }
@@ -185,7 +194,8 @@ pub fn chain_text(media: &MediaInfo, d: &pb::Decision, backend: &str) -> String 
         s
     });
     let audio = d.audio_index.and_then(|i| media.audio.iter().find(|a| a.index == i));
-    let a_src = audio.map(|a| format!("{} {}.{}", codec_label(&a.codec), if a.channels > 2 { a.channels - 1 } else { a.channels }, if a.channels > 2 { 1 } else { 0 }));
+    let a_src =
+        audio.map(|a| format!("{} {}.{}", codec_label(&a.codec), if a.channels > 2 { a.channels - 1 } else { a.channels }, if a.channels > 2 { 1 } else { 0 }));
     match d.method {
         pb::Method::DirectPlay => {
             let mut parts = vec![media.container.to_uppercase()];
@@ -248,15 +258,23 @@ async fn info(State(state): State<Shared>, user: AuthUser, Json(req): Json<InfoR
     }
     if let Some(max) = user.perms.max_streams {
         if state.sessions.user_count(user.user_id) as i64 >= max {
-            return Err(ApiError::coded(StatusCode::TOO_MANY_REQUESTS, "TooManyStreams", format!("Questo account può avere al massimo {max} riproduzioni contemporanee")));
+            return Err(ApiError::coded(
+                StatusCode::TOO_MANY_REQUESTS,
+                "TooManyStreams",
+                format!("Questo account può avere al massimo {max} riproduzioni contemporanee"),
+            ));
         }
     }
     let files: Vec<i64> = if let Some(f) = &req.file_id {
         let fid = state.ids.decode(f).ok_or_else(|| ApiError::not_found("File"))?;
-        let ok: Option<i64> = sqlx::query_scalar("SELECT id FROM media_files WHERE id = ? AND item_id = ?").bind(fid).bind(item_id).fetch_optional(&state.db.read).await?;
+        let ok: Option<i64> =
+            sqlx::query_scalar("SELECT id FROM media_files WHERE id = ? AND item_id = ?").bind(fid).bind(item_id).fetch_optional(&state.db.read).await?;
         vec![ok.ok_or_else(|| ApiError::not_found("File"))?]
     } else {
-        sqlx::query_scalar("SELECT id FROM media_files WHERE item_id = ? AND state = 'present' ORDER BY size DESC").bind(item_id).fetch_all(&state.db.read).await?
+        sqlx::query_scalar("SELECT id FROM media_files WHERE item_id = ? AND state = 'present' ORDER BY size DESC")
+            .bind(item_id)
+            .fetch_all(&state.db.read)
+            .await?
     };
     if files.is_empty() {
         return Err(ApiError::coded(StatusCode::CONFLICT, "FileMissing", "Nessun file disponibile per questo elemento"));
@@ -334,7 +352,11 @@ async fn info(State(state): State<Shared>, user: AuthUser, Json(req): Json<InfoR
             }
         }
         let cuts = cuts.unwrap_or_else(|| plan_segments(duration_ms, seg_ms, None));
-        let hw = if matches!(decision.video, VideoAction::Transcode { .. }) { state.transcoder.current_profile() } else { crate::transcode::command::HwProfile::software() };
+        let hw = if matches!(decision.video, VideoAction::Transcode { .. }) {
+            state.transcoder.current_profile()
+        } else {
+            crate::transcode::command::HwProfile::software()
+        };
         // Il codec scelto deve essere codificabile dal backend; altrimenti software.
         let hw = match &decision.video {
             VideoAction::Transcode { codec, .. } if !hw.encode.contains(codec) => crate::transcode::command::HwProfile::software(),
@@ -607,11 +629,7 @@ async fn hls(State(state): State<Shared>, Path((id, name)): Path<(String, String
         Err(e) => return Err(ApiError::coded(StatusCode::INTERNAL_SERVER_ERROR, "TranscodeFailed", e.to_string())),
     };
     let bytes = tokio::fs::read(&path).await.map_err(|e| ApiError::Internal(e.into()))?;
-    Ok(Response::builder()
-        .header(header::CONTENT_TYPE, "video/mp2t")
-        .header(header::CACHE_CONTROL, "private, max-age=3600")
-        .body(Body::from(bytes))
-        .unwrap())
+    Ok(Response::builder().header(header::CONTENT_TYPE, "video/mp2t").header(header::CACHE_CONTROL, "private, max-age=3600").body(Body::from(bytes)).unwrap())
 }
 
 /// Sottotitoli di testo in WebVTT: estratti al primo utilizzo, poi in cache.

@@ -15,8 +15,13 @@ use serde_json::{json, Value};
 use std::net::SocketAddr;
 
 pub fn routes(api: Api) -> Api {
-    api.post("/api/v1/setup/verify", "Primo avvio", Access::Public, "Verifica il codice di primo avvio", verify)
-        .post("/api/v1/setup/admin", "Primo avvio", Access::Public, "Crea il primo amministratore con il codice di primo avvio", create_admin)
+    api.post("/api/v1/setup/verify", "Primo avvio", Access::Public, "Verifica il codice di primo avvio", verify).post(
+        "/api/v1/setup/admin",
+        "Primo avvio",
+        Access::Public,
+        "Crea il primo amministratore con il codice di primo avvio",
+        create_admin,
+    )
 }
 
 #[derive(Deserialize)]
@@ -109,15 +114,13 @@ async fn create_admin(
         }
         *guard = None;
     }
-    let res = sqlx::query(
-        "INSERT INTO users (username, username_lower, password_hash, is_admin, created_at) VALUES (?, ?, ?, 1, ?)",
-    )
-    .bind(&username)
-    .bind(username.to_lowercase())
-    .bind(&hash)
-    .bind(now)
-    .execute(&state.db.write)
-    .await;
+    let res = sqlx::query("INSERT INTO users (username, username_lower, password_hash, is_admin, created_at) VALUES (?, ?, ?, 1, ?)")
+        .bind(&username)
+        .bind(username.to_lowercase())
+        .bind(&hash)
+        .bind(now)
+        .execute(&state.db.write)
+        .await;
     let user_id = match res {
         Ok(r) => r.last_insert_rowid(),
         Err(e) => {

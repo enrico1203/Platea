@@ -152,10 +152,46 @@ fn iso(ms: i64) -> String {
 
 static CANONICAL: Lazy<HashMap<String, &'static str>> = Lazy::new(|| {
     let words = [
-        "System", "Info", "Public", "Ping", "Users", "AuthenticateByName", "Sessions", "Logout", "Me", "Views", "UserViews", "Library",
-        "MediaFolders", "Items", "Resume", "UserItems", "Latest", "Shows", "NextUp", "Seasons", "Episodes", "Search", "Hints", "Images",
-        "PlaybackInfo", "Videos", "stream", "Subtitles", "Playing", "Progress", "Stopped", "Capabilities", "Full", "PlayedItems",
-        "UserPlayedItems", "FavoriteItems", "UserFavoriteItems", "DisplayPreferences", "Branding", "Configuration",
+        "System",
+        "Info",
+        "Public",
+        "Ping",
+        "Users",
+        "AuthenticateByName",
+        "Sessions",
+        "Logout",
+        "Me",
+        "Views",
+        "UserViews",
+        "Library",
+        "MediaFolders",
+        "Items",
+        "Resume",
+        "UserItems",
+        "Latest",
+        "Shows",
+        "NextUp",
+        "Seasons",
+        "Episodes",
+        "Search",
+        "Hints",
+        "Images",
+        "PlaybackInfo",
+        "Videos",
+        "stream",
+        "Subtitles",
+        "Playing",
+        "Progress",
+        "Stopped",
+        "Capabilities",
+        "Full",
+        "PlayedItems",
+        "UserPlayedItems",
+        "FavoriteItems",
+        "UserFavoriteItems",
+        "DisplayPreferences",
+        "Branding",
+        "Configuration",
     ];
     words.iter().map(|w| (w.to_lowercase(), *w)).collect()
 });
@@ -165,10 +201,8 @@ static CANONICAL: Lazy<HashMap<String, &'static str>> = Lazy::new(|| {
 pub fn normalize_uri<B>(mut req: axum::http::Request<B>) -> axum::http::Request<B> {
     let path = req.uri().path();
     if !path.starts_with("/api/") && path.len() > 1 {
-        let fixed: Vec<String> = path
-            .split('/')
-            .map(|seg| CANONICAL.get(&seg.to_lowercase()).map(|c| c.to_string()).unwrap_or_else(|| seg.to_string()))
-            .collect();
+        let fixed: Vec<String> =
+            path.split('/').map(|seg| CANONICAL.get(&seg.to_lowercase()).map(|c| c.to_string()).unwrap_or_else(|| seg.to_string())).collect();
         let mut new_path = fixed.join("/");
         if let Some(rest) = new_path.strip_prefix("/emby").or_else(|| new_path.strip_prefix("/Emby")) {
             new_path = rest.to_string();
@@ -242,11 +276,7 @@ async fn users_public() -> Json<Value> {
 
 /// `MediaBrowser Client="Infuse", Device="iPhone", DeviceId="…", Version="8.0"`
 fn auth_fields(headers: &HeaderMap) -> HashMap<String, String> {
-    let raw = headers
-        .get("x-emby-authorization")
-        .or_else(|| headers.get(header::AUTHORIZATION))
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("");
+    let raw = headers.get("x-emby-authorization").or_else(|| headers.get(header::AUTHORIZATION)).and_then(|v| v.to_str().ok()).unwrap_or("");
     let mut out = HashMap::new();
     let body = raw.trim().trim_start_matches("MediaBrowser").trim_start_matches("Emby").trim();
     for part in body.split(',') {
@@ -268,10 +298,8 @@ struct AuthBody {
 }
 
 async fn user_dto(state: &Shared, user_id: i64) -> ApiResult<Value> {
-    let (name, is_admin, last): (String, i64, Option<i64>) = sqlx::query_as("SELECT username, is_admin, last_login_at FROM users WHERE id = ?")
-        .bind(user_id)
-        .fetch_one(&state.db.read)
-        .await?;
+    let (name, is_admin, last): (String, i64, Option<i64>) =
+        sqlx::query_as("SELECT username, is_admin, last_login_at FROM users WHERE id = ?").bind(user_id).fetch_one(&state.db.read).await?;
     Ok(json!({
         "Name": name,
         "ServerId": state.server_id,
@@ -309,7 +337,12 @@ async fn user_dto(state: &Shared, user_id: i64) -> ApiResult<Value> {
     }))
 }
 
-async fn authenticate(State(state): State<Shared>, ConnectInfo(peer): ConnectInfo<SocketAddr>, headers: HeaderMap, Json(body): Json<AuthBody>) -> ApiResult<Json<Value>> {
+async fn authenticate(
+    State(state): State<Shared>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(body): Json<AuthBody>,
+) -> ApiResult<Json<Value>> {
     let f = auth_fields(&headers);
     let ip = crate::net::client_ip(Some(peer), &headers, &state.settings.get().network.trusted_proxies);
     let req = LoginReq {
@@ -355,7 +388,9 @@ async fn user_by_id(State(state): State<Shared>, user: AuthUser, Path(_id): Path
 }
 
 async fn display_prefs(Path(id): Path<String>) -> Json<Value> {
-    Json(json!({ "Id": id, "SortBy": "SortName", "SortOrder": "Ascending", "RememberIndexing": false, "PrimaryImageHeight": 250, "PrimaryImageWidth": 250, "CustomPrefs": {}, "ScrollDirection": "Horizontal", "ShowBackdrop": true, "RememberSorting": false, "ShowSidebar": false, "Client": "emby" }))
+    Json(
+        json!({ "Id": id, "SortBy": "SortName", "SortOrder": "Ascending", "RememberIndexing": false, "PrimaryImageHeight": 250, "PrimaryImageWidth": 250, "CustomPrefs": {}, "ScrollDirection": "Horizontal", "ShowBackdrop": true, "RememberSorting": false, "ShowSidebar": false, "Client": "emby" }),
+    )
 }
 
 async fn branding() -> Json<Value> {
@@ -388,9 +423,10 @@ async fn library_dto(state: &Shared, id: i64, name: &str, kind: &str) -> Value {
 }
 
 async fn views_list(state: &Shared, user: &AuthUser) -> ApiResult<Json<Value>> {
-    let libs: Vec<(i64, String, String)> = sqlx::query_as(&format!("SELECT id, name, kind FROM libraries i WHERE 1 {} ORDER BY name", user.library_filter("i.id")))
-        .fetch_all(&state.db.read)
-        .await?;
+    let libs: Vec<(i64, String, String)> =
+        sqlx::query_as(&format!("SELECT id, name, kind FROM libraries i WHERE 1 {} ORDER BY name", user.library_filter("i.id")))
+            .fetch_all(&state.db.read)
+            .await?;
     let mut items = Vec::new();
     for (id, name, kind) in libs {
         items.push(library_dto(state, id, &name, &kind).await);
@@ -446,7 +482,8 @@ struct Row {
     unplayed_count: Option<i64>,
 }
 
-const SELECT: &str = "SELECT i.id, i.library_id, i.kind, i.parent_id, i.series_id, i.title, i.sort_title, i.original_title, i.year, i.index_number, i.index_end,
+const SELECT: &str =
+    "SELECT i.id, i.library_id, i.kind, i.parent_id, i.series_id, i.title, i.sort_title, i.original_title, i.year, i.index_number, i.index_end,
   i.parent_index_number, i.overview, i.runtime_ms, i.community_rating, i.official_rating, i.premiere_date, i.end_date, i.status, i.added_at,
   (SELECT title FROM items s WHERE s.id = i.series_id) AS series_title,
   (SELECT title FROM items s WHERE s.id = i.parent_id AND s.kind = 'season') AS season_title,
@@ -600,13 +637,32 @@ async fn media_sources(state: &Shared, item: i64) -> ApiResult<Vec<Value>> {
         let ms: Vec<Value> = streams
             .into_iter()
             .map(|st| {
-                let StreamRow { stream_index: idx, kind, codec, profile, level, bit_depth: bd, width: w, height: h, hdr, channels: ch, channel_layout: layout, bitrate: sbr, language: lang, title, is_default: def, is_forced: forced, is_external: ext_flag } = st;
+                let StreamRow {
+                    stream_index: idx,
+                    kind,
+                    codec,
+                    profile,
+                    level,
+                    bit_depth: bd,
+                    width: w,
+                    height: h,
+                    hdr,
+                    channels: ch,
+                    channel_layout: layout,
+                    bitrate: sbr,
+                    language: lang,
+                    title,
+                    is_default: def,
+                    is_forced: forced,
+                    is_external: ext_flag,
+                } = st;
                 let typ = match kind.as_str() {
                     "video" => "Video",
                     "audio" => "Audio",
                     _ => "Subtitle",
                 };
-                let display = [lang.clone().map(|l| l.to_uppercase()), Some(codec.to_uppercase()), title.clone()].into_iter().flatten().collect::<Vec<_>>().join(" - ");
+                let display =
+                    [lang.clone().map(|l| l.to_uppercase()), Some(codec.to_uppercase()), title.clone()].into_iter().flatten().collect::<Vec<_>>().join(" - ");
                 let mut s = json!({
                     "Type": typ,
                     "Index": idx,
@@ -629,16 +685,34 @@ async fn media_sources(state: &Shared, item: i64) -> ApiResult<Vec<Value>> {
                     o.insert("Width".into(), json!(w));
                     o.insert("Height".into(), json!(h));
                     o.insert("VideoRange".into(), json!(if hdr.is_some() { "HDR" } else { "SDR" }));
-                    o.insert("VideoRangeType".into(), json!(match hdr.as_deref() { Some("dovi") => "DOVI", Some("hlg") => "HLG", Some("hdr10plus") => "HDR10Plus", Some(_) => "HDR10", None => "SDR" }));
+                    o.insert(
+                        "VideoRangeType".into(),
+                        json!(match hdr.as_deref() {
+                            Some("dovi") => "DOVI",
+                            Some("hlg") => "HLG",
+                            Some("hdr10plus") => "HDR10Plus",
+                            Some(_) => "HDR10",
+                            None => "SDR",
+                        }),
+                    );
                 }
                 if kind == "audio" {
                     o.insert("Channels".into(), json!(ch));
                     o.insert("ChannelLayout".into(), json!(layout));
                 }
                 if kind == "subtitle" && ext_flag != 0 {
-                    let fmt = if codec == "subrip" { "srt" } else if codec == "webvtt" { "vtt" } else { codec.as_str() };
+                    let fmt = if codec == "subrip" {
+                        "srt"
+                    } else if codec == "webvtt" {
+                        "vtt"
+                    } else {
+                        codec.as_str()
+                    };
                     o.insert("DeliveryMethod".into(), json!("External"));
-                    o.insert("DeliveryUrl".into(), json!(format!("/Videos/{}/{}/Subtitles/{}/Stream.{}", item_guid(state, item), state.ids.encode(fid), idx, fmt)));
+                    o.insert(
+                        "DeliveryUrl".into(),
+                        json!(format!("/Videos/{}/{}/Subtitles/{}/Stream.{}", item_guid(state, item), state.ids.encode(fid), idx, fmt)),
+                    );
                 }
                 s
             })
@@ -747,7 +821,11 @@ async fn item_detail(state: &Shared, user: &AuthUser, item: &str) -> ApiResult<J
     match parse_ref(state, item) {
         Some(Ref::Item(i)) => Ok(Json(detail_dto(state, user, i).await?)),
         Some(Ref::Library(l)) => {
-            let row: (String, String) = sqlx::query_as("SELECT name, kind FROM libraries WHERE id = ?").bind(l).fetch_optional(&state.db.read).await?.ok_or_else(|| ApiError::not_found("Libreria"))?;
+            let row: (String, String) = sqlx::query_as("SELECT name, kind FROM libraries WHERE id = ?")
+                .bind(l)
+                .fetch_optional(&state.db.read)
+                .await?
+                .ok_or_else(|| ApiError::not_found("Libreria"))?;
             Ok(Json(library_dto(state, l, &row.0, &row.1).await))
         }
         _ => Err(ApiError::not_found("Elemento")),
@@ -845,7 +923,13 @@ async fn query_items(state: &Shared, user: &AuthUser, q: ItemsQuery) -> ApiResul
     let excluded: Vec<String> = q.exclude_item_types.as_deref().map(|t| t.split(',').map(|x| x.trim().to_lowercase()).collect()).unwrap_or_default();
     // Ids espliciti.
     if let Some(ids) = &q.ids {
-        let list: Vec<String> = ids.split(',').filter_map(|x| match parse_ref(state, x.trim()) { Some(Ref::Item(i)) => Some(i.to_string()), _ => None }).collect();
+        let list: Vec<String> = ids
+            .split(',')
+            .filter_map(|x| match parse_ref(state, x.trim()) {
+                Some(Ref::Item(i)) => Some(i.to_string()),
+                _ => None,
+            })
+            .collect();
         if list.is_empty() {
             return Ok(Json(json!({ "Items": [], "TotalRecordCount": 0, "StartIndex": 0 })));
         }
@@ -1102,7 +1186,12 @@ struct ImgQuery {
     w: Option<u32>,
 }
 
-async fn image_idx(State(state): State<Shared>, Path((item, kind, _idx)): Path<(String, String, String)>, Query(q): Query<ImgQuery>, headers: HeaderMap) -> ApiResult<Response> {
+async fn image_idx(
+    State(state): State<Shared>,
+    Path((item, kind, _idx)): Path<(String, String, String)>,
+    Query(q): Query<ImgQuery>,
+    headers: HeaderMap,
+) -> ApiResult<Response> {
     serve_image(&state, &item, &kind, q.w, &headers).await
 }
 
@@ -1136,18 +1225,16 @@ async fn serve_image(state: &Shared, item: &str, kind: &str, w: Option<u32>, _he
             }
             found
         }
-        Some(Ref::Person(p)) => sqlx::query_scalar("SELECT id FROM images WHERE person_id = ? AND kind = 'profile'").bind(p).fetch_optional(&state.db.read).await?,
+        Some(Ref::Person(p)) => {
+            sqlx::query_scalar("SELECT id FROM images WHERE person_id = ? AND kind = 'profile'").bind(p).fetch_optional(&state.db.read).await?
+        }
         _ => None,
     };
     let image_id = image_id.ok_or_else(|| ApiError::not_found("Immagine"))?;
     let path = crate::metadata::images::serve_path(state, image_id, w).await.map_err(|e| ApiError::NotFound(format!("Immagine non disponibile: {e}")))?;
     let bytes = tokio::fs::read(&path).await.map_err(|e| ApiError::Internal(e.into()))?;
     let ct = image::guess_format(&bytes).ok().map(|f| f.to_mime_type()).unwrap_or("image/jpeg");
-    Ok(Response::builder()
-        .header(header::CONTENT_TYPE, ct)
-        .header(header::CACHE_CONTROL, "public, max-age=31536000")
-        .body(Body::from(bytes))
-        .unwrap())
+    Ok(Response::builder().header(header::CONTENT_TYPE, ct).header(header::CACHE_CONTROL, "public, max-age=31536000").body(Body::from(bytes)).unwrap())
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1196,7 +1283,8 @@ async fn open_cached(state: &Shared, file_id: i64) -> ApiResult<(Arc<std::fs::Fi
 
 async fn choose_file(state: &Shared, item: i64, source: Option<&str>) -> ApiResult<i64> {
     if let Some(fid) = source.and_then(|s| state.ids.decode(s)) {
-        let ok: Option<i64> = sqlx::query_scalar("SELECT id FROM media_files WHERE id = ? AND item_id = ?").bind(fid).bind(item).fetch_optional(&state.db.read).await?;
+        let ok: Option<i64> =
+            sqlx::query_scalar("SELECT id FROM media_files WHERE id = ? AND item_id = ?").bind(fid).bind(item).fetch_optional(&state.db.read).await?;
         if let Some(f) = ok {
             return Ok(f);
         }
@@ -1228,7 +1316,14 @@ async fn stream(State(state): State<Shared>, user: AuthUser, Path(item): Path<St
     do_stream(&state, &user, &item, &uri, &method, &headers).await
 }
 
-async fn stream_named(State(state): State<Shared>, user: AuthUser, Path((item, name)): Path<(String, String)>, uri: Uri, method: Method, headers: HeaderMap) -> ApiResult<Response> {
+async fn stream_named(
+    State(state): State<Shared>,
+    user: AuthUser,
+    Path((item, name)): Path<(String, String)>,
+    uri: Uri,
+    method: Method,
+    headers: HeaderMap,
+) -> ApiResult<Response> {
     if !name.to_lowercase().starts_with("stream") {
         return Err(ApiError::not_found("Risorsa"));
     }
@@ -1302,19 +1397,24 @@ async fn ensure_session(state: &Shared, user: &AuthUser, item: i64, source: Opti
         subtitle: platea_playback::SubtitleDelivery::None,
     };
     let chain = crate::api::playback::chain_text(&info.media, &decision, "");
-    let history_id = sqlx::query("INSERT INTO playback_history (user_id, item_id, file_id, client, device_name, method, started_at) VALUES (?, ?, ?, ?, ?, 'direct_play', ?)")
-        .bind(user.user_id)
-        .bind(item)
-        .bind(fid)
-        .bind(&user.client)
-        .bind(&user.device_name)
-        .bind(now_ms())
-        .execute(&state.db.write)
-        .await?
-        .last_insert_rowid();
+    let history_id = sqlx::query(
+        "INSERT INTO playback_history (user_id, item_id, file_id, client, device_name, method, started_at) VALUES (?, ?, ?, ?, ?, 'direct_play', ?)",
+    )
+    .bind(user.user_id)
+    .bind(item)
+    .bind(fid)
+    .bind(&user.client)
+    .bind(&user.device_name)
+    .bind(now_ms())
+    .execute(&state.db.write)
+    .await?
+    .last_insert_rowid();
     let (sid, token) = SessionManager::new_ids();
     let (title, subtitle) = if row.kind == "episode" {
-        (row.series_title.clone().unwrap_or_default(), Some(format!("S{:02}E{:02} · {}", row.parent_index_number.unwrap_or(0), row.index_number.unwrap_or(0), row.title)))
+        (
+            row.series_title.clone().unwrap_or_default(),
+            Some(format!("S{:02}E{:02} · {}", row.parent_index_number.unwrap_or(0), row.index_number.unwrap_or(0), row.title)),
+        )
     } else {
         (row.title.clone(), row.year.map(|y| y.to_string()))
     };
@@ -1350,7 +1450,12 @@ async fn ensure_session(state: &Shared, user: &AuthUser, item: i64, source: Opti
 }
 
 async fn report(state: &Shared, user: &AuthUser, r: &PlayReport) -> ApiResult<Option<Arc<PlaySession>>> {
-    let Some(item) = r.item_id.as_deref().and_then(|i| match parse_ref(state, i) { Some(Ref::Item(x)) => Some(x), _ => None }) else { return Ok(None) };
+    let Some(item) = r.item_id.as_deref().and_then(|i| match parse_ref(state, i) {
+        Some(Ref::Item(x)) => Some(x),
+        _ => None,
+    }) else {
+        return Ok(None);
+    };
     let s = ensure_session(state, user, item, r.media_source_id.as_deref()).await?;
     if let Some(t) = r.position_ticks {
         let pos = (t / TICKS_PER_MS).max(0);

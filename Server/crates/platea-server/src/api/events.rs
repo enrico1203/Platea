@@ -14,7 +14,12 @@ pub fn routes(api: Api) -> Api {
     api.get("/api/v1/events", "Eventi", Access::User, "WebSocket degli eventi (token nella query: ?token=)", ws)
 }
 
-async fn ws(State(state): State<Shared>, ConnectInfo(peer): ConnectInfo<SocketAddr>, uri: Uri, upgrade: WebSocketUpgrade) -> Result<Response, crate::error::ApiError> {
+async fn ws(
+    State(state): State<Shared>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    uri: Uri,
+    upgrade: WebSocketUpgrade,
+) -> Result<Response, crate::error::ApiError> {
     let parts = axum::http::Request::builder().uri(uri).body(()).unwrap().into_parts().0;
     let token = query_param(&parts, "token").ok_or(crate::error::ApiError::Unauthorized)?;
     let user = resolve_token(&state, &token, Some(peer.ip())).await?;

@@ -1,3 +1,4 @@
+#![allow(clippy::type_complexity, clippy::too_many_arguments)]
 //! Platea: open source media server.
 
 mod api;
@@ -60,11 +61,7 @@ fn main() -> anyhow::Result<()> {
         .init();
 
     // Pool di thread bloccanti ampio: ogni mount lento consuma i propri thread, non il runtime.
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .max_blocking_threads(256)
-        .thread_name("platea")
-        .build()?;
+    let rt = tokio::runtime::Builder::new_multi_thread().enable_all().max_blocking_threads(256).thread_name("platea").build()?;
     rt.block_on(run(boot))
 }
 

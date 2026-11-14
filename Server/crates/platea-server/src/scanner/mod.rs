@@ -75,12 +75,7 @@ pub fn list_tree(root: &Path, start_rel: &str) -> Listing {
                 }
             } else if meta.is_file() {
                 if naming::is_video_file(&name) {
-                    let mtime = meta
-                        .modified()
-                        .ok()
-                        .and_then(|m| m.duration_since(UNIX_EPOCH).ok())
-                        .map(|d| d.as_secs() as i64)
-                        .unwrap_or(0);
+                    let mtime = meta.modified().ok().and_then(|m| m.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_secs() as i64).unwrap_or(0);
                     out.videos.push(Entry { rel, size: meta.len() as i64, mtime });
                 } else if naming::is_subtitle_file(&name) {
                     out.subtitles.entry(rel_dir.clone()).or_default().push(name);
@@ -136,15 +131,10 @@ struct ItemIndex {
 }
 
 pub async fn scan_library(state: &Shared, library_id: i64, subpath: Option<String>) -> anyhow::Result<()> {
-    let lib: Option<(String, String)> = sqlx::query_as("SELECT name, kind FROM libraries WHERE id = ?")
-        .bind(library_id)
-        .fetch_optional(&state.db.read)
-        .await?;
+    let lib: Option<(String, String)> = sqlx::query_as("SELECT name, kind FROM libraries WHERE id = ?").bind(library_id).fetch_optional(&state.db.read).await?;
     let Some((lib_name, kind)) = lib else { return Ok(()) };
-    let paths: Vec<(i64, String)> = sqlx::query_as("SELECT id, path FROM library_paths WHERE library_id = ?")
-        .bind(library_id)
-        .fetch_all(&state.db.read)
-        .await?;
+    let paths: Vec<(i64, String)> =
+        sqlx::query_as("SELECT id, path FROM library_paths WHERE library_id = ?").bind(library_id).fetch_all(&state.db.read).await?;
     let settings = state.settings.get();
     let fs_timeout = Duration::from_secs(settings.scanner.fs_timeout_seconds.max(2) as u64);
     let t0 = std::time::Instant::now();
@@ -183,9 +173,7 @@ pub async fn scan_library(state: &Shared, library_id: i64, subpath: Option<Strin
         let rp = root_path.clone();
         let sr = start_rel.clone();
         // L'elenco gira su un thread bloccante: un mount lento consuma quel thread, non il runtime.
-        let listing = tokio::task::spawn_blocking(move || list_tree(&rp, &sr))
-            .await
-            .context("elenco delle cartelle")?;
+        let listing = tokio::task::spawn_blocking(move || list_tree(&rp, &sr)).await.context("elenco delle cartelle")?;
         if !listing.errors.is_empty() {
             tracing::warn!(library = %lib_name, errors = listing.errors.len(), first = %listing.errors[0], "cartelle non leggibili durante l'elenco");
         }
@@ -224,20 +212,18 @@ pub async fn scan_library(state: &Shared, library_id: i64, subpath: Option<Strin
         .execute(&state.db.write)
         .await?;
     tracing::info!(library = %lib_name, status, %message, "scansione completata");
-    state.events.publish(
-        "library.updated",
-        serde_json::json!({ "library_id": state.ids.encode(library_id), "stats": total, "status": status, "message": message }),
-    );
+    state
+        .events
+        .publish("library.updated", serde_json::json!({ "library_id": state.ids.encode(library_id), "stats": total, "status": status, "message": message }));
     Ok(())
 }
 
 async fn load_index(state: &Shared, library_id: i64) -> anyhow::Result<ItemIndex> {
-    let items: Vec<DbItem> = sqlx::query_as(
-        "SELECT id, kind, parent_id, index_number, match_key FROM items WHERE library_id = ? AND kind IN ('movie','series','season','episode')",
-    )
-    .bind(library_id)
-    .fetch_all(&state.db.read)
-    .await?;
+    let items: Vec<DbItem> =
+        sqlx::query_as("SELECT id, kind, parent_id, index_number, match_key FROM items WHERE library_id = ? AND kind IN ('movie','series','season','episode')")
+            .bind(library_id)
+            .fetch_all(&state.db.read)
+            .await?;
     let mut idx = ItemIndex::default();
     for it in items {
         match it.kind.as_str() {
@@ -271,23 +257,14 @@ fn parent_dir(rel: &str) -> &str {
     rel.rsplit_once('/').map(|(d, _)| d).unwrap_or("")
 }
 
-async fn apply_listing(
-    state: &Shared,
-    library_id: i64,
-    kind: &str,
-    path_id: i64,
-    start_rel: &str,
-    listing: Listing,
-) -> anyhow::Result<ScanStats> {
+async fn apply_listing(state: &Shared, library_id: i64, kind: &str, path_id: i64, start_rel: &str, listing: Listing) -> anyhow::Result<ScanStats> {
     let mut stats = ScanStats { listed: listing.videos.len(), dirs: listing.dirs, ..Default::default() };
     let in_scope = |rel: &str| start_rel.is_empty() || rel == start_rel || rel.starts_with(&format!("{start_rel}/"));
 
-    let db_files: Vec<DbFile> = sqlx::query_as(
-        "SELECT id, relative_path, size, mtime, state, item_id FROM media_files WHERE library_path_id = ?",
-    )
-    .bind(path_id)
-    .fetch_all(&state.db.read)
-    .await?;
+    let db_files: Vec<DbFile> = sqlx::query_as("SELECT id, relative_path, size, mtime, state, item_id FROM media_files WHERE library_path_id = ?")
+        .bind(path_id)
+        .fetch_all(&state.db.read)
+        .await?;
     let mut by_path: HashMap<String, DbFile> = db_files.into_iter().map(|f| (f.relative_path.clone(), f)).collect();
 
     let seen: HashSet<&str> = listing.videos.iter().map(|e| e.rel.as_str()).collect();
@@ -337,10 +314,7 @@ async fn apply_listing(
             // Spostamento o rinomina: stessa dimensione e data di un file scomparso.
             if let Some(cands) = vanished.get_mut(&(e.size, e.mtime)) {
                 let file_name = e.rel.rsplit('/').next().unwrap_or("");
-                let pos = cands
-                    .iter()
-                    .position(|c| c.relative_path.rsplit('/').next() == Some(file_name))
-                    .or(if cands.is_empty() { None } else { Some(0) });
+                let pos = cands.iter().position(|c| c.relative_path.rsplit('/').next() == Some(file_name)).or(if cands.is_empty() { None } else { Some(0) });
                 if let Some(pos) = pos {
                     let old = cands.swap_remove(pos);
                     sqlx::query("UPDATE media_files SET relative_path = ?, state = 'present', missing_since = NULL WHERE id = ?")
@@ -411,11 +385,7 @@ async fn apply_listing(
     for cands in vanished.values() {
         for f in cands {
             if f.state == "present" {
-                sqlx::query("UPDATE media_files SET state = 'missing', missing_since = ? WHERE id = ?")
-                    .bind(now)
-                    .bind(f.id)
-                    .execute(&mut *tx)
-                    .await?;
+                sqlx::query("UPDATE media_files SET state = 'missing', missing_since = ? WHERE id = ?").bind(now).bind(f.id).execute(&mut *tx).await?;
                 stats.missing += 1;
             }
             if let Some(i) = f.item_id {
@@ -553,11 +523,7 @@ async fn insert_item(
 }
 
 async fn insert_ids(tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>, item_id: i64, ids: &naming::ExternalIds) -> anyhow::Result<()> {
-    let pairs = [
-        ("tmdb", ids.tmdb.map(|v| v.to_string())),
-        ("imdb", ids.imdb.clone()),
-        ("tvdb", ids.tvdb.map(|v| v.to_string())),
-    ];
+    let pairs = [("tmdb", ids.tmdb.map(|v| v.to_string())), ("imdb", ids.imdb.clone()), ("tvdb", ids.tvdb.map(|v| v.to_string()))];
     for (p, v) in pairs {
         if let Some(v) = v {
             sqlx::query("INSERT OR REPLACE INTO external_ids (item_id, provider, value) VALUES (?, ?, ?)")
@@ -576,16 +542,12 @@ pub async fn update_availability(state: &Shared, items: &HashSet<i64>) -> anyhow
     let mut tx = state.db.write.begin().await?;
     let mut parents: HashSet<i64> = HashSet::new();
     for id in items {
-        sqlx::query(
-            "UPDATE items SET available = EXISTS (SELECT 1 FROM media_files f WHERE f.item_id = items.id AND f.state = 'present') WHERE id = ?",
-        )
-        .bind(id)
-        .execute(&mut *tx)
-        .await?;
-        let p: Option<(Option<i64>, Option<i64>)> = sqlx::query_as("SELECT parent_id, series_id FROM items WHERE id = ?")
+        sqlx::query("UPDATE items SET available = EXISTS (SELECT 1 FROM media_files f WHERE f.item_id = items.id AND f.state = 'present') WHERE id = ?")
             .bind(id)
-            .fetch_optional(&mut *tx)
+            .execute(&mut *tx)
             .await?;
+        let p: Option<(Option<i64>, Option<i64>)> =
+            sqlx::query_as("SELECT parent_id, series_id FROM items WHERE id = ?").bind(id).fetch_optional(&mut *tx).await?;
         if let Some((parent, series)) = p {
             parents.extend(parent);
             parents.extend(series);
@@ -610,12 +572,7 @@ pub async fn update_availability(state: &Shared, items: &HashSet<i64>) -> anyhow
 }
 
 /// Allinea i sottotitoli esterni (`Film.it.srt` accanto a `Film.mkv`) alle tracce nel database.
-async fn sync_external_subtitles(
-    state: &Shared,
-    path_id: i64,
-    subs: &HashMap<String, Vec<String>>,
-    videos: &[Entry],
-) -> anyhow::Result<()> {
+async fn sync_external_subtitles(state: &Shared, path_id: i64, subs: &HashMap<String, Vec<String>>, videos: &[Entry]) -> anyhow::Result<()> {
     // Sidecar attesi per ogni video.
     let mut expected: HashMap<String, Vec<String>> = HashMap::new();
     for v in videos {
@@ -697,21 +654,13 @@ pub async fn cleanup_missing(state: &Shared) -> anyhow::Result<()> {
     let grace_days = state.settings.get().scanner.missing_grace_days as i64;
     let limit = now_ms() - grace_days * 86_400_000;
     let mut tx = state.db.write.begin().await?;
-    let removed = sqlx::query("DELETE FROM media_files WHERE state = 'missing' AND missing_since < ?")
-        .bind(limit)
-        .execute(&mut *tx)
-        .await?
-        .rows_affected();
+    let removed = sqlx::query("DELETE FROM media_files WHERE state = 'missing' AND missing_since < ?").bind(limit).execute(&mut *tx).await?.rows_affected();
     // Elementi senza file, poi stagioni senza episodi, poi serie senza stagioni.
     sqlx::query("DELETE FROM items WHERE kind IN ('movie','episode') AND NOT EXISTS (SELECT 1 FROM media_files f WHERE f.item_id = items.id)")
         .execute(&mut *tx)
         .await?;
-    sqlx::query("DELETE FROM items WHERE kind = 'season' AND NOT EXISTS (SELECT 1 FROM items c WHERE c.parent_id = items.id)")
-        .execute(&mut *tx)
-        .await?;
-    sqlx::query("DELETE FROM items WHERE kind = 'series' AND NOT EXISTS (SELECT 1 FROM items c WHERE c.parent_id = items.id)")
-        .execute(&mut *tx)
-        .await?;
+    sqlx::query("DELETE FROM items WHERE kind = 'season' AND NOT EXISTS (SELECT 1 FROM items c WHERE c.parent_id = items.id)").execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM items WHERE kind = 'series' AND NOT EXISTS (SELECT 1 FROM items c WHERE c.parent_id = items.id)").execute(&mut *tx).await?;
     tx.commit().await?;
     if removed > 0 {
         tracing::info!(files = removed, "file mancanti rimossi dopo il periodo di grazia");
@@ -732,13 +681,7 @@ pub mod rclone {
         }
         let dir = if rel.is_empty() { String::new() } else { rel.to_string() };
         let body = serde_json::json!({ "dir": dir, "recursive": true, "_async": false });
-        let r = state
-            .http
-            .post(format!("{}/vfs/refresh", url.trim_end_matches('/')))
-            .json(&body)
-            .timeout(std::time::Duration::from_secs(120))
-            .send()
-            .await;
+        let r = state.http.post(format!("{}/vfs/refresh", url.trim_end_matches('/'))).json(&body).timeout(std::time::Duration::from_secs(120)).send().await;
         match r {
             Ok(resp) if resp.status().is_success() => tracing::debug!(dir = %dir, "rclone vfs/refresh completato"),
             Ok(resp) => tracing::warn!(status = %resp.status(), "rclone vfs/refresh non riuscito"),

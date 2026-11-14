@@ -196,7 +196,12 @@ async fn list(State(state): State<Shared>, user: AuthUser, Query(q): Query<ListQ
         None => {}
     }
     if let Some(g) = &q.genre {
-        bind(&mut sql, " AND EXISTS (SELECT 1 FROM item_genres ig JOIN genres g ON g.id = ig.genre_id WHERE ig.item_id = i.id AND g.name = ?)", json!(g), &mut binds);
+        bind(
+            &mut sql,
+            " AND EXISTS (SELECT 1 FROM item_genres ig JOIN genres g ON g.id = ig.genre_id WHERE ig.item_id = i.id AND g.name = ?)",
+            json!(g),
+            &mut binds,
+        );
     }
     match q.played {
         Some(true) => sql.push_str(" AND COALESCE(u.played, 0) = 1"),
@@ -252,12 +257,15 @@ async fn list(State(state): State<Shared>, user: AuthUser, Query(q): Query<ListQ
         let v: Value = if is_text {
             sqlx::query_scalar::<_, String>(&sort_expr_value).bind(user.user_id).bind(last.id).fetch_one(&state.db.read).await.map(Value::String)?
         } else {
-            sqlx::query_scalar::<_, f64>(&format!("SELECT CAST(({}) AS REAL) FROM items i LEFT JOIN user_item_data u ON u.item_id = i.id AND u.user_id = ?1 WHERE i.id = ?2", expr))
-                .bind(user.user_id)
-                .bind(last.id)
-                .fetch_one(&state.db.read)
-                .await
-                .map(|f| if f.fract() == 0.0 { json!(f as i64) } else { json!(f) })?
+            sqlx::query_scalar::<_, f64>(&format!(
+                "SELECT CAST(({}) AS REAL) FROM items i LEFT JOIN user_item_data u ON u.item_id = i.id AND u.user_id = ?1 WHERE i.id = ?2",
+                expr
+            ))
+            .bind(user.user_id)
+            .bind(last.id)
+            .fetch_one(&state.db.read)
+            .await
+            .map(|f| if f.fract() == 0.0 { json!(f as i64) } else { json!(f) })?
         };
         Some(encode_cursor(v, last.id))
     } else {
@@ -322,7 +330,26 @@ pub async fn files_json(state: &Shared, item_id: i64) -> ApiResult<Vec<Value>> {
         let mut audio = Vec::new();
         let mut subs = Vec::new();
         for st in streams {
-            let StreamDb { stream_index: idx, kind, codec, profile, level, bit_depth: bd, width: w, height: h, frame_rate: fr, hdr, channels: ch, channel_layout: layout, bitrate: sbr, language: lang, title, is_default: def, is_forced: forced, is_external: ext } = st;
+            let StreamDb {
+                stream_index: idx,
+                kind,
+                codec,
+                profile,
+                level,
+                bit_depth: bd,
+                width: w,
+                height: h,
+                frame_rate: fr,
+                hdr,
+                channels: ch,
+                channel_layout: layout,
+                bitrate: sbr,
+                language: lang,
+                title,
+                is_default: def,
+                is_forced: forced,
+                is_external: ext,
+            } = st;
             match kind.as_str() {
                 "video" => video.push(json!({ "index": idx, "codec": codec, "profile": profile, "level": level, "bit_depth": bd, "width": w, "height": h, "frame_rate": fr, "hdr": hdr, "bitrate": sbr })),
                 "audio" => audio.push(json!({ "index": idx, "codec": codec, "channels": ch, "channel_layout": layout, "bitrate": sbr, "language": lang, "title": title, "default": def != 0 })),
@@ -359,7 +386,10 @@ async fn detail(State(state): State<Shared>, user: AuthUser, Path(id): Path<Stri
         .bind(row.series_id.filter(|_| row.kind != "movie" && row.kind != "series").unwrap_or(iid))
         .fetch_all(&state.db.read)
         .await?;
-    let studios: Vec<String> = sqlx::query_scalar("SELECT s.name FROM item_studios x JOIN studios s ON s.id = x.studio_id WHERE x.item_id = ?").bind(iid).fetch_all(&state.db.read).await?;
+    let studios: Vec<String> = sqlx::query_scalar("SELECT s.name FROM item_studios x JOIN studios s ON s.id = x.studio_id WHERE x.item_id = ?")
+        .bind(iid)
+        .fetch_all(&state.db.read)
+        .await?;
     let people: Vec<(String, String, Option<String>, Option<i64>)> = sqlx::query_as(
         "SELECT p.name, ip.role, ip.character, (SELECT id FROM images im WHERE im.person_id = p.id AND im.kind = 'profile')
          FROM item_people ip JOIN people p ON p.id = ip.person_id WHERE ip.item_id = ? ORDER BY ip.sort_order LIMIT 40",
@@ -460,9 +490,10 @@ async fn home(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<Val
         }
     }
     // Aggiunti di recente, per libreria.
-    let libs: Vec<(i64, String, String)> = sqlx::query_as(&format!("SELECT id, name, kind FROM libraries i WHERE 1 {} ORDER BY name", user.library_filter("i.id")))
-        .fetch_all(&state.db.read)
-        .await?;
+    let libs: Vec<(i64, String, String)> =
+        sqlx::query_as(&format!("SELECT id, name, kind FROM libraries i WHERE 1 {} ORDER BY name", user.library_filter("i.id")))
+            .fetch_all(&state.db.read)
+            .await?;
     let mut recent = Vec::new();
     for (lid, name, kind) in libs {
         let k = if kind == "movies" { "movie" } else { "episode" };
@@ -490,12 +521,8 @@ struct SearchQuery {
 
 /// Espressione FTS5 sicura: ogni parola tra virgolette, con ricerca per prefisso.
 pub fn fts_query(q: &str) -> Option<String> {
-    let parts: Vec<String> = q
-        .split(|c: char| !c.is_alphanumeric())
-        .filter(|w| !w.is_empty())
-        .take(8)
-        .map(|w| format!("\"{}\"*", w.replace('"', "")))
-        .collect();
+    let parts: Vec<String> =
+        q.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).take(8).map(|w| format!("\"{}\"*", w.replace('"', ""))).collect();
     (!parts.is_empty()).then(|| parts.join(" "))
 }
 
@@ -618,7 +645,11 @@ struct EditReq {
 
 async fn edit(State(state): State<Shared>, AdminUser(admin): AdminUser, Path(id): Path<String>, Json(req): Json<EditReq>) -> ApiResult<Json<Value>> {
     let iid = decode(&state, &id)?;
-    let lf: String = sqlx::query_scalar("SELECT locked_fields FROM items WHERE id = ?").bind(iid).fetch_optional(&state.db.read).await?.ok_or_else(|| ApiError::not_found("Elemento"))?;
+    let lf: String = sqlx::query_scalar("SELECT locked_fields FROM items WHERE id = ?")
+        .bind(iid)
+        .fetch_optional(&state.db.read)
+        .await?
+        .ok_or_else(|| ApiError::not_found("Elemento"))?;
     let mut locked: Vec<String> = lf.split(',').filter(|s| !s.is_empty()).map(String::from).collect();
     let mut tx = state.db.write.begin().await?;
     let mut lock = |f: &str| {
@@ -658,8 +689,11 @@ struct CandQuery {
 
 async fn candidates(State(state): State<Shared>, _a: AdminUser, Path(id): Path<String>, Query(q): Query<CandQuery>) -> ApiResult<Json<Value>> {
     let iid = decode(&state, &id)?;
-    let (kind, title, year, lib): (String, String, Option<i64>, i64) =
-        sqlx::query_as("SELECT kind, title, year, library_id FROM items WHERE id = ?").bind(iid).fetch_optional(&state.db.read).await?.ok_or_else(|| ApiError::not_found("Elemento"))?;
+    let (kind, title, year, lib): (String, String, Option<i64>, i64) = sqlx::query_as("SELECT kind, title, year, library_id FROM items WHERE id = ?")
+        .bind(iid)
+        .fetch_optional(&state.db.read)
+        .await?
+        .ok_or_else(|| ApiError::not_found("Elemento"))?;
     if kind != "movie" && kind != "series" {
         return Err(ApiError::BadRequest("Si identificano solo film e serie".into()));
     }
@@ -703,7 +737,11 @@ async fn identify(State(state): State<Shared>, AdminUser(admin): AdminUser, Path
 
 async fn reject(State(state): State<Shared>, _a: AdminUser, Path(id): Path<String>, Json(req): Json<IdentifyReq>) -> ApiResult<Json<Value>> {
     let iid = decode(&state, &id)?;
-    sqlx::query("INSERT OR IGNORE INTO rejected_matches (item_id, provider_id) VALUES (?, ?)").bind(iid).bind(&req.provider_id).execute(&state.db.write).await?;
+    sqlx::query("INSERT OR IGNORE INTO rejected_matches (item_id, provider_id) VALUES (?, ?)")
+        .bind(iid)
+        .bind(&req.provider_id)
+        .execute(&state.db.write)
+        .await?;
     sqlx::query("DELETE FROM match_candidates WHERE item_id = ? AND provider_id = ?").bind(iid).bind(&req.provider_id).execute(&state.db.write).await?;
     Ok(Json(json!({ "ok": true })))
 }

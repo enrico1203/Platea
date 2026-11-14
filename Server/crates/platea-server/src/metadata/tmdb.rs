@@ -48,13 +48,12 @@ impl Tmdb {
         let mut sorted: Vec<(&str, String)> = params.to_vec();
         sorted.sort();
         let cache_key = format!("{path}?{}", sorted.iter().map(|(k, v)| format!("{k}={v}")).collect::<Vec<_>>().join("&"));
-        if let Some((resp, at)) = sqlx::query_as::<_, (String, i64)>(
-            "SELECT response, fetched_at FROM metadata_cache WHERE provider = 'tmdb' AND key = ? AND language = ?",
-        )
-        .bind(&cache_key)
-        .bind(language)
-        .fetch_optional(&self.db.read)
-        .await?
+        if let Some((resp, at)) =
+            sqlx::query_as::<_, (String, i64)>("SELECT response, fetched_at FROM metadata_cache WHERE provider = 'tmdb' AND key = ? AND language = ?")
+                .bind(&cache_key)
+                .bind(language)
+                .fetch_optional(&self.db.read)
+                .await?
         {
             if now_ms() - at < max_age_ms {
                 if let Ok(v) = serde_json::from_str(&resp) {
@@ -81,12 +80,7 @@ impl Tmdb {
             let resp = req.query(&q).send().await.context("richiesta a TMDB")?;
             let status = resp.status();
             if status.as_u16() == 429 && attempt < 5 {
-                let retry = resp
-                    .headers()
-                    .get("retry-after")
-                    .and_then(|v| v.to_str().ok())
-                    .and_then(|v| v.parse::<u64>().ok())
-                    .unwrap_or(1 << attempt);
+                let retry = resp.headers().get("retry-after").and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<u64>().ok()).unwrap_or(1 << attempt);
                 attempt += 1;
                 tracing::warn!(retry, "TMDB: troppe richieste, attesa");
                 tokio::time::sleep(Duration::from_secs(retry.min(60))).await;

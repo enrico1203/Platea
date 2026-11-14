@@ -229,7 +229,7 @@ pub async fn run_maintenance(state: Shared) {
                 h.maintain(ahead, keep).await;
             }
         }
-        if n % 3 == 0 {
+        if n.is_multiple_of(3) {
             if let Err(e) = flush_progress(&state).await {
                 tracing::warn!(error = %e, "scrittura delle posizioni non riuscita");
             }

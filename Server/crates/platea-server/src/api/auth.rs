@@ -55,7 +55,8 @@ pub async fn do_login(state: &Shared, req: &LoginReq, ip: Option<std::net::IpAdd
             .fetch_optional(&state.db.read)
             .await?;
     // Si verifica sempre un hash, anche per utenti inesistenti: stessi tempi di risposta.
-    let (id, username, hash, is_admin, disabled) = row.unwrap_or((0, String::new(), "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQ$YmFkaGFzaGJhZGhhc2hiYWRoYXNoYmFkaGFzaA".into(), 0, 1));
+    let (id, username, hash, is_admin, disabled) =
+        row.unwrap_or((0, String::new(), "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQ$YmFkaGFzaGJhZGhhc2hiYWRoYXNoYmFkaGFzaA".into(), 0, 1));
     let ok = verify_password(req.password.clone(), hash).await;
     if !ok || id == 0 || disabled != 0 {
         state.login_limiter.fail(&keys);
@@ -74,11 +75,24 @@ pub async fn do_login(state: &Shared, req: &LoginReq, ip: Option<std::net::IpAdd
         ip,
     )
     .await?;
-    state.db.activity(Some(id), "login", &format!("{username} ha effettuato l'accesso da {}", req.device_name.as_deref().unwrap_or("un dispositivo")), ip.map(|i| i.to_string()).as_deref()).await;
+    state
+        .db
+        .activity(
+            Some(id),
+            "login",
+            &format!("{username} ha effettuato l'accesso da {}", req.device_name.as_deref().unwrap_or("un dispositivo")),
+            ip.map(|i| i.to_string()).as_deref(),
+        )
+        .await;
     Ok(LoginOk { user_id: id, username, is_admin: is_admin != 0, token: t.token })
 }
 
-async fn login(State(state): State<Shared>, ConnectInfo(peer): ConnectInfo<SocketAddr>, headers: HeaderMap, Json(req): Json<LoginReq>) -> ApiResult<Json<Value>> {
+async fn login(
+    State(state): State<Shared>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(req): Json<LoginReq>,
+) -> ApiResult<Json<Value>> {
     let ip = crate::net::client_ip(Some(peer), &headers, &state.settings.get().network.trusted_proxies);
     let ok = do_login(&state, &req, ip).await?;
     Ok(Json(json!({

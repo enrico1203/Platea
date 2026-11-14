@@ -61,14 +61,7 @@ pub fn etag(size: u64, mtime: i64) -> String {
 }
 
 /// Risposta per un file già aperto.
-pub fn serve_file(
-    file: Arc<File>,
-    size: u64,
-    mtime: i64,
-    content_type: &str,
-    method: &Method,
-    headers: &HeaderMap,
-) -> ApiResult<Response> {
+pub fn serve_file(file: Arc<File>, size: u64, mtime: i64, content_type: &str, method: &Method, headers: &HeaderMap) -> ApiResult<Response> {
     let tag = etag(size, mtime);
     if let Some(inm) = headers.get(header::IF_NONE_MATCH).and_then(|v| v.to_str().ok()) {
         if inm == tag {
@@ -76,15 +69,8 @@ pub fn serve_file(
         }
     }
     // If-Range: se l'ETag non coincide si risponde con il file intero.
-    let range_ok = headers
-        .get(header::IF_RANGE)
-        .and_then(|v| v.to_str().ok())
-        .is_none_or(|v| v == tag);
-    let range = headers
-        .get(header::RANGE)
-        .and_then(|v| v.to_str().ok())
-        .filter(|_| range_ok)
-        .map(|r| parse_range(r, size));
+    let range_ok = headers.get(header::IF_RANGE).and_then(|v| v.to_str().ok()).is_none_or(|v| v == tag);
+    let range = headers.get(header::RANGE).and_then(|v| v.to_str().ok()).filter(|_| range_ok).map(|r| parse_range(r, size));
 
     let mut builder = Response::builder()
         .header(header::ACCEPT_RANGES, "bytes")

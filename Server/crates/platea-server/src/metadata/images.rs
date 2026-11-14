@@ -24,10 +24,8 @@ pub fn variant_path(state: &Shared, image_id: i64, width: u32) -> PathBuf {
 }
 
 pub async fn download_image(state: &Shared, image_id: i64) -> anyhow::Result<()> {
-    let row: Option<(String, String)> = sqlx::query_as("SELECT source_url, state FROM images WHERE id = ?")
-        .bind(image_id)
-        .fetch_optional(&state.db.read)
-        .await?;
+    let row: Option<(String, String)> =
+        sqlx::query_as("SELECT source_url, state FROM images WHERE id = ?").bind(image_id).fetch_optional(&state.db.read).await?;
     let Some((url, st)) = row else { return Ok(()) };
     if st == "ready" && original_path(state, image_id).exists() {
         return Ok(());
