@@ -41,6 +41,8 @@ pub struct Permissions {
     pub manage_devices: bool,
     /// Scadenza dell'account (ms). Dopo questa data l'utente sfoglia ma non riproduce né scarica.
     pub expires_at: Option<i64>,
+    /// Età massima dei contenuti visibili (dalla classificazione); `None` = nessun limite.
+    pub max_rating_age: Option<u8>,
 }
 
 impl Permissions {
@@ -70,14 +72,41 @@ impl AuthUser {
 
     /// Frammento SQL che limita le librerie visibili. Solo interi: nessun testo dell'utente.
     pub fn library_filter(&self, column: &str) -> String {
-        if self.perms.all_libraries {
+        let libs = if self.perms.all_libraries {
             String::new()
         } else if self.perms.library_ids.is_empty() {
             " AND 0".into()
         } else {
             let ids: Vec<String> = self.perms.library_ids.iter().map(|i| i.to_string()).collect();
             format!(" AND {column} IN ({})", ids.join(","))
+        };
+        libs + &self.rating_filter(column)
+    }
+
+    /// Limite di classificazione sugli elementi (`alias.library_id` → `alias`). Episodi e stagioni usano quella della serie;
+    /// i titoli senza classificazione restano visibili. Solo interi: nessun testo dell'utente.
+    fn rating_filter(&self, column: &str) -> String {
+        match (self.perms.max_rating_age, column.strip_suffix(".library_id")) {
+            (Some(max), Some(a)) => {
+                format!(" AND COALESCE(NULLIF({a}.rating_age, -1), (SELECT NULLIF(s.rating_age, -1) FROM items s WHERE s.id = {a}.series_id), 0) <= {max}")
+            }
+            _ => String::new(),
         }
+    }
+
+    /// Un elemento è visibile: libreria consentita e classificazione entro il limite.
+    pub async fn can_see_item(&self, state: &Shared, item_id: i64, library_id: i64) -> ApiResult<bool> {
+        if !self.can_see_library(library_id) {
+            return Ok(false);
+        }
+        let Some(max) = self.perms.max_rating_age else { return Ok(true) };
+        let age: Option<i64> = sqlx::query_scalar(
+            "SELECT COALESCE(NULLIF(i.rating_age, -1), (SELECT NULLIF(s.rating_age, -1) FROM items s WHERE s.id = i.series_id), 0) FROM items i WHERE i.id = ?",
+        )
+        .bind(item_id)
+        .fetch_optional(&state.db.read)
+        .await?;
+        Ok(age.unwrap_or(0) <= max as i64)
     }
 
     /// Riproduzione e download: negati agli account scaduti. Gli amministratori non scadono.
@@ -177,15 +206,27 @@ pub fn peer_ip(state: &Shared, parts: &Parts) -> Option<IpAddr> {
 }
 
 pub async fn load_permissions(state: &Shared, user_id: i64) -> anyhow::Result<Option<(String, bool, Permissions)>> {
-    let row: Option<(String, i64, i64, i64, i64, Option<i64>, Option<i64>, i64, i64, i64, Option<i64>)> = sqlx::query_as(
-        "SELECT username, is_admin, all_libraries, allow_remux, allow_transcode, max_bitrate, max_streams, allow_remote, manage_devices, disabled, expires_at
+    let row: Option<(String, i64, i64, i64, i64, Option<i64>, Option<i64>, i64, i64, i64, Option<i64>, Option<String>)> = sqlx::query_as(
+        "SELECT username, is_admin, all_libraries, allow_remux, allow_transcode, max_bitrate, max_streams, allow_remote, manage_devices, disabled, expires_at, max_rating
          FROM users WHERE id = ?",
     )
     .bind(user_id)
     .fetch_optional(&state.db.read)
     .await?;
-    let Some((username, is_admin, all_libraries, allow_remux, allow_transcode, max_bitrate, max_streams, allow_remote, manage_devices, disabled, expires_at)) =
-        row
+    let Some((
+        username,
+        is_admin,
+        all_libraries,
+        allow_remux,
+        allow_transcode,
+        max_bitrate,
+        max_streams,
+        allow_remote,
+        manage_devices,
+        disabled,
+        expires_at,
+        max_rating,
+    )) = row
     else {
         return Ok(None);
     };
@@ -210,6 +251,7 @@ pub async fn load_permissions(state: &Shared, user_id: i64) -> anyhow::Result<Op
             allow_remote: allow_remote != 0,
             manage_devices: manage_devices != 0,
             expires_at,
+            max_rating_age: max_rating.as_deref().and_then(crate::ratings::age),
         },
     )))
 }

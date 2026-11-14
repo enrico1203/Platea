@@ -23,6 +23,7 @@ export default function Library() {
   if (filter === "unplayed") params.set("played", "false");
   if (filter === "played") params.set("played", "true");
   if (filter === "favorite") params.set("favorite", "true");
+  if (filter === "collections") params.set("kind", "collection");
   if (genre) params.set("genre", genre);
   if (letter && sort === "title") params.set("letter", letter);
   const q = useInfiniteQuery({
@@ -54,6 +55,7 @@ export default function Library() {
           ]} />
           <SelectField label={t("library.filter")} value={filter} onChange={setFilter} options={[
             { value: "all", label: t("library.filterAll") }, { value: "unplayed", label: t("library.filterUnplayed") }, { value: "played", label: t("library.filterPlayed") }, { value: "favorite", label: t("library.filterFavorite") },
+            ...(lib?.kind === "movies" ? [{ value: "collections", label: t("library.filterCollections") }] : []),
           ]} />
           {genres && genres.length > 0 && (
             <SelectField label={t("library.genre")} value={genre} onChange={setGenre} options={[{ value: "", label: t("library.filterAll") }, ...genres.map((g) => ({ value: g.name, label: g.name }))]} />

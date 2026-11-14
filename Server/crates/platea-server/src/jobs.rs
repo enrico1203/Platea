@@ -439,6 +439,10 @@ pub async fn run_scheduler(state: Shared) {
     loop {
         tick.tick().await;
         minutes += 1;
+        // Età delle classificazioni nuove o cambiate, per il limite per utente.
+        if let Err(e) = crate::ratings::sync(&state).await {
+            tracing::warn!(error = %e, "classificazioni per età");
+        }
         if let Err(e) = schedule_scans(&state).await {
             tracing::warn!(error = %e, "pianificazione delle scansioni");
         }

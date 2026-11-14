@@ -26,6 +26,13 @@ pub fn routes(api: Api) -> Api {
             "Conferma che i file spariti tutti insieme sono stati cancellati davvero e avvia la scansione che li toglie",
             confirm_missing,
         )
+        .post(
+            "/api/v1/libraries/{id}/refresh-metadata",
+            "Librerie",
+            Access::Admin,
+            "Rilegge i metadati di tutta la libreria (TMDB, NFO, .plexmatch); i campi bloccati restano",
+            refresh_metadata,
+        )
         .post("/api/v1/libraries/scan-all", "Librerie", Access::Admin, "Avvia la scansione di tutte le librerie", scan_all)
         .post("/api/v1/scan/path", "Librerie", Access::Admin, "Scansione mirata della cartella cambiata (per strumenti esterni)", scan_path)
         .get("/api/v1/fs/browse", "Librerie", Access::Admin, "Sfoglia le cartelle visibili al server", browse)
@@ -320,6 +327,17 @@ async fn confirm_missing(State(state): State<Shared>, _a: crate::auth::AdminUser
     jobs::enqueue(&state, JobKind::ScanLibrary { library_id: lid, subpath: None }, priority::INTERACTIVE, Some(lid)).await?;
     tracing::info!(library = lid, "rimozione dei file spariti confermata dall'amministratore");
     Ok(Json(json!({ "queued": true })))
+}
+
+async fn refresh_metadata(State(state): State<Shared>, _a: crate::auth::AdminUser, Path(id): Path<String>) -> ApiResult<Json<Value>> {
+    let lid = decode(&state, &id)?;
+    let ids: Vec<i64> = sqlx::query_scalar("SELECT id FROM items WHERE library_id = ? AND kind IN ('movie','series') AND match_state <> 'manual'")
+        .bind(lid)
+        .fetch_all(&state.db.read)
+        .await?;
+    let batch: Vec<_> = ids.iter().map(|i| (JobKind::RefreshMetadata { item_id: *i }, priority::MAINTENANCE, Some(lid))).collect();
+    jobs::enqueue_batch(&state, batch).await?;
+    Ok(Json(json!({ "queued": ids.len() })))
 }
 
 async fn scan_all(State(state): State<Shared>, _a: ScanAccess) -> ApiResult<Json<Value>> {

@@ -3,6 +3,7 @@
 //! ricerca per titolo e anno con un punteggio. Sotto la soglia l'elemento va "da verificare".
 //! Un campo modificato a mano (bloccato) non viene sovrascritto.
 
+pub mod collections;
 pub mod images;
 pub mod nfo;
 pub mod plexmatch;
@@ -257,7 +258,8 @@ pub async fn match_item(state: &Shared, item_id: i64) -> anyhow::Result<()> {
 pub async fn refresh_item(state: &Shared, item_id: i64) -> anyhow::Result<()> {
     let id: Option<String> =
         sqlx::query_scalar("SELECT value FROM external_ids WHERE item_id = ? AND provider = 'tmdb'").bind(item_id).fetch_optional(&state.db.read).await?;
-    match id.and_then(|v| v.parse::<i64>().ok()) {
+    let has_key = !state.settings.get().metadata.tmdb_api_key.trim().is_empty();
+    match id.and_then(|v| v.parse::<i64>().ok()).filter(|_| has_key) {
         Some(tmdb) => {
             let st: String = sqlx::query_scalar("SELECT match_state FROM items WHERE id = ?").bind(item_id).fetch_one(&state.db.read).await?;
             let score: Option<f64> = sqlx::query_scalar("SELECT match_score FROM items WHERE id = ?").bind(item_id).fetch_one(&state.db.read).await?;
@@ -462,8 +464,21 @@ pub async fn apply_tmdb(state: &Shared, item_id: i64, tmdb_id: i64, score: f64, 
         }
     }
 
-    // Immagini: locandina, sfondo, logo.
+    // Collezione (saga) di TMDB, con le sue immagini.
     let mut new_images: Vec<i64> = Vec::new();
+    if movie {
+        let col = &d["belongs_to_collection"];
+        if let (Some(cid), Some(name)) = (col["id"].as_i64(), col["name"].as_str()) {
+            if let Some(c) = collections::link(&mut tx, item.library_id, item_id, name, Some(cid)).await? {
+                for (kind, path, size) in [("poster", col["poster_path"].as_str(), "w780"), ("backdrop", col["backdrop_path"].as_str(), "w1280")] {
+                    if let Some(id) = set_image(&mut tx, Some(c), None, kind, path, size).await? {
+                        new_images.push(id);
+                    }
+                }
+            }
+        }
+    }
+    // Immagini: locandina, sfondo, logo.
     let poster = d["poster_path"].as_str();
     let backdrop = d["backdrop_path"].as_str();
     let logo = pick_logo(&d["images"]["logos"], &lang_short);

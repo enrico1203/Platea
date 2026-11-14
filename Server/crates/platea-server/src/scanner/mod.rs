@@ -761,6 +761,7 @@ pub async fn cleanup_missing(state: &Shared) -> anyhow::Result<()> {
         .await?;
     sqlx::query("DELETE FROM items WHERE kind = 'season' AND NOT EXISTS (SELECT 1 FROM items c WHERE c.parent_id = items.id)").execute(&mut *tx).await?;
     sqlx::query("DELETE FROM items WHERE kind = 'series' AND NOT EXISTS (SELECT 1 FROM items c WHERE c.parent_id = items.id)").execute(&mut *tx).await?;
+    crate::metadata::collections::prune(&mut tx).await?;
     tx.commit().await?;
     if removed > 0 {
         tracing::info!(files = removed, "file mancanti rimossi dopo il periodo di grazia");

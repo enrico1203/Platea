@@ -114,6 +114,7 @@ export default function ItemPage() {
   const { data: seasons } = useQuery({ queryKey: ["items", "children", seriesId], queryFn: () => api<Page<ItemT>>(`/api/v1/items/${seriesId}/children`).then((r) => r.items), enabled: !!seriesId });
   const currentSeason = season ?? (item?.kind === "season" ? item.id : seasons?.find((s) => (s.unplayed_count ?? 0) > 0 && (s.index_number ?? 0) > 0)?.id ?? seasons?.[0]?.id ?? null);
   const { data: episodes } = useQuery({ queryKey: ["items", "children", currentSeason], queryFn: () => api<Page<ItemT>>(`/api/v1/items/${currentSeason}/children`).then((r) => r.items), enabled: !!currentSeason });
+  const { data: members } = useQuery({ queryKey: ["items", "children", id, "members"], queryFn: () => api<Page<ItemT>>(`/api/v1/items/${id}/children`).then((r) => r.items), enabled: item?.kind === "collection" });
   useEffect(() => { setSeason(null); setFileIdx(0); }, [id]);
 
   if (error) return <Alert tone="danger">{(error as ApiError).message}</Alert>;
@@ -139,6 +140,7 @@ export default function ItemPage() {
     item.official_rating,
     item.community_rating ? `★ ${num(item.community_rating, 1)}` : null,
     item.kind === "series" && seasons ? t("item.seasons", { count: seasons.filter((s) => (s.index_number ?? 0) > 0).length }) : null,
+    item.kind === "collection" && members ? t("item.collectionCount", { count: members.length }) : null,
   ].filter(Boolean);
 
   return (
@@ -153,6 +155,9 @@ export default function ItemPage() {
           {item.images.logo && item.kind !== "episode" ? <img className="detail__logo" src={imageUrl(item.images.logo, 500)} alt={item.title} /> : <h1 className="t-display">{item.title}</h1>}
           <div className="detail__meta t-small">{meta.map((m, i) => <span key={i}>{m}</span>)}</div>
           {item.genres.length > 0 && <div className="chips">{item.genres.map((g) => <Badge key={g}>{g}</Badge>)}</div>}
+          {item.collections && item.collections.length > 0 && (
+            <div className="t-small muted">{t("item.partOf")} {item.collections.map((c, i) => <span key={c.id}>{i > 0 && ", "}<Link to={`/item/${c.id}`}>{c.title}</Link></span>)}</div>
+          )}
           {me?.permissions.expired && <Alert tone="warning">{t("item.expired")}</Alert>}
           <div className="detail__actions">
             {(isPlayable || nextEpisode) && !me?.permissions.expired && (
@@ -164,8 +169,10 @@ export default function ItemPage() {
               </>
             )}
             <span className="spacer" />
+            {item.kind !== "collection" && <>
             <button className={`icon-btn${item.user_data.played ? " on" : ""}`} onClick={() => toggle("played", !item.user_data.played)} aria-label={item.user_data.played ? t("item.markUnplayed") : t("item.markPlayed")} title={item.user_data.played ? t("item.markUnplayed") : t("item.markPlayed")}><Check /></button>
             <button className={`icon-btn${item.user_data.favorite ? " on" : ""}`} onClick={() => toggle("favorite", !item.user_data.favorite)} aria-label={t("item.favorite")} title={t("item.favorite")}><Heart fill={item.user_data.favorite ? "currentColor" : "none"} /></button>
+            </>}
             {me?.is_admin && (item.kind === "movie" || item.kind === "series") && (
               <>
                 <button className="icon-btn" onClick={() => setDialog("identify")} aria-label={t("item.identify")} title={t("item.identify")}><SearchCheck /></button>
@@ -181,6 +188,13 @@ export default function ItemPage() {
       </div>
 
       <div className="detail__content stack-lg">
+        {members && members.length > 0 && (
+          <section className="stack">
+            <h2 className="t-h3">{t("item.collectionMovies")}</h2>
+            <div className="poster-grid">{members.map((m) => <PosterCard key={m.id} item={m} />)}</div>
+          </section>
+        )}
+
         {seasons && seasons.length > 0 && (
           <section>
             <div className="tabs" role="tablist">

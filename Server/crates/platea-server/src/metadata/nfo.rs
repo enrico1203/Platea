@@ -403,6 +403,9 @@ pub async fn apply(state: &Shared, item_id: i64, library_id: i64, current_title:
             order += 1;
         }
     }
+    if let Some(set) = &n.set_name {
+        super::collections::link(&mut tx, library_id, item_id, set, None).await?;
+    }
     let mut new_images = Vec::new();
     for (kind, url, size) in [("poster", &n.poster, "w780"), ("backdrop", &n.backdrop, "w1280"), ("logo", &n.logo, "w500")] {
         if locked(lf, kind) {

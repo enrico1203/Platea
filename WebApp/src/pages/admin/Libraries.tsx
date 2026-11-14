@@ -93,6 +93,7 @@ export default function Libraries() {
               </div>
               <div className="row">
                 <button className="pl-btn pl-btn--secondary pl-btn--sm" onClick={async () => { await api(`/api/v1/libraries/${l.id}/scan`, { method: "POST" }); toast(t("admin.libraries.scanQueued")); }}><RefreshCw />{t("admin.libraries.scan")}</button>
+                <button className="pl-btn pl-btn--ghost pl-btn--sm" onClick={async () => { const r = await api<{ queued: number }>(`/api/v1/libraries/${l.id}/refresh-metadata`, { method: "POST" }); toast(t("admin.libraries.refreshMetadataQueued", { count: r.queued })); }}>{t("admin.libraries.refreshMetadata")}</button>
                 <button className="icon-btn" onClick={() => setEdit(l)} aria-label={t("common.edit")}><Pencil /></button>
                 <button className="icon-btn" onClick={() => setDel(l)} aria-label={t("common.delete")}><Trash2 /></button>
               </div>

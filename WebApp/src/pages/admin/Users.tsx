@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { api, ApiError } from "../../api/client";
 import type { Device, Library, Page, UserAdmin } from "../../api/types";
-import { Alert, Badge, Confirm, Dialog, Switch, TextField, toast } from "../../components/ui";
+import { Alert, Badge, Confirm, Dialog, SelectField, Switch, TextField, toast } from "../../components/ui";
 import { useSession } from "../../session";
 import { useI18n } from "../../i18n";
 
@@ -23,6 +23,7 @@ function UserDialog({ user, onClose }: { user: UserAdmin | null; onClose: () => 
     all_libraries: user?.all_libraries ?? true, library_ids: user?.library_ids ?? [], allow_remux: user?.allow_remux ?? true, allow_transcode: user?.allow_transcode ?? true,
     max_bitrate: user?.max_bitrate ? String(user.max_bitrate / 1_000_000) : "", max_streams: user?.max_streams ? String(user.max_streams) : "", allow_remote: user?.allow_remote ?? true, manage_devices: user?.manage_devices ?? true,
     expires: user?.expires_at ? toDateInput(user.expires_at) : "",
+    max_rating: user?.max_rating ?? "",
   });
   const [error, setError] = useState<string | null>(null);
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF({ ...f, [k]: v });
@@ -32,7 +33,7 @@ function UserDialog({ user, onClose }: { user: UserAdmin | null; onClose: () => 
     const expires_at = f.expires ? new Date(`${f.expires}T23:59:59`).getTime() : null;
     const { expires: _e, ...rest } = f;
     void _e;
-    const body: Record<string, unknown> = { ...rest, expires_at, max_bitrate: f.max_bitrate ? Math.round(Number(f.max_bitrate.replace(",", ".")) * 1_000_000) : null, max_streams: f.max_streams ? Number(f.max_streams) : null };
+    const body: Record<string, unknown> = { ...rest, expires_at, max_rating: f.max_rating || null, max_bitrate: f.max_bitrate ? Math.round(Number(f.max_bitrate.replace(",", ".")) * 1_000_000) : null, max_streams: f.max_streams ? Number(f.max_streams) : null };
     if (!f.password) delete body.password;
     try {
       if (user) await api(`/api/v1/users/${user.id}`, { method: "PATCH", body });
@@ -69,6 +70,10 @@ function UserDialog({ user, onClose }: { user: UserAdmin | null; onClose: () => 
       <Switch checked={f.allow_transcode} onChange={(v) => set("allow_transcode", v)} label={t("admin.users.allowTranscode")} />
       <Switch checked={f.allow_remote} onChange={(v) => set("allow_remote", v)} label={t("admin.users.allowRemote")} />
       <Switch checked={f.manage_devices} onChange={(v) => set("manage_devices", v)} label={t("admin.users.manageDevices")} />
+      <SelectField label={t("admin.users.maxRating")} value={f.max_rating} onChange={(v) => set("max_rating", v)} hint={t("admin.users.maxRatingHint")} options={[
+        { value: "", label: t("admin.users.ratingNone") },
+        ...["0", "6", "10", "12", "14", "16"].map((a) => ({ value: a, label: a === "0" ? t("admin.users.ratingAll") : t("admin.users.ratingAge", { age: a }) })),
+      ]} />
       <TextField label={t("admin.users.expires")} type="date" value={f.expires} onChange={(e) => set("expires", e.target.value)} hint={t("admin.users.expiresHint")} />
       <div className="form-grid">
         <TextField label={t("admin.users.maxBitrate")} inputMode="decimal" value={f.max_bitrate} onChange={(e) => set("max_bitrate", e.target.value)} hint={t("admin.users.unlimitedHint")} />

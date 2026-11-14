@@ -48,7 +48,10 @@ const ITEM_SELECT: &str = "SELECT i.id, i.library_id, i.kind, i.parent_id, i.ser
   (SELECT id FROM images im WHERE im.item_id = i.series_id AND im.kind = 'poster') AS series_poster_id,
   (SELECT id FROM images im WHERE im.item_id = i.series_id AND im.kind = 'backdrop') AS series_backdrop_id,
   u.position_ms, u.played, u.play_count, u.favorite, u.last_played_at,
-  CASE WHEN i.kind IN ('series','season') THEN (SELECT COUNT(*) FROM items c WHERE c.parent_id = i.id) END AS child_count,
+  CASE WHEN i.kind IN ('series','season') THEN (SELECT COUNT(*) FROM items c WHERE c.parent_id = i.id)
+       WHEN i.kind = 'collection' THEN (SELECT COUNT(*) FROM collection_members cm WHERE cm.collection_id = i.id) END AS child_count,
+  CASE WHEN i.kind = 'collection' THEN (SELECT im.id FROM collection_members cm JOIN items m ON m.id = cm.item_id
+       JOIN images im ON im.item_id = m.id AND im.kind = 'poster' WHERE cm.collection_id = i.id ORDER BY m.year, m.id LIMIT 1) END AS member_poster_id,
   CASE WHEN i.kind IN ('series','season') THEN (SELECT COUNT(*) FROM items e LEFT JOIN user_item_data ue ON ue.item_id = e.id AND ue.user_id = ?1
      WHERE e.kind = 'episode' AND (e.series_id = i.id OR e.parent_id = i.id) AND COALESCE(ue.played, 0) = 0) END AS unplayed_count
 FROM items i LEFT JOIN user_item_data u ON u.item_id = i.id AND u.user_id = ?1";
@@ -91,6 +94,7 @@ pub struct ItemRow {
     pub favorite: Option<i64>,
     pub last_played_at: Option<i64>,
     pub child_count: Option<i64>,
+    pub member_poster_id: Option<i64>,
     pub unplayed_count: Option<i64>,
 }
 
@@ -123,7 +127,7 @@ pub fn item_json(state: &Shared, r: &ItemRow) -> Value {
         "match_state": r.match_state,
         "added_at": r.added_at,
         "images": {
-            "poster": image_url(state, r.poster_id.or(if r.kind == "season" || r.kind == "episode" { r.series_poster_id } else { None })),
+            "poster": image_url(state, r.poster_id.or(if r.kind == "season" || r.kind == "episode" { r.series_poster_id } else { r.member_poster_id })),
             "poster_color": r.poster_color,
             "backdrop": image_url(state, r.backdrop_id.or(r.series_backdrop_id)),
             "still": image_url(state, r.still_id),
@@ -190,8 +194,10 @@ async fn list(State(state): State<Shared>, user: AuthUser, Query(q): Query<ListQ
         bind(&mut sql, " AND i.parent_id = ?", json!(pid), &mut binds);
     }
     match q.kind.as_deref() {
+        // Una collezione con un solo film presente non aiuta a sfogliare: si elencano da due in su.
+        Some("collection") => sql.push_str(" AND i.kind = 'collection' AND (SELECT COUNT(*) FROM collection_members cm WHERE cm.collection_id = i.id) >= 2"),
         Some(k @ ("movie" | "series" | "season" | "episode")) => bind(&mut sql, " AND i.kind = ?", json!(k), &mut binds),
-        Some(_) => return Err(ApiError::BadRequest("kind: movie, series, season, episode".into())),
+        Some(_) => return Err(ApiError::BadRequest("kind: movie, series, season, episode, collection".into())),
         None if q.parent_id.is_none() => sql.push_str(" AND i.kind IN ('movie','series')"),
         None => {}
     }
@@ -278,7 +284,7 @@ async fn list(State(state): State<Shared>, user: AuthUser, Query(q): Query<ListQ
 pub async fn load_item(state: &Shared, user: &AuthUser, id: i64) -> ApiResult<ItemRow> {
     let sql = format!("{ITEM_SELECT} WHERE i.id = ?2");
     let row: ItemRow = sqlx::query_as(&sql).bind(user.user_id).bind(id).fetch_optional(&state.db.read).await?.ok_or_else(|| ApiError::not_found("Elemento"))?;
-    if !user.can_see_library(row.library_id) {
+    if !user.can_see_item(state, id, row.library_id).await? {
         return Err(ApiError::not_found("Elemento"));
     }
     Ok(row)
@@ -415,6 +421,15 @@ async fn detail(State(state): State<Shared>, user: AuthUser, Path(id): Path<Stri
     if row.kind == "movie" || row.kind == "episode" {
         o.insert("files".into(), json!(files_json(&state, iid).await?));
     }
+    if row.kind == "movie" {
+        let cols: Vec<(i64, String)> = sqlx::query_as(
+            "SELECT c.id, c.title FROM collection_members cm JOIN items c ON c.id = cm.collection_id WHERE cm.item_id = ? ORDER BY c.sort_title",
+        )
+        .bind(iid)
+        .fetch_all(&state.db.read)
+        .await?;
+        o.insert("collections".into(), json!(cols.iter().map(|(id, t)| json!({ "id": state.ids.encode(*id), "title": t })).collect::<Vec<_>>()));
+    }
     if user.is_admin {
         let lf: String = sqlx::query_scalar("SELECT locked_fields FROM items WHERE id = ?").bind(iid).fetch_one(&state.db.read).await?;
         o.insert("locked_fields".into(), json!(lf.split(',').filter(|s| !s.is_empty()).collect::<Vec<_>>()));
@@ -425,9 +440,16 @@ async fn detail(State(state): State<Shared>, user: AuthUser, Path(id): Path<Stri
 async fn children(State(state): State<Shared>, user: AuthUser, Path(id): Path<String>) -> ApiResult<Json<Value>> {
     let iid = decode(&state, &id)?;
     let parent = load_item(&state, &user, iid).await?;
-    let sql = format!("{ITEM_SELECT} WHERE i.parent_id = ?2 ORDER BY COALESCE(i.index_number, 0), i.sort_title LIMIT 1000");
+    let sql = if parent.kind == "collection" {
+        // I film di una collezione, in ordine di uscita.
+        format!(
+            "{ITEM_SELECT} WHERE i.id IN (SELECT item_id FROM collection_members WHERE collection_id = ?2) {} ORDER BY COALESCE(i.premiere_date, i.year, ''), i.sort_title LIMIT 1000",
+            user.library_filter("i.library_id")
+        )
+    } else {
+        format!("{ITEM_SELECT} WHERE i.parent_id = ?2 ORDER BY COALESCE(i.index_number, 0), i.sort_title LIMIT 1000")
+    };
     let rows: Vec<ItemRow> = sqlx::query_as(&sql).bind(user.user_id).bind(iid).fetch_all(&state.db.read).await?;
-    let _ = parent;
     Ok(Json(json!({ "items": rows.iter().map(|r| item_json(&state, r)).collect::<Vec<_>>() })))
 }
 
@@ -530,7 +552,7 @@ async fn search(State(state): State<Shared>, user: AuthUser, Query(q): Query<Sea
     let Some(m) = fts_query(&q.q) else { return Ok(Json(json!({ "items": [] }))) };
     let limit = clamp_limit(q.limit, 40);
     let sql = format!(
-        "{ITEM_SELECT} JOIN items_fts f ON f.rowid = i.id WHERE items_fts MATCH ?2 AND i.kind IN ('movie','series','episode') {}
+        "{ITEM_SELECT} JOIN items_fts f ON f.rowid = i.id WHERE items_fts MATCH ?2 AND (i.kind IN ('movie','series','episode') OR (i.kind = 'collection' AND (SELECT COUNT(*) FROM collection_members cm WHERE cm.collection_id = i.id) >= 2)) {}
          ORDER BY CASE i.kind WHEN 'episode' THEN 1 ELSE 0 END, bm25(items_fts) LIMIT {limit}",
         user.library_filter("i.library_id")
     );

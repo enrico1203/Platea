@@ -107,6 +107,21 @@ Libreria "Film cloud" (profilo Remoto) creata nel compose locale.
   Migrazione 0004. Provato end-to-end su libreria di prova locale (non sul mount dell'utente).
 - [x] Avvisi della panoramica tradotti per codice; con NFO attivi la chiave TMDB mancante è solo informativa.
 
+### Collezioni, limite per età, ricerca (2026-11-14)
+
+- [x] Collezioni automatiche (migrazione 0005, `metadata/collections.rs`): elementi `kind = 'collection'` + `collection_members`;
+  da `<set>` degli NFO e `belongs_to_collection` di TMDB (con le sue immagini; senza, la locandina del primo film).
+  Elenco e ricerca mostrano solo collezioni con almeno 2 film. Pagina collezione in ordine di uscita, "Fa parte di" sul film,
+  filtro "Collezioni" nella libreria. Sulla libreria cloud: 896 collezioni (James Bond 10, Fast & Furious 10, Saw 10…).
+- [x] POST `/libraries/{id}/refresh-metadata` + pulsante "Aggiorna metadati"; senza chiave TMDB il rinnovo rilegge NFO/.plexmatch.
+  8.496 elementi riletti dal cloud in ~13 minuti.
+- [x] Limite di classificazione per utente applicato (migrazione 0006 `items.rating_age`, `ratings.rs`): sigle di ogni paese
+  convertite in età (T, VM14, PG-13, TV-MA, FSK 16, 14+, Kids+13…), trigger che la azzera al cambio, ricalcolo ogni minuto.
+  Filtro in `library_filter` (liste, ricerca, home, figli, strato Infuse) e `can_see_item` (dettaglio, riproduzione, stream).
+  Episodi e stagioni usano la classificazione della serie; i titoli senza classificazione restano visibili.
+  Provato: utente con limite 6 anni vede 7.996 film su 8.496, VM18 → 404 su dettaglio e riproduzione, Infuse coerente.
+- [x] Ricerca: `?q=` nell'indirizzo (condivisibile, "indietro" ritrova i risultati).
+
 ## Benchmark (2026-11-14, 8 CPU, disco locale, libreria sintetica da 100.000 file vuoti)
 
 | Misura | Obiettivo del piano | Misurato |
@@ -138,13 +153,13 @@ Script del benchmark: `scripts/bench_library.py` (genera la libreria sintetica).
 - Segmenti HLS in MPEG-TS (non fMP4): HEVC in remux solo se il client lo dichiara in `hls_video_codecs`.
 - Keyframe per MP4 remoti: leggere `stss` dal box moov (ora su remoto senza Cues si transcodifica).
 - `.plexmatch`: righe `ep:` per episodi con nomi non standard. NFO degli episodi (`<episodio>.nfo`) non letti.
-- Collezioni (`<set>` negli NFO, `belongs_to_collection` di TMDB): tabella presente, non ancora popolata.
-- `max_rating` per utente salvato ma non ancora applicato ai filtri.
+- Collezioni nello strato Infuse (BoxSet) non ancora esposte.
 - Chiavi API con ambito limitato: tabella presente, endpoint da fare.
 - Log in tempo reale in dashboard da fare.
 
 ## Registro
 
+- 2026-11-14 — Collezioni automatiche, limite per età applicato ovunque, rinnovo metadati per libreria, ricerca nell'indirizzo.
 - 2026-11-14 — Prova sulla libreria cloud reale: NFO, .plexmatch, Cues MKV, scansione parallela, rclone rc, protezione del mount,
   corretto il taglio dei segmenti dopo un salto, coda lavori per corsia.
 - 2026-11-14 — Avvio del progetto. Server, WebApp, compose, README. Fasi 0 e 1 complete, fase 2 quasi (manca Infuse).

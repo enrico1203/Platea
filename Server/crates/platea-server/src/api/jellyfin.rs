@@ -747,7 +747,7 @@ async fn media_sources(state: &Shared, item: i64) -> ApiResult<Vec<Value>> {
 async fn detail_dto(state: &Shared, user: &AuthUser, id: i64) -> ApiResult<Value> {
     let sql = format!("{SELECT} WHERE i.id = ?2");
     let r: Row = sqlx::query_as(&sql).bind(user.user_id).bind(id).fetch_optional(&state.db.read).await?.ok_or_else(|| ApiError::not_found("Elemento"))?;
-    if !user.can_see_library(r.library_id) {
+    if !user.can_see_item(state, id, r.library_id).await? {
         return Err(ApiError::not_found("Elemento"));
     }
     let mut v = dto(state, &r);

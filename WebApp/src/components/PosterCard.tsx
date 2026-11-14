@@ -16,6 +16,8 @@ export function PosterCard({ item, wide = false, to }: { item: Item; wide?: bool
     meta = `S${item.parent_index_number ?? 0} · E${item.index_number ?? 0}${wide ? ` · ${item.title}` : ""}`;
   } else if (item.kind === "series") {
     meta = [t("item.series"), item.child_count ? t("item.seasons", { count: item.child_count }) : null].filter(Boolean).join(" · ");
+  } else if (item.kind === "collection") {
+    meta = [t("item.collection"), item.child_count ? t("item.collectionCount", { count: item.child_count }) : null].filter(Boolean).join(" · ");
   } else if (item.kind === "season") {
     meta = item.child_count ? t("item.episodes", { count: item.child_count }) : "";
   } else {

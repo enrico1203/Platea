@@ -4,7 +4,7 @@ export interface Me extends UserRef {
   device_name: string;
   permissions: { all_libraries: boolean; library_ids: string[]; allow_remux: boolean; allow_transcode: boolean; max_bitrate: number | null; max_streams: number | null; allow_remote: boolean; manage_devices: boolean; expires_at: number | null; expired: boolean };
 }
-export type ItemKind = "movie" | "series" | "season" | "episode";
+export type ItemKind = "movie" | "series" | "season" | "episode" | "collection";
 export interface UserData { position_ms: number; played: boolean; play_count: number; favorite: boolean; last_played_at: number | null }
 export interface Item {
   id: string; library_id: string; kind: ItemKind; title: string; original_title: string | null; year: number | null;
@@ -19,7 +19,7 @@ export interface AudioStream { index: number; codec: string; channels: number | 
 export interface SubtitleStream { index: number; codec: string; language: string | null; title: string | null; default: boolean; forced: boolean; external: boolean; image: boolean }
 export interface MediaFile { id: string; name: string; version_label: string | null; container: string | null; size: number; duration_ms: number | null; bitrate: number | null; state: string; probe_state: string; probe_error: string | null; video: VideoStream[]; audio: AudioStream[]; subtitles: SubtitleStream[] }
 export interface Person { name: string; role: string; character: string | null; image: string | null }
-export interface ItemDetail extends Item { tagline: string | null; genres: string[]; studios: string[]; people: Person[]; external_ids: Record<string, string>; files?: MediaFile[]; locked_fields?: string[] }
+export interface ItemDetail extends Item { tagline: string | null; genres: string[]; studios: string[]; people: Person[]; external_ids: Record<string, string>; files?: MediaFile[]; locked_fields?: string[]; collections?: { id: string; title: string }[] }
 export interface Page<T> { items: T[]; next_cursor?: string | null }
 export interface Library {
   id: string; name: string; kind: "movies" | "shows"; item_count: number;

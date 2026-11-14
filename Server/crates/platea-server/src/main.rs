@@ -18,6 +18,7 @@ mod metadata;
 mod mkv;
 mod net;
 mod probe;
+mod ratings;
 mod scanner;
 mod sessions;
 mod settings;
