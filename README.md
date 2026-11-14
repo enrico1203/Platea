@@ -71,6 +71,17 @@ curl -X POST http://<host>:8096/api/v1/scan/path \
   -d '{"path": "/media/Film/Nuovo film (2026)"}'
 ```
 
+### Accesso da fuori (tunnel Cloudflare)
+
+Il compose ha un servizio `cloudflared`, spento finché non lo attivi: nessuna porta da aprire sul router.
+
+1. Nel pannello Cloudflare, **Zero Trust → Networks → Tunnels → Create a tunnel** (tipo Cloudflared), e copia il token.
+2. In `.env`: `COMPOSE_PROFILES=tunnel` e `CLOUDFLARE_TUNNEL_TOKEN=<token>`, poi `docker compose up -d`.
+3. Nel tunnel, **Public hostnames**: `platea.tuodominio.it` → `http://web:80` (web UI) e, per Infuse, `infuse.tuodominio.it` → `http://server:8096`. Infuse si collega a `https://infuse.tuodominio.it` sulla porta 443.
+4. In **Impostazioni → Generali → URL pubblico** l'indirizzo per Infuse (`https://infuse.tuodominio.it`): è quello che il server comunica alle app Jellyfin.
+
+Il server legge l'indirizzo vero del client da `X-Forwarded-For` (il tunnel arriva da una rete Docker, già tra i proxy fidati): chi entra dal tunnel è un accesso remoto, quindi valgono il permesso di accesso da remoto e il bitrate massimo da remoto. Due limiti di Cloudflare: le richieste oltre 100 MB non passano (il ripristino del database da file si fa dalla rete locale) e le condizioni del piano gratuito non sono pensate per molto traffico video. Cloudflare Access (il login di Cloudflare) si può mettere davanti alla web UI, non davanti all'hostname di Infuse: Infuse non sa superarlo.
+
 ### Nomi dei file
 
 Le stesse convenzioni di Jellyfin ed Emby: `Film/Titolo (Anno)/Titolo (Anno).mkv`, `Serie/Nome/Season 01/Nome S01E02.mkv`, episodi multipli `S01E01-E02`, episodi per data, numerazione assoluta per gli anime, identificativi espliciti `[tmdbid-603]`, `[imdbid-tt0133093]`, `[tvdbid-…]`. Sottotitoli esterni accanto al video: `Titolo (Anno).it.srt`, `.it.forced.srt`.

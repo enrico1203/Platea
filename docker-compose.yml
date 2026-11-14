@@ -2,6 +2,7 @@
 #   docker compose up -d --build
 # Web UI su http://localhost:8080, API e Infuse su http://localhost:8096.
 # Il codice di primo avvio è nei log:  docker compose logs server | grep -i codice
+# Tunnel Cloudflare (facoltativo): CLOUDFLARE_TUNNEL_TOKEN e COMPOSE_PROFILES=tunnel in .env.
 
 services:
   server:
@@ -49,3 +50,20 @@ services:
       - "${PLATEA_WEB_PORT:-8080}:80"
     environment:
       PLATEA_SERVER_URL: http://server:8096
+
+  # Accesso da fuori senza aprire porte: tunnel Cloudflare.
+  # Parte solo con il profilo "tunnel" (COMPOSE_PROFILES=tunnel in .env, o docker compose --profile tunnel up -d).
+  # Nel pannello Cloudflare (Zero Trust → Networks → Tunnels → Public hostnames):
+  #   platea.example.com    →  http://web:80        (web UI)
+  #   infuse.example.com    →  http://server:8096   (Infuse e app Jellyfin)
+  cloudflared:
+    image: cloudflare/cloudflared:2026.10.7
+    container_name: platea-cloudflared
+    restart: unless-stopped
+    profiles: ["tunnel"]
+    depends_on:
+      - web
+      - server
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
