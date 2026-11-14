@@ -34,6 +34,11 @@ Se la sessione si interrompe, alla ripresa ("continua") si riparte da qui: legge
   Cartelle dei media solo nei `volumes` del compose (niente `MEDIA_DIR`): `/mnt/jotta2:/media/jotta2:ro,rslave`.
   Tunnel Cloudflare attivo (profilo `tunnel`, token in `.env`). Password dimenticata:
   `docker compose exec server platea reset-password <utente>`.
+- 14/11/2026 sera: menu laterale fisso e comprimibile, pannello riproduzioni con dati dal vivo, ricerca nella
+  libreria, "torna su", associazione TMDB migliorata (da 214 incerti a 68), loghi SVG, API Jellyfin in più.
+  APERTO: Infuse da iOS via tunnel dà "si è verificato un errore" dopo il login riuscito. Log richieste
+  attivo (`PLATEA_LOG=info,tower_http=debug` in .env, da rimettere a `info` dopo): leggere i percorsi chiesti
+  da Infuse (`docker compose logs server | grep "path="`) e i "percorso non gestito".
 
 ## Dove sono arrivato
 
