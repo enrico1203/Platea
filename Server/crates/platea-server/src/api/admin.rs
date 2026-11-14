@@ -36,7 +36,18 @@ pub fn routes(api: Api) -> Api {
         .get("/api/v1/admin/transcode", "Transcodifica", Access::Admin, "FFmpeg, backend e matrice delle capacità rilevate", transcode_info)
         .post("/api/v1/admin/transcode/test", "Transcodifica", Access::Admin, "Prova ora: rileva di nuovo le GPU", transcode_test)
         .get("/api/v1/admin/system", "Sistema", Access::Admin, "Versione, percorsi, database", system)
-        .post("/api/v1/admin/backup", "Sistema", Access::Admin, "Copia di sicurezza del database da scaricare", backup)
+        .post("/api/v1/admin/backup", "Sistema", Access::Admin, "Crea una copia di sicurezza e la scarica", backup)
+        .get("/api/v1/admin/backups", "Sistema", Access::Admin, "Copie di sicurezza presenti in data/backups", backups_list)
+        .post("/api/v1/admin/backups", "Sistema", Access::Admin, "Crea ora una copia di sicurezza", backups_create)
+        .get("/api/v1/admin/backups/{name}", "Sistema", Access::Admin, "Scarica una copia di sicurezza", backups_download)
+        .delete("/api/v1/admin/backups/{name}", "Sistema", Access::Admin, "Cancella una copia di sicurezza", backups_delete)
+        .post(
+            "/api/v1/admin/backups/{name}/restore",
+            "Sistema",
+            Access::Admin,
+            "Ripristina il database da questa copia: il server si riavvia, il database attuale resta accanto",
+            backups_restore,
+        )
         .get("/api/v1/admin/api-keys", "Sistema", Access::Admin, "Chiavi API per le integrazioni", api_keys)
         .post("/api/v1/admin/api-keys", "Sistema", Access::Admin, "Crea una chiave API (mostrata una sola volta)", api_key_create)
         .delete("/api/v1/admin/api-keys/{id}", "Sistema", Access::Admin, "Revoca una chiave API", api_key_delete)
@@ -460,16 +471,87 @@ async fn logs(_a: AdminUser, Query(q): Query<LogQuery>) -> ApiResult<Json<Value>
     Ok(Json(json!({ "items": crate::logs::LOGS.recent(min, q.limit.unwrap_or(500).min(2000)) })))
 }
 
-/// Copia coerente del database (VACUUM INTO) restituita come file da scaricare.
-async fn backup(State(state): State<Shared>, AdminUser(admin): AdminUser) -> ApiResult<Response> {
-    let path = state.boot.data_dir.join(format!("backup-{}.db", now_ms()));
-    sqlx::query(&format!("VACUUM INTO '{}'", path.display().to_string().replace('\'', "''"))).execute(&state.db.write).await?;
-    let bytes = tokio::fs::read(&path).await.map_err(|e| ApiError::Internal(e.into()))?;
-    let _ = tokio::fs::remove_file(&path).await;
-    state.db.activity(Some(admin.user_id), "backup", &format!("{} ha scaricato una copia del database", admin.username), None).await;
+/// Una copia di sicurezza servita in streaming: il database non passa dalla memoria.
+async fn stream_backup(state: &Shared, name: &str) -> ApiResult<Response> {
+    if !crate::backup::valid_name(name) {
+        return Err(ApiError::not_found("Copia"));
+    }
+    let path = crate::backup::dir(state).join(name);
+    let file = tokio::fs::File::open(&path).await.map_err(|_| ApiError::not_found("Copia"))?;
+    let len = file.metadata().await.map(|m| m.len()).unwrap_or(0);
     Ok(Response::builder()
         .header(header::CONTENT_TYPE, "application/vnd.sqlite3")
-        .header(header::CONTENT_DISPOSITION, "attachment; filename=\"platea-backup.db\"")
-        .body(Body::from(bytes))
+        .header(header::CONTENT_LENGTH, len)
+        .header(header::CONTENT_DISPOSITION, format!("attachment; filename=\"{name}\""))
+        .body(Body::from_stream(tokio_util::io::ReaderStream::with_capacity(file, 256 * 1024)))
         .unwrap())
+}
+
+/// Crea una copia (manuale) e la restituisce da scaricare.
+async fn backup(State(state): State<Shared>, AdminUser(admin): AdminUser) -> ApiResult<Response> {
+    let b = crate::backup::create(&state, false).await.map_err(ApiError::Internal)?;
+    state.db.activity(Some(admin.user_id), "backup", &format!("{} ha scaricato una copia del database", admin.username), None).await;
+    stream_backup(&state, &b.name).await
+}
+
+async fn backups_list(State(state): State<Shared>, _a: AdminUser) -> ApiResult<Json<Value>> {
+    let g = state.settings.get().general.clone();
+    Ok(Json(json!({ "items": crate::backup::list(&state).await, "interval_hours": g.backup_interval_hours, "keep": g.backup_keep })))
+}
+
+async fn backups_create(State(state): State<Shared>, AdminUser(admin): AdminUser) -> ApiResult<Json<Value>> {
+    let b = crate::backup::create(&state, false).await.map_err(ApiError::Internal)?;
+    state.db.activity(Some(admin.user_id), "backup", &format!("{} ha creato la copia {}", admin.username, b.name), None).await;
+    Ok(Json(json!(b)))
+}
+
+async fn backups_download(State(state): State<Shared>, _a: AdminUser, Path(name): Path<String>) -> ApiResult<Response> {
+    stream_backup(&state, &name).await
+}
+
+async fn backups_delete(State(state): State<Shared>, _a: AdminUser, Path(name): Path<String>) -> ApiResult<Json<Value>> {
+    if !crate::backup::valid_name(&name) {
+        return Err(ApiError::not_found("Copia"));
+    }
+    tokio::fs::remove_file(crate::backup::dir(&state).join(&name)).await.map_err(|_| ApiError::not_found("Copia"))?;
+    Ok(Json(json!({ "deleted": name })))
+}
+
+async fn backups_restore(State(state): State<Shared>, AdminUser(admin): AdminUser, Path(name): Path<String>) -> ApiResult<Json<Value>> {
+    if !crate::backup::valid_name(&name) {
+        return Err(ApiError::not_found("Copia"));
+    }
+    let src = crate::backup::dir(&state).join(&name);
+    crate::backup::stage(&state, &src).await.map_err(|e| ApiError::BadRequest(format!("{e:#}")))?;
+    state.db.activity(Some(admin.user_id), "restore", &format!("{} ha ripristinato il database da {name}", admin.username), None).await;
+    crate::backup::restart_soon();
+    Ok(Json(json!({ "restarting": true })))
+}
+
+/// Ripristino da un file caricato (fuori dal limite di 16 MB delle altre richieste): scritto su disco a blocchi.
+pub async fn restore_upload(State(state): State<Shared>, AdminUser(admin): AdminUser, body: Body) -> ApiResult<Json<Value>> {
+    use futures_util::StreamExt;
+    use tokio::io::AsyncWriteExt;
+    let d = crate::backup::dir(&state);
+    tokio::fs::create_dir_all(&d).await.map_err(|e| ApiError::Internal(e.into()))?;
+    let path = d.join(format!("upload-{}.db.part", now_ms()));
+    let mut f = tokio::fs::File::create(&path).await.map_err(|e| ApiError::Internal(e.into()))?;
+    let mut stream = body.into_data_stream();
+    let mut total: u64 = 0;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| ApiError::BadRequest(format!("Caricamento interrotto: {e}")))?;
+        total += chunk.len() as u64;
+        f.write_all(&chunk).await.map_err(|e| ApiError::Internal(e.into()))?;
+    }
+    f.flush().await.map_err(|e| ApiError::Internal(e.into()))?;
+    drop(f);
+    let r = crate::backup::stage(&state, &path).await;
+    let _ = tokio::fs::remove_file(&path).await;
+    r.map_err(|e| ApiError::BadRequest(format!("{e:#}")))?;
+    state
+        .db
+        .activity(Some(admin.user_id), "restore", &format!("{} ha ripristinato il database da un file caricato ({total} byte)", admin.username), None)
+        .await;
+    crate::backup::restart_soon();
+    Ok(Json(json!({ "restarting": true, "bytes": total })))
 }

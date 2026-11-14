@@ -454,6 +454,10 @@ pub async fn run_scheduler(state: Shared) {
                 .execute(&state.db.write)
                 .await;
         }
+        if minutes % 60 == 5 {
+            let st = state.clone();
+            tokio::spawn(async move { crate::backup::maybe_auto(&st).await });
+        }
         if minutes % (24 * 60) == 2 {
             let _ = crate::metadata::schedule_refresh(&state).await;
         }

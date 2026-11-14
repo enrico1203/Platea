@@ -23,11 +23,17 @@ pub struct GeneralSettings {
     /// Lunghezza minima delle password.
     #[schemars(title = "Lunghezza minima password", range(min = 4, max = 128))]
     pub min_password_length: u32,
+    /// Ogni quante ore creare una copia di sicurezza automatica del database in data/backups (0 = mai).
+    #[schemars(title = "Copia di sicurezza automatica (ore)", range(min = 0, max = 720))]
+    pub backup_interval_hours: u32,
+    /// Quante copie automatiche tenere; le manuali restano finché non le cancelli.
+    #[schemars(title = "Copie automatiche da tenere", range(min = 1, max = 100))]
+    pub backup_keep: u32,
 }
 
 impl Default for GeneralSettings {
     fn default() -> Self {
-        GeneralSettings { server_name: "Platea".into(), public_url: String::new(), min_password_length: 8 }
+        GeneralSettings { server_name: "Platea".into(), public_url: String::new(), min_password_length: 8, backup_interval_hours: 24, backup_keep: 7 }
     }
 }
 

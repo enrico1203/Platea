@@ -152,7 +152,18 @@ pub fn router(state: Shared) -> Router {
         async move { axum::Json(d) }
     });
 
-    let mut app: Router<Shared> = api.router.route("/api/v1/openapi.json", doc_route).merge(jellyfin::router()).fallback(fallback);
+    // Limite di 16 MB a tutte le richieste tranne il caricamento di un database da ripristinare.
+    let restore = Router::new()
+        .route("/api/v1/admin/restore", axum::routing::post(admin::restore_upload))
+        .layer(axum::extract::DefaultBodyLimit::disable())
+        .layer(tower_http::limit::RequestBodyLimitLayer::new(64 * 1024 * 1024 * 1024));
+    let mut app: Router<Shared> = api
+        .router
+        .route("/api/v1/openapi.json", doc_route)
+        .merge(jellyfin::router())
+        .layer(tower_http::limit::RequestBodyLimitLayer::new(16 * 1024 * 1024))
+        .merge(restore)
+        .fallback(fallback);
 
     if let Some(dir) = state.boot.web_dir.clone() {
         let index = dir.join("index.html");
@@ -165,7 +176,6 @@ pub fn router(state: Shared) -> Router {
             // Nel log solo il percorso: mai la query, che può contenere un token.
             tracing::debug_span!("http", method = %req.method(), path = %req.uri().path())
         }))
-        .layer(tower_http::limit::RequestBodyLimitLayer::new(16 * 1024 * 1024))
         .with_state(state)
 }
 

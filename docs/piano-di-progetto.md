@@ -820,59 +820,59 @@ Ogni rombo è un criterio di uscita: la fase successiva parte quando è soddisfa
 
 ### Fase 0 — Fondamenta
 
-- [ ] Workspace Rust con i crate vuoti e la CI attiva
-- [ ] Avvio del server, file di avvio, log strutturati
-- [ ] Database SQLite, migrazioni, scrittore unico e pool di lettura
-- [ ] Procedura di primo avvio e creazione dell'amministratore
-- [ ] Login, token, middleware di autenticazione e permessi
-- [ ] Documento OpenAPI generato e pubblicato
-- [ ] Scheletro della web UI con login
+- [x] Workspace Rust con i crate vuoti e la CI attiva
+- [x] Avvio del server, file di avvio, log strutturati
+- [x] Database SQLite, migrazioni, scrittore unico e pool di lettura
+- [x] Procedura di primo avvio e creazione dell'amministratore
+- [x] Login, token, middleware di autenticazione e permessi
+- [x] Documento OpenAPI generato e pubblicato
+- [x] Scheletro della web UI con login
 
 Criterio di uscita: login completo via API e via web UI, CI verde.
 
 ### Fase 1 — Libreria e direct play
 
-- [ ] Librerie e percorsi, con profilo Locale e Remoto
-- [ ] Scanner: elenco e confronto senza aprire file
-- [ ] Lettura dei nomi di film e serie, con la raccolta di casi di test
-- [ ] Coda dei lavori con priorità e limiti
-- [ ] Analisi con ffprobe in coda limitata
-- [ ] Associazione TMDB, immagini, elenco "da verificare"
-- [ ] API per sfogliare, cercare e vedere i dettagli
-- [ ] Endpoint di streaming con Range
-- [ ] Stato di visione, "continua a guardare", "aggiunti di recente"
-- [ ] Web UI responsive: home, librerie, dettaglio, player in direct play, anche da telefono
-- [ ] Pagine admin minime: librerie, utenti, lavori
-- [ ] Procedura guidata di primo avvio nella web UI
-- [ ] Immagini Docker e file Docker Compose con server e web UI
-- [ ] Protezione da mount assente e periodo di grazia per i file mancanti
+- [x] Librerie e percorsi, con profilo Locale e Remoto
+- [x] Scanner: elenco e confronto senza aprire file
+- [x] Lettura dei nomi di film e serie, con la raccolta di casi di test
+- [x] Coda dei lavori con priorità e limiti
+- [x] Analisi con ffprobe in coda limitata
+- [x] Associazione TMDB, immagini, elenco "da verificare"
+- [x] API per sfogliare, cercare e vedere i dettagli
+- [x] Endpoint di streaming con Range
+- [x] Stato di visione, "continua a guardare", "aggiunti di recente"
+- [x] Web UI responsive: home, librerie, dettaglio, player in direct play, anche da telefono
+- [x] Pagine admin minime: librerie, utenti, lavori
+- [x] Procedura guidata di primo avvio nella web UI
+- [x] Immagini Docker e file Docker Compose con server e web UI
+- [x] Protezione da mount assente e periodo di grazia per i file mancanti
 
 Criterio di uscita: dopo `docker compose up` e la procedura guidata, un film su un mount rclone si riproduce in direct play nel browser, anche da telefono. Una scansione senza modifiche apre zero file.
 
 ### Fase 2 — Remux e transcodifica software
 
-- [ ] Profilo dispositivo generato dalla web UI
-- [ ] Funzione di decisione con codici motivo e tabella di test
-- [ ] Sessioni di riproduzione e sorveglianza di FFmpeg
+- [x] Profilo dispositivo generato dalla web UI
+- [x] Funzione di decisione con codici motivo e tabella di test
+- [x] Sessioni di riproduzione e sorveglianza di FFmpeg
 - [ ] HLS con segmenti fMP4 e playlist generata dal server
-- [ ] Remux con indice dei keyframe
-- [ ] Conversione del solo audio
-- [ ] Transcodifica video software
-- [ ] Sottotitoli: testo in WebVTT, immagine impressa nel video
-- [ ] Rallentamento, pulizia dei segmenti, limite di sessioni
-- [ ] Permessi per utente su remux e transcodifica
-- [ ] Strato compatibile Jellyfin per Infuse
+- [x] Remux con indice dei keyframe
+- [x] Conversione del solo audio
+- [x] Transcodifica video software
+- [x] Sottotitoli: testo in WebVTT, immagine impressa nel video
+- [x] Rallentamento, pulizia dei segmenti, limite di sessioni
+- [x] Permessi per utente su remux e transcodifica
+- [x] Strato compatibile Jellyfin per Infuse (provato con richieste simulate; manca la prova con l'app reale)
 
 Criterio di uscita: una raccolta di clip campione si riproduce in Chrome, Firefox e Safari, ognuna con il metodo meno costoso previsto. Infuse sfoglia la libreria e riproduce in direct play.
 
 ### Fase 3 — Transcodifica hardware
 
-- [ ] Rilevamento con prova reale e matrice delle capacità
-- [ ] Interfaccia comune dei backend e test sugli argomenti di FFmpeg
+- [x] Rilevamento con prova reale e matrice delle capacità (verificato solo senza GPU)
+- [x] Interfaccia comune dei backend e test sugli argomenti di FFmpeg
 - [ ] Intel: QSV e VA-API
 - [ ] NVIDIA: NVDEC e NVENC
 - [ ] AMD: VA-API su Linux, AMF su Windows
-- [ ] Ripiego parziale e totale su software
+- [x] Ripiego parziale e totale su software
 - [ ] Tone mapping da HDR a SDR in GPU
 - [ ] Uscita HEVC e AV1 quando il client li dichiara
 - [ ] Guida Docker per le tre famiglie di GPU
@@ -881,19 +881,19 @@ Criterio di uscita: la raccolta di clip supera i test su una GPU Intel, una NVID
 
 ### Fase 4 — Dashboard completa
 
-- [ ] Impostazioni tipizzate con schema e moduli generati
-- [ ] Tutte le pagine elencate nella sezione Dashboard admin
-- [ ] Panoramica in tempo reale con metodo e motivo di ogni riproduzione
-- [ ] Log in tempo reale e registro delle attività
-- [ ] Backup, ripristino, esportazione della configurazione
-- [ ] Chiavi API ed endpoint di scansione mirata per strumenti esterni
-- [ ] Integrazione con il controllo remoto di rclone
+- [x] Impostazioni tipizzate con schema e moduli generati
+- [x] Tutte le pagine elencate nella sezione Dashboard admin
+- [x] Panoramica in tempo reale con metodo e motivo di ogni riproduzione
+- [x] Log in tempo reale e registro delle attività
+- [x] Backup, ripristino, esportazione della configurazione
+- [x] Chiavi API ed endpoint di scansione mirata per strumenti esterni
+- [x] Integrazione con il controllo remoto di rclone
 
 Criterio di uscita: un'installazione nuova si configura per intero dal browser, senza modificare alcun file.
 
 ### Fase 5 — Prestazioni, robustezza e 1.0
 
-- [ ] Test di carico e file system con latenza artificiale
+- [x] Test di carico e file system con latenza artificiale
 - [ ] Raggiungimento degli obiettivi della sezione Prestazioni
 - [ ] Revisione di sicurezza esterna
 - [ ] Documentazione completa per installazione, GPU, proxy e rclone
@@ -917,7 +917,7 @@ Criterio di uscita: le due app sono pubblicate e riproducono in direct play i fo
 ### Fase 7 — Ecosistema
 
 - [ ] Miniature sulla barra di avanzamento e salto delle sigle, come opzioni
-- [ ] Collezioni automatiche e playlist
+- [ ] Collezioni automatiche (fatte) e playlist (da fare)
 - [ ] Download per la visione offline nelle app
 - [ ] Autenticazione esterna con OIDC o LDAP
 - [ ] Transcodifica su macchine worker

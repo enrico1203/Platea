@@ -162,6 +162,16 @@ Trovato e corretto durante il test:
   (`stream::open_library_file`, aperti finché usati + 10 min).
 - mmap di SQLite disattivato: ogni connessione mappava gli stessi 64 MB e la RSS mostrava 600+ MB che erano solo cache.
 - Copie di sicurezza delle migrazioni: si tengono solo le ultime 2 (erano 5, 330 MB).
+### Backup e ripristino (2026-11-14)
+
+- [x] `backup.rs`: copie con VACUUM INTO in `data/backups` (automatiche ogni 24 h, ultime 7; manuali), elenco, scaricamento in
+  streaming (prima il file passava tutto dalla memoria), cancellazione. Ripristino da una copia o da un file caricato (fuori
+  dal limite di 16 MB, scritto su disco a blocchi): verifica (intestazione SQLite, tabelle di Platea, `quick_check`),
+  `restore-pending.db`, uscita del processo; all'avvio, a database chiuso, il vecchio diventa `platea.db.before-restore-<ms>`
+  (con WAL). Provato: copia 106 MB in 0,5 s, ripristino da elenco e da file, utente creato dopo la copia sparito, RSS 60 MB
+  durante lo scaricamento. Le copie delle migrazioni si potano a ogni avvio (ultime 2). Pagina Sistema con l'elenco.
+- [x] Spuntate nel piano (`docs/piano-di-progetto.md`) le voci completate delle fasi 0–5.
+
 ### Storage lento e mount bloccato (2026-11-14, `scripts/stuck-mount-test.sh`)
 
 Mount rclone di prova (separato da quello dell'utente) a 300 KB/s, poi congelato con SIGSTOP:
@@ -196,6 +206,7 @@ Script del benchmark: `scripts/bench_library.py` (genera la libreria sintetica).
 
 ## Registro
 
+- 2026-11-14 — Backup automatici e ripristino dalla dashboard; voci del piano spuntate.
 - 2026-11-14 — Prova di storage lento e mount bloccato: server reattivo, nessuna cancellazione.
 - 2026-11-14 — Test di carico (300 player): corretti limite dei file aperti e descrittori per sessione, mmap SQLite, copie di sicurezza.
 - 2026-11-14 — Notifiche sui dischi locali, collezioni in Infuse (BoxSet), corretto l'ordinamento per data in Infuse.

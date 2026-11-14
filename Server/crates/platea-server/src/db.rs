@@ -20,6 +20,8 @@ static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 impl Db {
     pub async fn open(boot: &BootConfig) -> anyhow::Result<Db> {
         let path = boot.db_path();
+        // Ripristino preparato dalla dashboard: si applica qui, a database chiuso.
+        crate::backup::apply_pending(&boot.data_dir, &path)?;
         let url = format!("sqlite://{}", path.display());
         let base = SqliteConnectOptions::from_str(&url)?
             .create_if_missing(true)
@@ -57,6 +59,7 @@ impl Db {
             }
         }
         MIGRATOR.run(&write).await.context("migrazioni del database")?;
+        prune_backups(&boot.data_dir, 2);
 
         let readers = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).clamp(2, 8) as u32;
         let read = SqlitePoolOptions::new()

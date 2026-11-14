@@ -1,8 +1,8 @@
 import { useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, Upload, Plus, Trash2 } from "lucide-react";
-import { api, download, mediaUrl } from "../../api/client";
-import { Alert, Empty, TextField, toast } from "../../components/ui";
+import { Download, Upload, Plus, Trash2, RotateCcw } from "lucide-react";
+import { api, ApiError, download, getToken, mediaUrl, serverUrl } from "../../api/client";
+import { Alert, Confirm, Empty, TextField, toast } from "../../components/ui";
 import { useState } from "react";
 import { useI18n } from "../../i18n";
 
@@ -28,6 +28,7 @@ export default function System() {
         </dl>
       </section>
       <ApiKeys />
+      <Backups />
       <section className="pl-panel panel-pad stack">
         <h2 className="t-h3">{t("admin.system.backup")}</h2>
         <p className="t-small muted" style={{ margin: 0 }}>{t("admin.system.backupHelp")}</p>
@@ -82,6 +83,75 @@ function ApiKeys() {
       <pre className="t-mono" style={{ margin: 0, padding: 12, background: "var(--surface-2)", borderRadius: 10, overflowX: "auto" }}>{`curl -X POST <server>/api/v1/scan/path \\
   -H "X-Platea-Key: <chiave>" -H "Content-Type: application/json" \\
   -d '{"path": "/media/Film/Nuovo film (2026)"}'`}</pre>
+    </section>
+  );
+}
+
+interface BackupEntry { name: string; size: number; created_at: number; automatic: boolean }
+
+/** Attende che il server torni dopo il riavvio del ripristino, poi ricarica la pagina. */
+async function waitForRestart() {
+  await new Promise((r) => setTimeout(r, 2500));
+  for (let i = 0; i < 120; i++) {
+    try {
+      const r = await fetch(serverUrl() + "/api/v1/system/info", { cache: "no-store" });
+      if (r.ok) { window.location.reload(); return; }
+    } catch { /* il server sta ripartendo */ }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+}
+
+function Backups() {
+  const { t, bytes, dateTime } = useI18n();
+  const qc = useQueryClient();
+  const upload = useRef<HTMLInputElement>(null);
+  const [restore, setRestore] = useState<{ name?: string; file?: File } | null>(null);
+  const [restarting, setRestarting] = useState(false);
+  const { data } = useQuery({ queryKey: ["admin", "backups"], queryFn: () => api<{ items: BackupEntry[]; interval_hours: number; keep: number }>("/api/v1/admin/backups") });
+  const doRestore = async () => {
+    if (!restore) return;
+    if (restore.file) {
+      const res = await fetch(serverUrl() + "/api/v1/admin/restore", { method: "POST", headers: { Authorization: `Bearer ${getToken() ?? ""}` }, body: restore.file });
+      if (!res.ok) { const j = await res.json().catch(() => ({})); throw new ApiError(res.status, j.error ?? "Restore", j.message ?? res.statusText); }
+    } else {
+      await api(`/api/v1/admin/backups/${restore.name}/restore`, { method: "POST" });
+    }
+    setRestarting(true);
+    void waitForRestart();
+  };
+  return (
+    <section className="pl-panel panel-pad stack">
+      <h2 className="t-h3">{t("admin.system.backups")}</h2>
+      <p className="t-small muted" style={{ margin: 0 }}>
+        {data && data.interval_hours > 0 ? t("admin.system.backupsAuto", { hours: data.interval_hours, keep: data.keep }) : t("admin.system.backupsAutoOff")}
+      </p>
+      {restarting && <Alert tone="warning">{t("admin.system.restarting")}</Alert>}
+      <div className="row">
+        <button className="pl-btn pl-btn--secondary" onClick={async () => { await api("/api/v1/admin/backups", { method: "POST" }); qc.invalidateQueries({ queryKey: ["admin", "backups"] }); toast(t("admin.system.backupCreated")); }}><Plus />{t("admin.system.backupNow")}</button>
+        <button className="pl-btn pl-btn--ghost" onClick={() => upload.current?.click()}><Upload />{t("admin.system.restoreFromFile")}</button>
+        <input ref={upload} type="file" accept=".db,application/vnd.sqlite3,application/octet-stream" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) setRestore({ file: f }); e.target.value = ""; }} />
+      </div>
+      {data && data.items.length === 0 && <Empty>{t("admin.system.noBackups")}</Empty>}
+      {data && data.items.length > 0 && (
+        <table className="table">
+          <tbody>
+            {data.items.map((b) => (
+              <tr key={b.name}>
+                <td>{dateTime(b.created_at)}<div className="t-small subtle">{b.automatic ? t("admin.system.backupAuto") : t("admin.system.backupManual")}</div></td>
+                <td className="t-mono t-small">{bytes(b.size)}</td>
+                <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                  <button className="icon-btn" title={t("admin.system.download")} aria-label={t("admin.system.download")} onClick={() => download(`/api/v1/admin/backups/${b.name}`, b.name)}><Download /></button>
+                  <button className="icon-btn" title={t("admin.system.restore")} aria-label={t("admin.system.restore")} onClick={() => setRestore({ name: b.name })}><RotateCcw /></button>
+                  <button className="icon-btn" title={t("common.delete")} aria-label={t("common.delete")} onClick={async () => { await api(`/api/v1/admin/backups/${b.name}`, { method: "DELETE" }); qc.invalidateQueries({ queryKey: ["admin", "backups"] }); }}><Trash2 /></button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {restore && (
+        <Confirm danger title={t("admin.system.restoreTitle")} message={t("admin.system.restoreMessage", { name: restore.file?.name ?? restore.name ?? "" })} confirmLabel={t("admin.system.restore")} onClose={() => setRestore(null)} onConfirm={doRestore} />
+      )}
     </section>
   );
 }

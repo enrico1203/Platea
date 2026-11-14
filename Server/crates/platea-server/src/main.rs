@@ -7,6 +7,7 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 mod api;
 mod auth;
+mod backup;
 mod boot;
 mod db;
 mod error;
