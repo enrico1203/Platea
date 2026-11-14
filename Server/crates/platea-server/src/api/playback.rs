@@ -48,6 +48,9 @@ pub struct InfoReq {
     pub max_bitrate: Option<u64>,
     #[serde(default)]
     pub force_transcode: bool,
+    /// Lingua dell'interfaccia del client (es. "it"): per i sottotitoli quando l'utente non ne ha scelta una.
+    #[serde(default)]
+    pub ui_language: Option<String>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -304,6 +307,8 @@ async fn info(State(state): State<Shared>, user: AuthUser, Json(req): Json<InfoR
         force_transcode: req.force_transcode,
     };
 
+    // Preferenze dell'utente: lingua audio (per file, gli indici cambiano tra versioni) e sottotitoli suggeriti.
+    let prefs = crate::prefs::load(&state, user.user_id).await;
     // Più versioni: si preferisce quella riproducibile in direct play, poi in remux.
     let mut best: Option<(FileInfo, pb::Decision)> = None;
     let mut last_err = None;
@@ -313,6 +318,7 @@ async fn info(State(state): State<Shared>, user: AuthUser, Json(req): Json<InfoR
             continue;
         }
         let f = load_file(&state, fid).await?;
+        let preq = PlaybackRequest { audio_index: req.audio_index.or_else(|| crate::prefs::pick_audio(&f.media.audio, &prefs)), ..preq.clone() };
         match pb::decide(&f.media, &req.profile, &preq) {
             Ok(d) => {
                 let better = best.as_ref().is_none_or(|(_, b)| crate::sessions::method_rank(d.method) > crate::sessions::method_rank(b.method));
@@ -347,7 +353,7 @@ async fn info(State(state): State<Shared>, user: AuthUser, Json(req): Json<InfoR
                 Ok(Ok(k)) => cuts = Some(plan_segments(duration_ms, seg_ms, Some(&k))),
                 other => {
                     tracing::warn!(file = file.id, result = ?other.map(|r| r.err().map(|e| e.to_string())), "keyframe non disponibili: si passa alla transcodifica");
-                    let r = PlaybackRequest { force_transcode: true, ..preq.clone() };
+                    let r = PlaybackRequest { force_transcode: true, audio_index: decision.audio_index, ..preq.clone() };
                     decision = pb::decide(&file.media, &req.profile, &r).map_err(decision_error)?;
                 }
             }
@@ -503,6 +509,13 @@ async fn info(State(state): State<Shared>, user: AuthUser, Json(req): Json<InfoR
         "start_ms": start,
         "audio_index": decision.audio_index,
         "subtitle": decision.subtitle,
+        // Sottotitolo di testo da attivare all'avvio secondo le preferenze (solo alla prima richiesta: dopo sceglie l'utente).
+        "subtitle_default": if req.subtitle_index.is_none() && req.audio_index.is_none() {
+            let audio_lang = decision.audio_index.and_then(|i| file.media.audio.iter().find(|a| a.index == i)).and_then(|a| a.language.clone());
+            crate::prefs::pick_subtitle(&file.media.subtitles, audio_lang.as_deref(), &prefs, req.ui_language.as_deref().unwrap_or("it"))
+        } else {
+            None
+        },
         "audio_tracks": file.media.audio.iter().map(|a| json!({ "index": a.index, "codec": a.codec, "channels": a.channels, "language": a.language, "default": a.default })).collect::<Vec<_>>(),
         "subtitles": subtitles,
         "container": file.media.container,

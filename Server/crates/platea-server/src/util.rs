@@ -9,6 +9,21 @@ pub fn now_ms() -> i64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
 }
 
+/// Ora locale del server (fuso da TZ, ora legale compresa): (giorno della settimana 0 = domenica, minuti dalla mezzanotte).
+pub fn local_now() -> (u8, u32) {
+    #[cfg(unix)]
+    unsafe {
+        let t: libc::time_t = (now_ms() / 1000) as libc::time_t;
+        let mut tm: libc::tm = std::mem::zeroed();
+        if !libc::localtime_r(&t, &mut tm).is_null() {
+            return (tm.tm_wday as u8, (tm.tm_hour * 60 + tm.tm_min) as u32);
+        }
+    }
+    let secs = now_ms() / 1000;
+    // 1/1/1970 era giovedì.
+    (((secs / 86_400 + 4) % 7) as u8, ((secs % 86_400) / 60) as u32)
+}
+
 /// Stringa casuale di `bytes` byte in esadecimale (256 bit per i token).
 pub fn random_hex(bytes: usize) -> String {
     let mut buf = vec![0u8; bytes];

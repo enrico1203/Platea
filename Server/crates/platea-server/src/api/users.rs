@@ -38,9 +38,13 @@ struct UserRow {
     created_at: i64,
     last_login_at: Option<i64>,
     expires_at: Option<i64>,
+    allow_download: i64,
+    block_unrated: i64,
+    access_schedule: Option<String>,
+    avatar_version: Option<i64>,
 }
 
-const USER_COLS: &str = "id, username, is_admin, disabled, all_libraries, allow_remux, allow_transcode, max_bitrate, max_streams, max_rating, allow_remote, manage_devices, created_at, last_login_at, expires_at";
+const USER_COLS: &str = "id, username, is_admin, disabled, all_libraries, allow_remux, allow_transcode, max_bitrate, max_streams, max_rating, allow_remote, manage_devices, created_at, last_login_at, expires_at, allow_download, block_unrated, access_schedule, avatar_version";
 
 async fn view(state: &Shared, u: UserRow) -> ApiResult<Value> {
     let libs: Vec<i64> = sqlx::query_scalar("SELECT library_id FROM user_library_access WHERE user_id = ?").bind(u.id).fetch_all(&state.db.read).await?;
@@ -63,6 +67,10 @@ async fn view(state: &Shared, u: UserRow) -> ApiResult<Value> {
         "last_login_at": u.last_login_at,
         "expires_at": u.expires_at,
         "expired": u.is_admin == 0 && u.expires_at.is_some_and(|e| now_ms() >= e),
+        "allow_download": u.allow_download != 0,
+        "block_unrated": u.block_unrated != 0,
+        "access_schedule": u.access_schedule.as_deref().and_then(|s| serde_json::from_str::<Value>(s).ok()).unwrap_or(json!([])),
+        "avatar": u.avatar_version.map(|v| format!("/api/v1/users/{}/avatar?v={v}", state.ids.encode(u.id))),
         "devices": devices,
         "active_streams": state.sessions.user_count(u.id),
     }))
@@ -113,6 +121,11 @@ struct UserPatch {
     /// Scadenza in ms; `null` = nessuna scadenza.
     #[serde(deserialize_with = "crate::util::double_option")]
     expires_at: Option<Option<i64>>,
+    allow_download: Option<bool>,
+    block_unrated: Option<bool>,
+    /// Fasce orarie di accesso; elenco vuoto o `null` = sempre.
+    #[serde(deserialize_with = "crate::util::double_option")]
+    access_schedule: Option<Option<Vec<crate::auth::ScheduleSlot>>>,
 }
 
 async fn create(State(state): State<Shared>, AdminUser(admin): AdminUser, Json(p): Json<UserPatch>) -> ApiResult<Json<Value>> {
@@ -182,6 +195,21 @@ async fn apply_patch(state: &Shared, id: i64, p: UserPatch) -> ApiResult<()> {
     set_bool!(allow_transcode);
     set_bool!(allow_remote);
     set_bool!(manage_devices);
+    set_bool!(allow_download);
+    set_bool!(block_unrated);
+    if let Some(v) = p.access_schedule {
+        let v = v.filter(|s| !s.is_empty());
+        if let Some(slots) = &v {
+            if slots.len() > 50 || slots.iter().any(|s| s.start >= 1440 || s.end > 1440 || s.days.is_empty() || s.days.iter().any(|d| *d > 6)) {
+                return Err(ApiError::BadRequest("Fasce orarie non valide".into()));
+            }
+        }
+        sqlx::query("UPDATE users SET access_schedule = ? WHERE id = ?")
+            .bind(v.map(|s| serde_json::to_string(&s).unwrap_or_default()))
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
+    }
     if let Some(v) = p.max_bitrate {
         sqlx::query("UPDATE users SET max_bitrate = ? WHERE id = ?").bind(v.filter(|b| *b > 0)).bind(id).execute(&mut *tx).await?;
     }

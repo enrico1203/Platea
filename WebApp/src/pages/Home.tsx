@@ -1,3 +1,4 @@
+import { Fragment, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
@@ -20,31 +21,32 @@ export default function Home() {
       </Empty>
     );
   }
-  return (
-    <div>
-      {data.resume.length > 0 && (
-        <section className="section">
-          <div className="section__head"><h2 className="t-h2">{t("home.resume")}</h2></div>
-          <div className="poster-row poster-row--wide">{data.resume.map((i) => <PosterCard key={i.id} item={i} wide />)}</div>
-        </section>
-      )}
-      {data.next_up.length > 0 && (
-        <section className="section">
-          <div className="section__head"><h2 className="t-h2">{t("home.nextUp")}</h2></div>
-          <div className="poster-row poster-row--wide">{data.next_up.map((i) => <PosterCard key={i.id} item={i} wide />)}</div>
-        </section>
-      )}
-      {data.recent.filter((r) => r.items.length > 0).map((r) => (
-        <section className="section" key={r.library_id}>
-          <div className="section__head">
-            <h2 className="t-h2">{t("home.recentIn", { name: r.library_name })}</h2>
-            <Link to={`/library/${r.library_id}`} className="t-label">{t("common.all")}</Link>
-          </div>
-          <div className={`poster-row${r.kind === "shows" ? " poster-row--wide" : ""}`}>
-            {r.items.map((i) => <PosterCard key={i.id} item={i} wide={r.kind === "shows"} />)}
-          </div>
-        </section>
-      ))}
-    </div>
-  );
+  // Sezioni nell'ordine scelto dall'utente; quelle tolte non compaiono.
+  const order = me?.preferences?.home_sections ?? ["resume", "next_up", "recent"];
+  const sections: Record<string, ReactNode> = {
+    resume: data.resume.length > 0 && (
+      <section className="section" key="resume">
+        <div className="section__head"><h2 className="t-h2">{t("home.resume")}</h2></div>
+        <div className="poster-row poster-row--wide">{data.resume.map((i) => <PosterCard key={i.id} item={i} wide />)}</div>
+      </section>
+    ),
+    next_up: data.next_up.length > 0 && (
+      <section className="section" key="next_up">
+        <div className="section__head"><h2 className="t-h2">{t("home.nextUp")}</h2></div>
+        <div className="poster-row poster-row--wide">{data.next_up.map((i) => <PosterCard key={i.id} item={i} wide />)}</div>
+      </section>
+    ),
+    recent: data.recent.filter((r) => r.items.length > 0).map((r) => (
+      <section className="section" key={r.library_id}>
+        <div className="section__head">
+          <h2 className="t-h2">{t("home.recentIn", { name: r.library_name })}</h2>
+          <Link to={`/library/${r.library_id}`} className="t-label">{t("common.all")}</Link>
+        </div>
+        <div className={`poster-row${r.kind === "shows" ? " poster-row--wide" : ""}`}>
+          {r.items.map((i) => <PosterCard key={i.id} item={i} wide={r.kind === "shows"} />)}
+        </div>
+      </section>
+    )),
+  };
+  return <div>{order.map((s) => <Fragment key={s}>{sections[s]}</Fragment>)}</div>;
 }

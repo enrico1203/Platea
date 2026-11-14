@@ -2,7 +2,9 @@ export interface SystemInfo { name: string; id: string; version: string; product
 export interface UserRef { id: string; username: string; is_admin: boolean }
 export interface Me extends UserRef {
   device_name: string;
-  permissions: { all_libraries: boolean; library_ids: string[]; allow_remux: boolean; allow_transcode: boolean; max_bitrate: number | null; max_streams: number | null; allow_remote: boolean; manage_devices: boolean; expires_at: number | null; expired: boolean };
+  permissions: { all_libraries: boolean; library_ids: string[]; allow_remux: boolean; allow_transcode: boolean; max_bitrate: number | null; max_streams: number | null; allow_remote: boolean; manage_devices: boolean; expires_at: number | null; expired: boolean; allow_download: boolean; block_unrated: boolean; access_schedule: ScheduleSlot[]; within_schedule: boolean };
+  avatar: string | null;
+  preferences: UserPrefs;
 }
 export type ItemKind = "movie" | "series" | "season" | "episode" | "collection";
 export interface UserData { position_ms: number; played: boolean; play_count: number; favorite: boolean; last_played_at: number | null }
@@ -35,6 +37,7 @@ export interface PlaybackInfo {
   audio_tracks: { index: number; codec: string; channels: number; language: string | null; default: boolean }[];
   subtitles: { index: number; codec: string; language: string | null; title: string | null; external: boolean; forced: boolean; default: boolean; image: boolean; url: string | null }[];
   subtitle: { delivery: string; index?: number };
+  subtitle_default: number | null;
   container: string;
 }
 export interface SessionView { id: string; user: string; item_id: string; title: string; subtitle: string | null; poster_url: string | null; device_name: string; client: string; method: Method; reasons: string[]; chain: string; bitrate: number | null; position_ms: number; duration_ms: number; paused: boolean; throttled: boolean; started_at: number }
@@ -48,7 +51,7 @@ export interface Overview {
 }
 export interface UserAdmin {
   id: string; username: string; is_admin: boolean; disabled: boolean; all_libraries: boolean; library_ids: string[]; allow_remux: boolean; allow_transcode: boolean;
-  max_bitrate: number | null; max_streams: number | null; max_rating: string | null; allow_remote: boolean; manage_devices: boolean; created_at: number; last_login_at: number | null; devices: number; active_streams: number; expires_at: number | null; expired: boolean;
+  max_bitrate: number | null; max_streams: number | null; max_rating: string | null; allow_remote: boolean; manage_devices: boolean; created_at: number; last_login_at: number | null; devices: number; active_streams: number; expires_at: number | null; expired: boolean; allow_download: boolean; block_unrated: boolean; access_schedule: ScheduleSlot[]; avatar: string | null;
 }
 export interface Device { id: string; device_id: string; device_name: string; client: string; client_version: string; created_at: number; last_used_at: number; last_ip: string | null; current: boolean }
 export interface Job { id: number; kind: string; payload: Record<string, unknown>; priority: number; state: string; attempts: number; run_after: number; created_at: number; started_at: number | null; finished_at: number | null; error: string | null }
@@ -56,3 +59,12 @@ export interface Candidate { provider_id: string; title: string; year: number | 
 export interface ReviewItem { id: string; kind: string; title: string; year: number | null; match_state: string; match_score: number | null; library: string; path: string | null; candidates: Candidate[] }
 export interface PlaylistSummary { id: string; name: string; created_at: number; count: number; runtime_ms: number | null; poster: string | null }
 export interface PlaylistDetail { id: string; name: string; created_at: number; runtime_ms: number; items: (Item & { entry_id: string })[] }
+
+export interface ScheduleSlot { days: number[]; start: number; end: number }
+export type SubtitleMode = "default" | "always" | "only_forced" | "none" | "smart";
+export interface UserPrefs {
+  audio_language: string; subtitle_language: string; subtitle_mode: SubtitleMode;
+  autoplay_next: boolean; autoplay_countdown_seconds: number; skip_back_seconds: number; skip_forward_seconds: number;
+  subtitle_size: "s" | "m" | "l" | "xl"; subtitle_background: boolean;
+  home_sections: string[]; home_hidden_libraries: string[]; hide_played_in_recent: boolean; theme: string;
+}

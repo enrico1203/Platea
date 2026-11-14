@@ -252,3 +252,28 @@ img { display: block; }
   .episode.episode--actions > :last-child { display: flex; }
   .episode.episode--actions .icon-btn { width: 32px; height: 32px; }
 }
+
+/* Immagine del profilo. */
+.avatar { display: inline-grid; place-items: center; border-radius: 50%; object-fit: cover; flex: none; color: #fff; font-weight: 600; line-height: 1; }
+.profile-head { display: flex; align-items: center; gap: var(--space-5); }
+.profile-head__avatar { position: relative; border: 0; padding: 0; background: none; cursor: pointer; border-radius: 50%; }
+.profile-head__avatar:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.profile-head__camera { position: absolute; right: 0; bottom: 0; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-3, var(--surface-2)); color: var(--ink); box-shadow: 0 0 0 3px var(--bg); }
+
+/* Sottotitoli: dimensione e fondo scelti nelle preferenze. */
+.player--sub-s video::cue { font-size: 70%; }
+.player--sub-m video::cue { font-size: 100%; }
+.player--sub-l video::cue { font-size: 130%; }
+.player--sub-xl video::cue { font-size: 165%; }
+.player video::cue { background: transparent; text-shadow: 0 0 4px #000, 0 1px 2px #000, 0 0 1px #000; }
+.player--sub-bg video::cue { background: rgba(0, 0, 0, 0.72); text-shadow: none; }
+/* Conto alla rovescia verso il prossimo episodio. */
+.player__upnext { position: absolute; right: 24px; bottom: 110px; z-index: 3; max-width: 360px; padding: 16px 18px; border-radius: var(--radius-md, 12px); background: rgba(12, 14, 18, 0.92); border: 1px solid rgba(255, 255, 255, 0.12); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5); }
+@media (max-width: 720px) { .player__upnext { left: 16px; right: 16px; bottom: 96px; max-width: none; } }
+
+/* Fasce orarie nel dialogo utente. */
+.schedule-row { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; justify-content: space-between; padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.schedule-days { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip { border: 1px solid var(--line); background: none; color: var(--ink-muted); border-radius: 999px; padding: 4px 10px; font: inherit; font-size: 13px; cursor: pointer; text-transform: capitalize; }
+.chip.on { background: var(--blue); border-color: var(--blue); color: var(--on-blue); }
+.schedule-row input[type="time"] { width: 7.5em; }

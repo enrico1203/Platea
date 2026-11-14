@@ -2,13 +2,22 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Home, Search, Film, Tv, LayoutDashboard, FolderOpen, Users, ListChecks, SearchCheck, Cpu, Settings, ScrollText, Server, Terminal, User, Info, LogOut, Library as LibraryIcon, ListVideo } from "lucide-react";
 import { Logo } from "./Logo";
-import { api } from "../api/client";
+import { api, mediaUrl } from "../api/client";
 import type { Library, Page } from "../api/types";
 import { useSession } from "../session";
 import { useT } from "../i18n";
 
 export function useLibraries() {
   return useQuery({ queryKey: ["libraries"], queryFn: () => api<Page<Library>>("/api/v1/libraries").then((r) => r.items), staleTime: 60_000 });
+}
+
+/** Immagine del profilo, o le iniziali su un colore ricavato dal nome. */
+export function Avatar({ name, url, size = 28 }: { name: string; url: string | null; size?: number }) {
+  let h = 0;
+  for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360;
+  const style = { width: size, height: size, fontSize: Math.round(size * 0.42) };
+  if (url) return <img className="avatar" src={mediaUrl(url)} alt="" style={style} />;
+  return <span className="avatar avatar--initials" style={{ ...style, background: `hsl(${h} 45% 32%)` }} aria-hidden>{name.slice(0, 1).toUpperCase()}</span>;
 }
 
 export function Layout() {
@@ -48,7 +57,7 @@ export function Layout() {
           </nav>
         )}
         <div className="sidebar__foot">
-          <NavLink to="/account" className={link}><User />{me?.username}</NavLink>
+          <NavLink to="/account" className={link}><Avatar name={me?.username ?? ""} url={me?.avatar ?? null} size={22} />{me?.username}</NavLink>
           <NavLink to="/about" className={link}><Info />{t("nav.about")}</NavLink>
           <button className="nav__item" style={{ border: 0, background: "none", cursor: "pointer" }} onClick={async () => { await logout(); nav("/login"); }}>
             <LogOut />{t("nav.logout")}
@@ -58,7 +67,7 @@ export function Layout() {
       <div>
         <header className="topbar">
           <Logo />
-          <NavLink to="/account" className="icon-btn" aria-label={t("nav.account")}><User /></NavLink>
+          <NavLink to="/account" className="icon-btn" aria-label={t("nav.account")}><Avatar name={me?.username ?? ""} url={me?.avatar ?? null} size={30} /></NavLink>
         </header>
         <main className="main">
           <Outlet />

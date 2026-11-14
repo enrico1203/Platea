@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Play, Check, Heart, SearchCheck, RefreshCw, Pencil, ListPlus } from "lucide-react";
+import { Play, Check, Heart, SearchCheck, RefreshCw, Pencil, ListPlus, Download } from "lucide-react";
 import { AddToPlaylist } from "./Playlists";
-import { api, ApiError, imageUrl } from "../api/client";
+import { api, ApiError, imageUrl, mediaUrl } from "../api/client";
 import type { Candidate, Item as ItemT, ItemDetail, MediaFile, Page } from "../api/types";
 import { PosterCard } from "../components/PosterCard";
 import { Alert, Badge, Dialog, TextField, toast } from "../components/ui";
@@ -174,6 +174,21 @@ export default function ItemPage() {
             <button className={`icon-btn${item.user_data.played ? " on" : ""}`} onClick={() => toggle("played", !item.user_data.played)} aria-label={item.user_data.played ? t("item.markUnplayed") : t("item.markPlayed")} title={item.user_data.played ? t("item.markUnplayed") : t("item.markPlayed")}><Check /></button>
             <button className={`icon-btn${item.user_data.favorite ? " on" : ""}`} onClick={() => toggle("favorite", !item.user_data.favorite)} aria-label={t("item.favorite")} title={t("item.favorite")}><Heart fill={item.user_data.favorite ? "currentColor" : "none"} /></button>
             </>}
+            {isPlayable && me?.permissions.allow_download && !me.permissions.expired && (
+              <button className="icon-btn" aria-label={t("item.download")} title={t("item.download")} onClick={async () => {
+                try {
+                  // Link firmato: il browser scarica il file originale direttamente dal server, con ripresa.
+                  const r = await api<{ url: string; name: string; size: number }>(`/api/v1/items/${item.id}/download`, { body: { file_id: file?.id } });
+                  const a = document.createElement("a");
+                  a.href = mediaUrl(r.url)!;
+                  a.download = r.name;
+                  document.body.appendChild(a);
+                  a.click();
+                  a.remove();
+                  toast(t("item.downloadStarted", { name: r.name }));
+                } catch (e) { toast((e as ApiError).message); }
+              }}><Download /></button>
+            )}
             <button className="icon-btn" onClick={() => setDialog("playlist")} aria-label={t("playlist.addTo")} title={t("playlist.addTo")}><ListPlus /></button>
             {me?.is_admin && (item.kind === "movie" || item.kind === "series") && (
               <>

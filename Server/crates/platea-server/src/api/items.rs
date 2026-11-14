@@ -516,10 +516,18 @@ async fn home(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<Val
         sqlx::query_as(&format!("SELECT id, name, kind FROM libraries i WHERE 1 {} ORDER BY name", user.library_filter("i.id")))
             .fetch_all(&state.db.read)
             .await?;
+    let prefs = crate::prefs::load(&state, user.user_id).await;
+    let hidden: Vec<i64> = prefs.home_hidden_libraries.iter().filter_map(|l| state.ids.decode(l)).collect();
+    let played = if prefs.hide_played_in_recent { " AND COALESCE(u.played, 0) = 0" } else { "" };
     let mut recent = Vec::new();
     for (lid, name, kind) in libs {
+        if hidden.contains(&lid) {
+            continue;
+        }
         let k = if kind == "movies" { "movie" } else { "episode" };
-        let sql = format!("{ITEM_SELECT} WHERE i.library_id = ?2 AND i.kind = '{k}' AND i.available = 1 ORDER BY i.added_at DESC, i.id DESC LIMIT 20");
+        // Anche qui i limiti dell'utente (classificazione): la libreria è consentita, non ogni titolo.
+        let sql =
+            format!("{ITEM_SELECT} WHERE i.library_id = ?2 AND i.kind = '{k}' AND i.available = 1{played} {lf} ORDER BY i.added_at DESC, i.id DESC LIMIT 20");
         let rows: Vec<ItemRow> = sqlx::query_as(&sql).bind(user.user_id).bind(lid).fetch_all(&state.db.read).await?;
         recent.push(json!({
             "library_id": state.ids.encode(lid),

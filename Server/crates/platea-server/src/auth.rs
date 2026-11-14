@@ -43,6 +43,36 @@ pub struct Permissions {
     pub expires_at: Option<i64>,
     /// Età massima dei contenuti visibili (dalla classificazione); `None` = nessun limite.
     pub max_rating_age: Option<u8>,
+    /// Scaricare il file originale.
+    pub allow_download: bool,
+    /// Nascondere i titoli senza classificazione (per profili di bambini).
+    pub block_unrated: bool,
+    /// Fasce orarie in cui si può riprodurre; vuoto = sempre.
+    pub schedule: Vec<ScheduleSlot>,
+}
+
+/// Una fascia oraria di accesso: giorni (0 = domenica) e intervallo in minuti dalla mezzanotte, ora locale.
+/// Una fascia che supera la mezzanotte (es. 22:00–02:00) vale per il giorno in cui inizia.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct ScheduleSlot {
+    pub days: Vec<u8>,
+    pub start: u32,
+    pub end: u32,
+}
+
+/// Il momento (giorno, minuto) cade in almeno una fascia? Nessuna fascia = sempre consentito.
+pub fn schedule_allows(slots: &[ScheduleSlot], day: u8, minute: u32) -> bool {
+    if slots.is_empty() {
+        return true;
+    }
+    slots.iter().any(|s| {
+        if s.start <= s.end {
+            s.days.contains(&day) && minute >= s.start && minute < s.end
+        } else {
+            // Oltre la mezzanotte: la sera del giorno indicato e la notte del giorno dopo.
+            (s.days.contains(&day) && minute >= s.start) || (s.days.contains(&((day + 6) % 7)) && minute < s.end)
+        }
+    })
 }
 
 impl Permissions {
@@ -86,12 +116,20 @@ impl AuthUser {
     /// Limite di classificazione sugli elementi (`alias.library_id` → `alias`). Episodi e stagioni usano quella della serie;
     /// i titoli senza classificazione restano visibili. Solo interi: nessun testo dell'utente.
     fn rating_filter(&self, column: &str) -> String {
-        match (self.perms.max_rating_age, column.strip_suffix(".library_id")) {
-            (Some(max), Some(a)) => {
-                format!(" AND COALESCE(NULLIF({a}.rating_age, -1), (SELECT NULLIF(s.rating_age, -1) FROM items s WHERE s.id = {a}.series_id), 0) <= {max}")
-            }
-            _ => String::new(),
+        let Some(a) = column.strip_suffix(".library_id") else { return String::new() };
+        // Senza classificazione: visibile (0), oppure nascosto per i profili che bloccano i non classificati
+        // (le collezioni non hanno classificazione propria e restano visibili).
+        let unrated = if self.perms.block_unrated { format!("CASE WHEN {a}.kind = 'collection' THEN 0 ELSE 99 END") } else { "0".into() };
+        match self.effective_max_age() {
+            Some(max) => format!(
+                " AND COALESCE(NULLIF({a}.rating_age, -1), (SELECT NULLIF(s.rating_age, -1) FROM items s WHERE s.id = {a}.series_id), {unrated}) <= {max}"
+            ),
+            None => String::new(),
         }
+    }
+
+    fn effective_max_age(&self) -> Option<u8> {
+        self.perms.max_rating_age.or(if self.perms.block_unrated { Some(21) } else { None })
     }
 
     /// Un elemento è visibile: libreria consentita e classificazione entro il limite.
@@ -99,10 +137,11 @@ impl AuthUser {
         if !self.can_see_library(library_id) {
             return Ok(false);
         }
-        let Some(max) = self.perms.max_rating_age else { return Ok(true) };
-        let age: Option<i64> = sqlx::query_scalar(
-            "SELECT COALESCE(NULLIF(i.rating_age, -1), (SELECT NULLIF(s.rating_age, -1) FROM items s WHERE s.id = i.series_id), 0) FROM items i WHERE i.id = ?",
-        )
+        let Some(max) = self.effective_max_age() else { return Ok(true) };
+        let unrated = if self.perms.block_unrated { "CASE WHEN i.kind = 'collection' THEN 0 ELSE 99 END" } else { "0" };
+        let age: Option<i64> = sqlx::query_scalar(&format!(
+            "SELECT COALESCE(NULLIF(i.rating_age, -1), (SELECT NULLIF(s.rating_age, -1) FROM items s WHERE s.id = i.series_id), {unrated}) FROM items i WHERE i.id = ?",
+        ))
         .bind(item_id)
         .fetch_optional(&state.db.read)
         .await?;
@@ -117,6 +156,28 @@ impl AuthUser {
                 "AccountExpired",
                 "Account scaduto: puoi sfogliare la libreria ma non riprodurre. Chiedi all'amministratore di rinnovarlo.",
             ));
+        }
+        if !self.is_admin && !self.within_schedule() {
+            return Err(ApiError::coded(
+                axum::http::StatusCode::FORBIDDEN,
+                "OutsideSchedule",
+                "In questo orario la riproduzione non è consentita per il tuo account.",
+            ));
+        }
+        Ok(())
+    }
+
+    /// Fasce orarie di accesso rispettate adesso (ora locale del server).
+    pub fn within_schedule(&self) -> bool {
+        let (day, minute) = crate::util::local_now();
+        schedule_allows(&self.perms.schedule, day, minute)
+    }
+
+    /// Download del file originale: permesso, scadenza e fasce orarie.
+    pub fn require_download(&self) -> ApiResult<()> {
+        self.require_playback()?;
+        if !self.is_admin && !self.perms.allow_download {
+            return Err(ApiError::coded(axum::http::StatusCode::FORBIDDEN, "DownloadNotAllowed", "Il tuo account non può scaricare i file."));
         }
         Ok(())
     }
@@ -233,6 +294,8 @@ pub async fn load_permissions(state: &Shared, user_id: i64) -> anyhow::Result<Op
     if disabled != 0 {
         return Ok(None);
     }
+    let (allow_download, block_unrated, schedule): (i64, i64, Option<String>) =
+        sqlx::query_as("SELECT allow_download, block_unrated, access_schedule FROM users WHERE id = ?").bind(user_id).fetch_one(&state.db.read).await?;
     let library_ids: Vec<i64> = if all_libraries != 0 {
         vec![]
     } else {
@@ -252,6 +315,9 @@ pub async fn load_permissions(state: &Shared, user_id: i64) -> anyhow::Result<Op
             manage_devices: manage_devices != 0,
             expires_at,
             max_rating_age: max_rating.as_deref().and_then(crate::ratings::age),
+            allow_download: allow_download != 0,
+            block_unrated: block_unrated != 0,
+            schedule: schedule.as_deref().and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default(),
         },
     )))
 }
@@ -458,5 +524,27 @@ impl LoginLimiter {
         for k in keys {
             map.remove(k);
         }
+    }
+}
+
+#[cfg(test)]
+mod schedule_tests {
+    use super::*;
+
+    #[test]
+    fn schedule_slots() {
+        // Lunedì-venerdì 16:00-21:00, sabato 10:00-23:00.
+        let s = vec![ScheduleSlot { days: vec![1, 2, 3, 4, 5], start: 960, end: 1260 }, ScheduleSlot { days: vec![6], start: 600, end: 1380 }];
+        assert!(schedule_allows(&s, 1, 17 * 60));
+        assert!(!schedule_allows(&s, 1, 22 * 60));
+        assert!(!schedule_allows(&s, 0, 12 * 60));
+        assert!(schedule_allows(&s, 6, 12 * 60));
+        assert!(schedule_allows(&[], 3, 3));
+        // Oltre la mezzanotte: venerdì 22:00-02:00 vale anche sabato all'1:00, non sabato alle 3:00.
+        let n = vec![ScheduleSlot { days: vec![5], start: 1320, end: 120 }];
+        assert!(schedule_allows(&n, 5, 23 * 60));
+        assert!(schedule_allows(&n, 6, 60));
+        assert!(!schedule_allows(&n, 6, 180));
+        assert!(!schedule_allows(&n, 4, 23 * 60));
     }
 }

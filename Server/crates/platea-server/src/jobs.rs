@@ -390,9 +390,8 @@ async fn probe_gate(state: &Shared, library_id: i64) -> ProbeGate {
 }
 
 fn current_hour() -> i64 {
-    // Ora UTC + scostamento del fuso letto da TZ_OFFSET_HOURS se impostato: evita dipendenze per i fusi.
-    let offset: i64 = std::env::var("TZ_OFFSET_HOURS").ok().and_then(|v| v.parse().ok()).unwrap_or(0);
-    ((now_ms() / 3_600_000) + offset).rem_euclid(24)
+    // Ora locale del server (TZ del container, ora legale compresa).
+    (crate::util::local_now().1 / 60) as i64
 }
 
 async fn finish(state: &Shared, id: i64, result: Result<(), String>, attempts: i64, max_attempts: i64) {

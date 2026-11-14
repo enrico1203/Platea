@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { api, ApiError } from "../../api/client";
-import type { Device, Library, Page, UserAdmin } from "../../api/types";
+import type { Device, Library, Page, ScheduleSlot, UserAdmin } from "../../api/types";
 import { Alert, Badge, Confirm, Dialog, SelectField, Switch, TextField, toast } from "../../components/ui";
 import { useSession } from "../../session";
 import { useI18n } from "../../i18n";
@@ -24,6 +24,9 @@ function UserDialog({ user, onClose }: { user: UserAdmin | null; onClose: () => 
     max_bitrate: user?.max_bitrate ? String(user.max_bitrate / 1_000_000) : "", max_streams: user?.max_streams ? String(user.max_streams) : "", allow_remote: user?.allow_remote ?? true, manage_devices: user?.manage_devices ?? true,
     expires: user?.expires_at ? toDateInput(user.expires_at) : "",
     max_rating: user?.max_rating ?? "",
+    allow_download: user?.allow_download ?? true,
+    block_unrated: user?.block_unrated ?? false,
+    access_schedule: user?.access_schedule ?? [],
   });
   const [error, setError] = useState<string | null>(null);
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF({ ...f, [k]: v });
@@ -70,6 +73,9 @@ function UserDialog({ user, onClose }: { user: UserAdmin | null; onClose: () => 
       <Switch checked={f.allow_transcode} onChange={(v) => set("allow_transcode", v)} label={t("admin.users.allowTranscode")} />
       <Switch checked={f.allow_remote} onChange={(v) => set("allow_remote", v)} label={t("admin.users.allowRemote")} />
       <Switch checked={f.manage_devices} onChange={(v) => set("manage_devices", v)} label={t("admin.users.manageDevices")} />
+      <Switch checked={f.allow_download} onChange={(v) => set("allow_download", v)} label={t("admin.users.allowDownload")} hint={t("admin.users.allowDownloadHint")} />
+      <Switch checked={f.block_unrated} onChange={(v) => set("block_unrated", v)} label={t("admin.users.blockUnrated")} hint={t("admin.users.blockUnratedHint")} />
+      <ScheduleEditor value={f.access_schedule} onChange={(v) => set("access_schedule", v)} />
       <SelectField label={t("admin.users.maxRating")} value={f.max_rating} onChange={(v) => set("max_rating", v)} hint={t("admin.users.maxRatingHint")} options={[
         { value: "", label: t("admin.users.ratingNone") },
         ...["0", "6", "10", "12", "14", "16"].map((a) => ({ value: a, label: a === "0" ? t("admin.users.ratingAll") : t("admin.users.ratingAge", { age: a }) })),
@@ -133,6 +139,39 @@ export default function Users() {
       {del && <Confirm danger title={t("admin.users.deleteTitle", { name: del.username })} message={t("admin.users.deleteMessage")} confirmLabel={t("common.delete")} onClose={() => setDel(null)} onConfirm={async () => {
         try { await api(`/api/v1/users/${del.id}`, { method: "DELETE" }); qc.invalidateQueries({ queryKey: ["admin", "users"] }); } catch (e) { setErr((e as ApiError).message); }
       }} />}
+    </div>
+  );
+}
+
+const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
+const toHHMM = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+const fromHHMM = (s: string) => { const [h, m] = s.split(":").map(Number); return (h || 0) * 60 + (m || 0); };
+
+/** Fasce orarie in cui l'utente può riprodurre (ora del server). Nessuna fascia = sempre. */
+function ScheduleEditor({ value, onChange }: { value: ScheduleSlot[]; onChange: (v: ScheduleSlot[]) => void }) {
+  const { t, tag } = useI18n();
+  const dayName = (d: number) => new Intl.DateTimeFormat(tag, { weekday: "short" }).format(new Date(2026, 10, 15 + d));
+  const upd = (i: number, patch: Partial<ScheduleSlot>) => onChange(value.map((s, j) => (j === i ? { ...s, ...patch } : s)));
+  return (
+    <div className="stack" style={{ gap: 8 }}>
+      <span className="pl-eyebrow">{t("admin.users.schedule")}</span>
+      <span className="t-small subtle">{value.length === 0 ? t("admin.users.scheduleAlways") : t("admin.users.scheduleHint")}</span>
+      {value.map((s, i) => (
+        <div key={i} className="schedule-row">
+          <div className="schedule-days">
+            {DAY_ORDER.map((d) => (
+              <button type="button" key={d} className={`chip${s.days.includes(d) ? " on" : ""}`} onClick={() => upd(i, { days: s.days.includes(d) ? s.days.filter((x) => x !== d) : [...s.days, d] })}>{dayName(d)}</button>
+            ))}
+          </div>
+          <div className="row" style={{ flexWrap: "nowrap" }}>
+            <span className="pl-field__control"><input type="time" value={toHHMM(s.start)} onChange={(e) => upd(i, { start: fromHHMM(e.target.value) })} aria-label={t("admin.users.from")} /></span>
+            <span className="subtle">–</span>
+            <span className="pl-field__control"><input type="time" value={toHHMM(s.end === 1440 ? 0 : s.end)} onChange={(e) => upd(i, { end: fromHHMM(e.target.value) || 1440 })} aria-label={t("admin.users.to")} /></span>
+            <button type="button" className="icon-btn" onClick={() => onChange(value.filter((_, j) => j !== i))} aria-label={t("common.delete")}><Trash2 /></button>
+          </div>
+        </div>
+      ))}
+      <div><button type="button" className="pl-btn pl-btn--ghost pl-btn--sm" onClick={() => onChange([...value, { days: [1, 2, 3, 4, 5], start: 16 * 60, end: 21 * 60 }])}><Plus />{t("admin.users.addSlot")}</button></div>
     </div>
   );
 }

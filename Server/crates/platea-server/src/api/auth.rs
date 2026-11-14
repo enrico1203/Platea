@@ -19,6 +19,11 @@ pub fn routes(api: Api) -> Api {
         .post("/api/v1/me/password", "Accesso", Access::User, "Cambia la propria password", change_password)
         .get("/api/v1/me/devices", "Accesso", Access::User, "Dispositivi collegati al proprio account", my_devices)
         .delete("/api/v1/me/devices/{id}", "Accesso", Access::User, "Scollega un proprio dispositivo", revoke_my_device)
+        .get("/api/v1/me/preferences", "Accesso", Access::User, "Preferenze dell'utente: lingue, sottotitoli, player, home, tema", get_prefs)
+        .put("/api/v1/me/preferences", "Accesso", Access::User, "Salva le preferenze (i campi mancanti tornano ai valori predefiniti)", put_prefs)
+        .post("/api/v1/me/avatar", "Accesso", Access::User, "Carica l'immagine del profilo (JPEG, PNG o WebP; ritagliata a 256×256)", put_avatar)
+        .delete("/api/v1/me/avatar", "Accesso", Access::User, "Toglie l'immagine del profilo", delete_avatar)
+        .get("/api/v1/users/{id}/avatar", "Accesso", Access::Public, "Immagine del profilo di un utente", get_avatar)
 }
 
 #[derive(Deserialize)]
@@ -125,8 +130,79 @@ async fn me(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<Value
             "manage_devices": user.perms.manage_devices,
             "expires_at": user.perms.expires_at,
             "expired": !user.is_admin && user.perms.expired(),
-        }
+            "allow_download": user.is_admin || user.perms.allow_download,
+            "block_unrated": user.perms.block_unrated,
+            "access_schedule": user.perms.schedule,
+            "within_schedule": user.is_admin || user.within_schedule(),
+        },
+        "avatar": avatar_url(&state, user.user_id).await,
+        "preferences": crate::prefs::load(&state, user.user_id).await,
     })))
+}
+
+pub async fn avatar_url(state: &Shared, user_id: i64) -> Option<String> {
+    let v: Option<i64> = sqlx::query_scalar("SELECT avatar_version FROM users WHERE id = ?").bind(user_id).fetch_optional(&state.db.read).await.ok().flatten();
+    v.map(|v| format!("/api/v1/users/{}/avatar?v={v}", state.ids.encode(user_id)))
+}
+
+async fn get_prefs(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<Value>> {
+    Ok(Json(json!(crate::prefs::load(&state, user.user_id).await)))
+}
+
+async fn put_prefs(State(state): State<Shared>, user: AuthUser, Json(p): Json<crate::prefs::UserPrefs>) -> ApiResult<Json<Value>> {
+    let p = p.sanitize();
+    sqlx::query("UPDATE users SET preferences = ? WHERE id = ?")
+        .bind(serde_json::to_string(&p).map_err(|e| ApiError::Internal(e.into()))?)
+        .bind(user.user_id)
+        .execute(&state.db.write)
+        .await?;
+    Ok(Json(json!(p)))
+}
+
+fn avatar_path(state: &Shared, user_id: i64) -> std::path::PathBuf {
+    state.boot.data_dir.join("avatars").join(format!("{user_id}.png"))
+}
+
+/// L'immagine si ritaglia al centro e si riduce a 256×256: poche decine di KB, mai l'originale.
+async fn put_avatar(State(state): State<Shared>, user: AuthUser, body: axum::body::Bytes) -> ApiResult<Json<Value>> {
+    if body.is_empty() || body.len() > 15 * 1024 * 1024 {
+        return Err(ApiError::BadRequest("Immagine vuota o troppo grande (massimo 15 MB)".into()));
+    }
+    let path = avatar_path(&state, user.user_id);
+    let p = path.clone();
+    tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+        let img = image::load_from_memory(&body)?;
+        let small = img.resize_to_fill(256, 256, image::imageops::FilterType::Lanczos3);
+        if let Some(d) = p.parent() {
+            std::fs::create_dir_all(d)?;
+        }
+        let tmp = p.with_extension("tmp");
+        small.save_with_format(&tmp, image::ImageFormat::Png)?;
+        std::fs::rename(&tmp, &p)?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| ApiError::Internal(e.into()))?
+    .map_err(|e| ApiError::BadRequest(format!("Immagine non leggibile: {e}")))?;
+    sqlx::query("UPDATE users SET avatar_version = ? WHERE id = ?").bind(crate::util::now_ms()).bind(user.user_id).execute(&state.db.write).await?;
+    Ok(Json(json!({ "avatar": avatar_url(&state, user.user_id).await })))
+}
+
+async fn delete_avatar(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<Value>> {
+    let _ = tokio::fs::remove_file(avatar_path(&state, user.user_id)).await;
+    sqlx::query("UPDATE users SET avatar_version = NULL WHERE id = ?").bind(user.user_id).execute(&state.db.write).await?;
+    Ok(Json(json!({ "avatar": null })))
+}
+
+async fn get_avatar(State(state): State<Shared>, Path(id): Path<String>) -> ApiResult<axum::response::Response> {
+    let uid = state.ids.decode(&id).ok_or_else(|| ApiError::not_found("Immagine"))?;
+    let bytes = tokio::fs::read(avatar_path(&state, uid)).await.map_err(|_| ApiError::not_found("Immagine"))?;
+    Ok(axum::response::Response::builder()
+        .header(axum::http::header::CONTENT_TYPE, "image/png")
+        // L'indirizzo cambia a ogni nuova immagine (?v=…): si può tenere in cache a lungo.
+        .header(axum::http::header::CACHE_CONTROL, "public, max-age=31536000, immutable")
+        .body(axum::body::Body::from(bytes))
+        .unwrap())
 }
 
 #[derive(Deserialize)]

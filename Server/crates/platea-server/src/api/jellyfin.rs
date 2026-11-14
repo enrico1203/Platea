@@ -59,6 +59,7 @@ pub fn router() -> Router<Shared> {
         .route("/Items/{item}/Images/{kind}/{index}", get(image_idx).head(image_idx))
         .route("/Items/{item}/PlaybackInfo", get(playback_info).post(playback_info))
         .route("/Videos/{item}/stream", get(stream).head(stream))
+        .route("/Items/{item}/Download", get(download).head(download))
         .route("/Videos/{item}/{file}", get(stream_named).head(stream_named))
         .route("/Videos/{item}/{source}/Subtitles/{index}/{name}", get(subtitle))
         .route("/Videos/{item}/{source}/Subtitles/{index}/{offset}/{name}", get(subtitle_offset))
@@ -298,8 +299,19 @@ struct AuthBody {
 }
 
 async fn user_dto(state: &Shared, user_id: i64) -> ApiResult<Value> {
-    let (name, is_admin, last, expires): (String, i64, Option<i64>, Option<i64>) =
-        sqlx::query_as("SELECT username, is_admin, last_login_at, expires_at FROM users WHERE id = ?").bind(user_id).fetch_one(&state.db.read).await?;
+    let (name, is_admin, last, expires, allow_download, prefs_raw): (String, i64, Option<i64>, Option<i64>, i64, String) =
+        sqlx::query_as("SELECT username, is_admin, last_login_at, expires_at, allow_download, preferences FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_one(&state.db.read)
+            .await?;
+    let prefs = crate::prefs::UserPrefs::parse(&prefs_raw);
+    let sub_mode = match prefs.subtitle_mode {
+        crate::prefs::SubtitleMode::Default => "Default",
+        crate::prefs::SubtitleMode::Always => "Always",
+        crate::prefs::SubtitleMode::OnlyForced => "OnlyForced",
+        crate::prefs::SubtitleMode::None => "None",
+        crate::prefs::SubtitleMode::Smart => "Smart",
+    };
     Ok(json!({
         "Name": name,
         "ServerId": state.server_id,
@@ -311,10 +323,12 @@ async fn user_dto(state: &Shared, user_id: i64) -> ApiResult<Value> {
         "LastLoginDate": last.map(iso),
         "LastActivityDate": last.map(iso),
         "Configuration": {
-            "PlayDefaultAudioTrack": true,
-            "SubtitleMode": "Default",
-            "HidePlayedInLatest": true,
-            "EnableNextEpisodeAutoPlay": true,
+            "PlayDefaultAudioTrack": prefs.audio_language.is_empty(),
+            "AudioLanguagePreference": prefs.audio_language,
+            "SubtitleLanguagePreference": prefs.subtitle_language,
+            "SubtitleMode": sub_mode,
+            "HidePlayedInLatest": prefs.hide_played_in_recent,
+            "EnableNextEpisodeAutoPlay": prefs.autoplay_next,
             "OrderedViews": [],
             "LatestItemsExcludes": [],
             "MyMediaExcludes": [],
@@ -328,7 +342,7 @@ async fn user_dto(state: &Shared, user_id: i64) -> ApiResult<Value> {
             "EnableAudioPlaybackTranscoding": true,
             "EnableVideoPlaybackTranscoding": true,
             "EnablePlaybackRemuxing": true,
-            "EnableContentDownloading": true,
+            "EnableContentDownloading": is_admin != 0 || allow_download != 0,
             "EnableRemoteAccess": true,
             "EnableUserPreferenceAccess": true,
             "AuthenticationProviderId": "Platea",
@@ -1304,6 +1318,11 @@ async fn do_stream(state: &Shared, user: &AuthUser, item: &str, uri: &Uri, metho
     let (file, info) = open_cached(state, fid).await?;
     let ct = crate::stream::content_type_for(&info.media.container, &info.abs);
     crate::stream::serve_file(file, info.size as u64, info.mtime, ct, method, headers)
+}
+
+async fn download(State(state): State<Shared>, user: AuthUser, Path(item): Path<String>, method: Method, headers: HeaderMap) -> ApiResult<Response> {
+    let id = item_id(&state, &item)?;
+    crate::api::download::serve_for_user(&state, &user, id, &method, &headers).await
 }
 
 async fn stream(State(state): State<Shared>, user: AuthUser, Path(item): Path<String>, uri: Uri, method: Method, headers: HeaderMap) -> ApiResult<Response> {

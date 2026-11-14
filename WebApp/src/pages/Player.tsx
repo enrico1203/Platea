@@ -8,6 +8,8 @@ import type { ItemDetail, Item, PlaybackInfo, PlaylistDetail } from "../api/type
 import { buildProfile } from "../lib/profile";
 import { MethodBadge } from "../components/ui";
 import { useI18n } from "../i18n";
+import { useSession } from "../session";
+import { DEFAULT_PREFS } from "../lib/prefs";
 
 const QUALITIES = [0, 40_000_000, 20_000_000, 8_000_000, 4_000_000, 2_000_000, 1_000_000];
 const K_QUALITY = "platea.maxBitrate";
@@ -22,7 +24,13 @@ export default function Player() {
   const { id } = useParams();
   const [search] = useSearchParams();
   const nav = useNavigate();
-  const { t, clock, bitrate } = useI18n();
+  const { t, clock, bitrate, locale } = useI18n();
+  const { me } = useSession();
+  const prefs = { ...DEFAULT_PREFS, ...me?.preferences };
+  const back = prefs.skip_back_seconds;
+  const fwd = prefs.skip_forward_seconds;
+  // Conto alla rovescia verso la voce successiva (episodio o playlist).
+  const [upNext, setUpNext] = useState<{ id: string; url: string; title: string; left: number } | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const sessionRef = useRef<string | null>(null);
@@ -116,15 +124,18 @@ export default function Player() {
           subtitle_index: opts.subtitleIndex ?? undefined,
           start_ms: Math.round(opts.startMs),
           force_transcode: opts.force ?? false,
+          ui_language: locale,
         },
       });
       sessionRef.current = p.session_id;
       setInfo(p);
+      // Primo avvio: sottotitolo scelto dal server secondo le preferenze dell'utente.
+      if (opts.subtitleIndex === undefined && opts.audioIndex === undefined && p.subtitle_default != null) setSubIndex(p.subtitle_default);
       await attach(p, opts.startMs / 1000);
     } catch (e) {
       setError(e instanceof ApiError && e.message ? e.message : t("errors.network"));
     }
-  }, [attach, id, quality, search, stopSession, t]);
+  }, [attach, id, quality, search, stopSession, t, locale]);
 
   // Avvio: dalla posizione salvata.
   useEffect(() => {
@@ -211,8 +222,8 @@ export default function Player() {
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.tagName === "INPUT") return;
       if (e.key === " " || e.key === "k") { e.preventDefault(); togglePlay(); }
-      else if (e.key === "ArrowLeft" || e.key === "j") skip(-10);
-      else if (e.key === "ArrowRight" || e.key === "l") skip(10);
+      else if (e.key === "ArrowLeft" || e.key === "j") skip(-back);
+      else if (e.key === "ArrowRight" || e.key === "l") skip(fwd);
       else if (e.key === "f") toggleFs();
       else if (e.key === "m") { const v = videoRef.current; if (v) { v.muted = !v.muted; setMuted(v.muted); } }
       else if (e.key === "Escape" && !document.fullscreenElement) nav(-1);
@@ -231,7 +242,7 @@ export default function Player() {
     if (e.pointerType === "mouse") { togglePlay(); return; }
     if (lastTap.current && now - lastTap.current.t < 300) {
       const x = e.clientX;
-      if (x < w / 3) skip(-10); else if (x > (2 * w) / 3) skip(10); else togglePlay();
+      if (x < w / 3) skip(-back); else if (x > (2 * w) / 3) skip(fwd); else togglePlay();
       lastTap.current = null;
       return;
     }
@@ -253,17 +264,35 @@ export default function Player() {
   // Dentro una playlist (?pl=…&i=…) la voce successiva viene dalla playlist; altrimenti l'episodio successivo.
   const playlistId = search.get("pl");
   const playlistIndex = Number(search.get("i") ?? "0");
-  const goNext = async () => {
+  const findNext = async (): Promise<{ id: string; url: string; title: string } | null> => {
     if (playlistId) {
       const pl = await api<PlaylistDetail>(`/api/v1/playlists/${playlistId}`);
-      const next = pl.items[playlistIndex + 1];
-      if (next) nav(`/play/${next.id}?pl=${playlistId}&i=${playlistIndex + 1}`, { replace: true });
-      return;
+      const n = pl.items[playlistIndex + 1];
+      return n ? { id: n.id, url: `/play/${n.id}?pl=${playlistId}&i=${playlistIndex + 1}`, title: n.kind === "episode" ? `${n.series_title ?? ""} · ${n.title}` : n.title } : null;
     }
-    if (item?.kind !== "episode") return;
+    if (item?.kind !== "episode") return null;
     const r = await api<{ item: Item | null }>(`/api/v1/items/${item.id}/next`);
-    if (r.item) nav(`/play/${r.item.id}`, { replace: true });
+    return r.item ? { id: r.item.id, url: `/play/${r.item.id}`, title: `S${r.item.parent_index_number} · E${r.item.index_number} · ${r.item.title}` } : null;
   };
+  const goNext = async () => {
+    const n = await findNext();
+    if (n) nav(n.url, { replace: true });
+  };
+  const onEnded = async () => {
+    stopSession(info?.duration_ms);
+    if (!prefs.autoplay_next) return;
+    const n = await findNext();
+    if (!n) return;
+    if (prefs.autoplay_countdown_seconds <= 0) nav(n.url, { replace: true });
+    else setUpNext({ ...n, left: prefs.autoplay_countdown_seconds });
+  };
+  useEffect(() => {
+    if (!upNext) return;
+    if (upNext.left <= 0) { nav(upNext.url, { replace: true }); setUpNext(null); return; }
+    const h = window.setTimeout(() => setUpNext((u) => (u ? { ...u, left: u.left - 1 } : u)), 1000);
+    return () => window.clearTimeout(h);
+  }, [upNext, nav]);
+  useEffect(() => setUpNext(null), [id]);
 
   const onVideoError = () => {
     // Il browser rifiuta il file nonostante il profilo: si riprova una volta con la transcodifica.
@@ -281,7 +310,7 @@ export default function Player() {
   const subtitleLine = item?.kind === "episode" ? `S${item.parent_index_number} · E${item.index_number} · ${item.title}` : item?.year ? String(item.year) : "";
 
   return (
-    <div className="player" onPointerMove={(e) => e.pointerType === "mouse" && poke()}>
+    <div className={`player player--sub-${prefs.subtitle_size}${prefs.subtitle_background ? " player--sub-bg" : ""}`} onPointerMove={(e) => e.pointerType === "mouse" && poke()}>
       <video
         ref={videoRef}
         playsInline
@@ -290,7 +319,7 @@ export default function Player() {
         onPause={() => { setPlaying(false); setVisible(true); }}
         onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
         onProgress={(e) => { const b = e.currentTarget.buffered; if (b.length) setBuffered(b.end(b.length - 1)); }}
-        onEnded={() => { stopSession(info?.duration_ms); goNext(); }}
+        onEnded={onEnded}
         onError={onVideoError}
       />
       <div className={`player__ui${visible ? "" : " hidden"}`} onPointerUp={onSurfacePointer}>
@@ -304,11 +333,11 @@ export default function Player() {
         </div>
 
         <div className="player__center" onPointerUp={onSurfacePointer}>
-          <button className="player__btn player__btn--big player__hide-sm" onClick={() => skip(-10)} aria-label={t("player.back10")}><RotateCcw /></button>
+          <button className="player__btn player__btn--big player__hide-sm" onClick={() => skip(-back)} aria-label={t("player.backN", { s: back })}><RotateCcw /></button>
           <button className="pl-btn pl-btn--play" style={{ width: 72, height: 72 }} onClick={togglePlay} aria-label={playing ? t("player.pause") : t("player.play")}>
             {playing ? <Pause fill="currentColor" /> : <Play fill="currentColor" />}
           </button>
-          <button className="player__btn player__btn--big player__hide-sm" onClick={() => skip(10)} aria-label={t("player.forward10")}><RotateCw /></button>
+          <button className="player__btn player__btn--big player__hide-sm" onClick={() => skip(fwd)} aria-label={t("player.forwardN", { s: fwd })}><RotateCw /></button>
         </div>
 
         <div className="player__bottom">
@@ -344,6 +373,16 @@ export default function Player() {
         </div>
       </div>
 
+      {upNext && (
+        <div className="player__upnext" role="status">
+          <div className="t-small muted">{t("player.upNextIn", { s: upNext.left })}</div>
+          <div className="t-label">{upNext.title}</div>
+          <div className="row" style={{ marginTop: 8 }}>
+            <button className="pl-btn pl-btn--primary pl-btn--sm" onClick={() => { const u = upNext.url; setUpNext(null); nav(u, { replace: true }); }}><Play fill="currentColor" />{t("player.playNow")}</button>
+            <button className="pl-btn pl-btn--ghost pl-btn--sm" onClick={() => setUpNext(null)}>{t("common.cancel")}</button>
+          </div>
+        </div>
+      )}
       {seekHint && <div className="player__seek-hint" style={seekHint.side === "left" ? { left: "15%" } : { right: "15%" }}>{seekHint.text}</div>}
 
       {panel === "subs" && info && (

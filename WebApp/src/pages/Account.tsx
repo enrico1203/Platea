@@ -1,33 +1,130 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError } from "../api/client";
-import type { Device } from "../api/types";
-import { Alert, Badge, SelectField, TextField, toast } from "../components/ui";
+import { Camera, Trash2, ArrowUp, ArrowDown } from "lucide-react";
+import { api, ApiError, getToken, serverUrl } from "../api/client";
+import type { Device, UserPrefs } from "../api/types";
+import { Alert, Badge, SelectField, Switch, TextField, toast } from "../components/ui";
+import { Avatar, useLibraries } from "../components/Layout";
 import { useSession } from "../session";
 import { useI18n } from "../i18n";
 import { LOCALES, type LocaleCode } from "../i18n/locales";
 import { getTheme, setTheme, type Theme } from "../lib/theme";
+import { DEFAULT_PREFS, LANGUAGES, languageName, savePrefs } from "../lib/prefs";
 
 export default function Account() {
-  const { t, locale, setLocale, relative, date } = useI18n();
-  const { me, logout } = useSession();
+  const { t, locale, setLocale, relative, date, tag } = useI18n();
+  const { me, logout, reload } = useSession();
   const qc = useQueryClient();
+  const { data: libs } = useLibraries();
   const [theme, setThemeState] = useState<Theme>(getTheme());
+  const [prefs, setPrefs] = useState<UserPrefs>({ ...DEFAULT_PREFS, ...me?.preferences });
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [msg, setMsg] = useState<{ tone: "danger" | "success"; text: string } | null>(null);
+  const file = useRef<HTMLInputElement>(null);
   const { data: devices } = useQuery({ queryKey: ["me", "devices"], queryFn: () => api<{ items: Device[] }>("/api/v1/me/devices").then((r) => r.items) });
+
+  // Ogni modifica si salva subito: niente pulsante "Salva" da dimenticare.
+  const update = async (patch: Partial<UserPrefs>) => {
+    const nextPrefs = { ...prefs, ...patch };
+    setPrefs(nextPrefs);
+    try {
+      setPrefs(await savePrefs(nextPrefs));
+      qc.invalidateQueries({ queryKey: ["home"] });
+      await reload();
+    } catch (e) { toast((e as ApiError).message); }
+  };
+  const langOptions = (empty: string) => [{ value: "", label: empty }, ...LANGUAGES.map((l) => ({ value: l, label: languageName(l, tag) }))];
+  const moveSection = (s: string, d: -1 | 1) => {
+    const list = [...prefs.home_sections];
+    const i = list.indexOf(s);
+    if (i < 0 || i + d < 0 || i + d >= list.length) return;
+    [list[i], list[i + d]] = [list[i + d], list[i]];
+    update({ home_sections: list });
+  };
+  const allSections = ["resume", "next_up", "recent"];
+
   return (
     <div className="stack-lg" style={{ maxWidth: 760 }}>
-      <div className="page-head" style={{ marginBottom: 0 }}><h1 className="t-h1">{me?.username}</h1></div>
+      <div className="profile-head">
+        <button className="profile-head__avatar" onClick={() => file.current?.click()} aria-label={t("account.changeAvatar")} title={t("account.changeAvatar")}>
+          <Avatar name={me?.username ?? ""} url={me?.avatar ?? null} size={88} />
+          <span className="profile-head__camera"><Camera size={16} /></span>
+        </button>
+        <input ref={file} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={async (e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          if (!f) return;
+          const res = await fetch(serverUrl() + "/api/v1/me/avatar", { method: "POST", headers: { Authorization: `Bearer ${getToken() ?? ""}` }, body: f });
+          if (!res.ok) { toast(((await res.json().catch(() => ({}))) as { message?: string }).message ?? res.statusText); return; }
+          await reload();
+          toast(t("account.avatarSaved"));
+        }} />
+        <div>
+          <h1 className="t-h1">{me?.username}</h1>
+          <div className="t-small subtle">{me?.is_admin ? t("account.roleAdmin") : t("account.roleUser")}</div>
+          {me?.avatar && <button className="pl-btn pl-btn--ghost pl-btn--sm" style={{ marginTop: 8, paddingLeft: 0 }} onClick={async () => { await api("/api/v1/me/avatar", { method: "DELETE" }); await reload(); }}><Trash2 />{t("account.removeAvatar")}</button>}
+        </div>
+      </div>
       {me?.permissions.expired ? <Alert tone="warning">{t("item.expired")}</Alert> : me?.permissions.expires_at ? <Alert>{t("account.expiresOn", { date: date(me.permissions.expires_at) })}</Alert> : null}
+      {me && !me.permissions.within_schedule && <Alert tone="warning">{t("account.outsideSchedule")}</Alert>}
 
       <section className="pl-panel panel-pad stack">
-        <h2 className="t-h3">{t("account.preferences")}</h2>
+        <h2 className="t-h3">{t("account.appearance")}</h2>
         <div className="form-grid">
           <SelectField label={t("account.language")} value={locale} onChange={(v) => setLocale(v as LocaleCode)} options={Object.entries(LOCALES).map(([k, v]) => ({ value: k, label: v.name }))} />
-          <SelectField label={t("account.theme")} value={theme} onChange={(v) => { setTheme(v as Theme); setThemeState(v as Theme); }} options={[{ value: "dark", label: t("account.themeDark") }, { value: "light", label: t("account.themeLight") }, { value: "system", label: t("account.themeSystem") }]} />
+          <SelectField label={t("account.theme")} value={theme} onChange={(v) => { setTheme(v as Theme); setThemeState(v as Theme); update({ theme: v === "system" ? "auto" : v }); }} options={[{ value: "dark", label: t("account.themeDark") }, { value: "light", label: t("account.themeLight") }, { value: "system", label: t("account.themeSystem") }]} />
         </div>
+      </section>
+
+      <section className="pl-panel panel-pad stack">
+        <h2 className="t-h3">{t("account.playback")}</h2>
+        <div className="form-grid">
+          <SelectField label={t("account.audioLanguage")} value={prefs.audio_language} onChange={(v) => update({ audio_language: v })} options={langOptions(t("account.fileDefault"))} />
+          <SelectField label={t("account.subtitleLanguage")} value={prefs.subtitle_language} onChange={(v) => update({ subtitle_language: v })} options={langOptions(t("account.uiLanguage"))} />
+        </div>
+        <SelectField label={t("account.subtitleMode")} value={prefs.subtitle_mode} onChange={(v) => update({ subtitle_mode: v as UserPrefs["subtitle_mode"] })} hint={t(`account.subtitleModeHint.${prefs.subtitle_mode}` as "account.subtitleModeHint.default")} options={(["default", "smart", "always", "only_forced", "none"] as const).map((m) => ({ value: m, label: t(`account.subtitleModes.${m}` as "account.subtitleModes.default") }))} />
+        <div className="form-grid">
+          <SelectField label={t("account.subtitleSize")} value={prefs.subtitle_size} onChange={(v) => update({ subtitle_size: v as UserPrefs["subtitle_size"] })} options={(["s", "m", "l", "xl"] as const).map((s) => ({ value: s, label: t(`account.sizes.${s}` as "account.sizes.m") }))} />
+          <div style={{ alignSelf: "end" }}><Switch checked={prefs.subtitle_background} onChange={(v) => update({ subtitle_background: v })} label={t("account.subtitleBackground")} /></div>
+        </div>
+        <Switch checked={prefs.autoplay_next} onChange={(v) => update({ autoplay_next: v })} label={t("account.autoplay")} hint={t("account.autoplayHint")} />
+        <div className="form-grid">
+          <SelectField label={t("account.countdown")} value={String(prefs.autoplay_countdown_seconds)} onChange={(v) => update({ autoplay_countdown_seconds: Number(v) })} options={[0, 5, 10, 15, 20, 30].map((s) => ({ value: String(s), label: s === 0 ? t("account.immediately") : t("account.seconds", { s }) }))} />
+          <div />
+          <SelectField label={t("account.skipBack")} value={String(prefs.skip_back_seconds)} onChange={(v) => update({ skip_back_seconds: Number(v) })} options={[5, 10, 15, 30].map((s) => ({ value: String(s), label: t("account.seconds", { s }) }))} />
+          <SelectField label={t("account.skipForward")} value={String(prefs.skip_forward_seconds)} onChange={(v) => update({ skip_forward_seconds: Number(v) })} options={[10, 15, 30, 60, 90].map((s) => ({ value: String(s), label: t("account.seconds", { s }) }))} />
+        </div>
+      </section>
+
+      <section className="pl-panel panel-pad stack">
+        <h2 className="t-h3">{t("account.home")}</h2>
+        <div className="pl-panel">
+          {[...prefs.home_sections, ...allSections.filter((s) => !prefs.home_sections.includes(s))].map((s) => {
+            const on = prefs.home_sections.includes(s);
+            return (
+              <div className="list-row" key={s}>
+                <div className="spacer"><Switch checked={on} onChange={(v) => update({ home_sections: v ? [...prefs.home_sections, s] : prefs.home_sections.filter((x) => x !== s) })} label={t(`account.sections.${s}` as "account.sections.resume")} /></div>
+                {on && <>
+                  <button className="icon-btn" onClick={() => moveSection(s, -1)} aria-label={t("playlist.up")}><ArrowUp /></button>
+                  <button className="icon-btn" onClick={() => moveSection(s, 1)} aria-label={t("playlist.down")}><ArrowDown /></button>
+                </>}
+              </div>
+            );
+          })}
+        </div>
+        <Switch checked={prefs.hide_played_in_recent} onChange={(v) => update({ hide_played_in_recent: v })} label={t("account.hidePlayed")} />
+        {libs && libs.length > 1 && (
+          <div className="stack" style={{ gap: 8 }}>
+            <span className="pl-eyebrow">{t("account.homeLibraries")}</span>
+            {libs.map((l) => (
+              <label className="checkbox" key={l.id}>
+                <input type="checkbox" checked={!prefs.home_hidden_libraries.includes(l.id)} onChange={(e) => update({ home_hidden_libraries: e.target.checked ? prefs.home_hidden_libraries.filter((x) => x !== l.id) : [...prefs.home_hidden_libraries, l.id] })} />
+                {l.name}
+              </label>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="pl-panel panel-pad">
