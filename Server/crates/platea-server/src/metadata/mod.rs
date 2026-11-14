@@ -31,6 +31,7 @@ pub struct Candidate {
 
 #[derive(sqlx::FromRow)]
 struct ItemRow {
+    #[allow(dead_code)]
     id: i64,
     library_id: i64,
     kind: String,

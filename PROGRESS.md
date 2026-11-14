@@ -52,11 +52,15 @@ Se la sessione si interrompe, alla ripresa ("continua") si riparte da qui: legge
 - [x] Test nel browser (Playwright + Google Chrome in Docker, script in scratchpad non versionato): procedura guidata,
   direct play, remux, transcodifica con salto: tutti riproducono; zero errori in console; telefono e inglese verificati.
   Nota: il Chromium di Playwright non ha H.264/AAC, serve `channel: "chrome"`.
-- [ ] Strato compatibile Jellyfin per Infuse (`api/jellyfin.rs` è uno stub)
+- [x] Strato compatibile Jellyfin per Infuse (`api/jellyfin.rs`): System/Info, AuthenticateByName (header X-Emby-Authorization),
+  Views, Items (filtri, ordinamento, paginazione), Shows/Seasons/Episodes/NextUp, Resume, Latest, Search/Hints, immagini,
+  PlaybackInfo, /Videos/{id}/stream con Range, sottotitoli esterni, Sessions/Playing|Progress|Stopped, Played/Favorite.
+  ID GUID a 32 cifre con prefisso di tipo; percorsi senza distinzione maiuscole/minuscole e prefisso /emby.
+  Verificato con richieste simulate (curl) come le fa Infuse. NON ancora provato con l'app Infuse reale.
 
 ## Prossimi passi
 
-1. Strato compatibile Jellyfin per Infuse (`Server/crates/platea-server/src/api/jellyfin.rs`), poi segnare Infuse OK nel README.
+1. Provare Infuse reale contro il server (serve un dispositivo Apple: chiedere all'utente) e correggere le differenze.
 2. Fase 3: verificare QSV/VA-API/NVENC su hardware reale (qui non c'è GPU: solo software testato).
 3. Fase 4: log in tempo reale, chiavi API con ambito, notify per dischi locali.
 4. Fase 5: test di carico, libreria sintetica da 100.000 file, CI GitHub Actions.

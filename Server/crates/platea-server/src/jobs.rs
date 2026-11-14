@@ -13,6 +13,7 @@ use tokio::sync::{Notify, Semaphore};
 
 /// Priorità: più basso = prima. Riproduzione, poi interattive, poi metadati, poi analisi, poi manutenzione.
 pub mod priority {
+    #[allow(dead_code)]
     pub const PLAYBACK: i64 = 0;
     pub const INTERACTIVE: i64 = 10;
     pub const SCAN: i64 = 20;

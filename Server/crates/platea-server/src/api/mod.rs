@@ -23,7 +23,6 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::MethodRouter;
 use axum::Router;
 use serde_json::{json, Value};
-use std::time::Duration;
 use tower_http::compression::CompressionLayer;
 use tower_http::trace::TraceLayer;
 
@@ -233,8 +232,4 @@ fn add_cors(h: &mut axum::http::HeaderMap, origin: &str) {
 /// Paginazione con cursore: nessun endpoint restituisce l'intera libreria.
 pub fn clamp_limit(limit: Option<i64>, default: i64) -> i64 {
     limit.unwrap_or(default).clamp(1, 200)
-}
-
-pub fn ms_to_duration(ms: i64) -> Duration {
-    Duration::from_millis(ms.max(0) as u64)
 }

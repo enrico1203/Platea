@@ -67,11 +67,11 @@ Le stesse convenzioni di Jellyfin ed Emby: `Film/Titolo (Anno)/Titolo (Anno).mkv
 | Client | Piattaforme | Stato |
 | --- | --- | --- |
 | WebApp Platea | Qualunque browser: computer, tablet, telefono (installabile come app web) | OK |
-| Infuse | iPhone, iPad, Apple TV, Mac (collegamento come server Jellyfin) | OK — strato compatibile in sviluppo (fase 2) |
+| Infuse | iPhone, iPad, Apple TV, Mac (collegamento come server Jellyfin) | OK |
 | App Android nativa | Telefoni, tablet, Android TV, Fire TV con Fire OS | TODO (fase 6) |
 | App iOS nativa | iPhone, iPad, Mac | TODO (fase 6) |
 
-Infuse si collega all'indirizzo del server sulla porta 8096 con utente e password di Platea, in modalità diretta.
+Infuse si collega come a un server Jellyfin: indirizzo del server sulla porta 8096, utente e password di Platea, modalità diretta (quella predefinita). Platea espone solo la parte dell'API Jellyfin che serve a Infuse (login, librerie, elenchi, dettagli, immagini, ricerca, stato di visione, stream del file originale con Range, rapporti di riproduzione); le riproduzioni di Infuse compaiono in Panoramica come direct play.
 
 ## Lingue
 

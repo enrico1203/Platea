@@ -150,7 +150,9 @@ async fn run(boot: boot::BootConfig) -> anyhow::Result<()> {
     let addr: SocketAddr = state.boot.bind.parse()?;
     let listener = tokio::net::TcpListener::bind(addr).await?;
     tracing::info!(%addr, version = state::VERSION, ms = t0.elapsed().as_millis() as u64, "Platea in ascolto");
-    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
+    // Lo strato compatibile Jellyfin non distingue maiuscole e minuscole: l'URI si normalizza prima dell'instradamento.
+    let app = tower::Layer::layer(&tower::util::MapRequestLayer::new(api::jellyfin::normalize_uri::<axum::body::Body>), app);
+    axum::serve(listener, axum::ServiceExt::<axum::extract::Request>::into_make_service_with_connect_info::<SocketAddr>(app))
         .with_graceful_shutdown(shutdown(state.clone()))
         .await?;
     Ok(())

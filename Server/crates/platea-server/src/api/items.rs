@@ -76,6 +76,7 @@ pub struct ItemRow {
     pub available: i64,
     pub match_state: String,
     pub added_at: i64,
+    #[allow(dead_code)]
     pub sort_title: String,
     pub series_title: Option<String>,
     pub poster_id: Option<i64>,

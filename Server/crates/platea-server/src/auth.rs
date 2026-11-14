@@ -55,6 +55,7 @@ pub struct AuthUser {
     pub username: String,
     pub is_admin: bool,
     pub perms: Permissions,
+    #[allow(dead_code)]
     pub device_id: String,
     pub device_name: String,
     pub client: String,
@@ -115,12 +116,22 @@ impl TokenCache {
 }
 
 pub fn extract_token(parts: &Parts) -> Option<String> {
-    if let Some(v) = parts.headers.get(axum::http::header::AUTHORIZATION).and_then(|v| v.to_str().ok()) {
+    let auth = parts.headers.get(axum::http::header::AUTHORIZATION).or_else(|| parts.headers.get("x-emby-authorization"));
+    if let Some(v) = auth.and_then(|v| v.to_str().ok()) {
         let v = v.trim();
         if let Some(t) = v.strip_prefix("Bearer ").or_else(|| v.strip_prefix("bearer ")) {
             return Some(t.trim().to_string());
         }
         // Stile Jellyfin/Emby: MediaBrowser Token="..."
+        if let Some(pos) = v.find("Token=\"") {
+            let rest = &v[pos + 7..];
+            if let Some(end) = rest.find('"') {
+                return Some(rest[..end].to_string());
+            }
+        }
+    }
+    // X-Emby-Authorization senza token ma con Authorization separata.
+    if let Some(v) = parts.headers.get("x-emby-authorization").and_then(|v| v.to_str().ok()) {
         if let Some(pos) = v.find("Token=\"") {
             let rest = &v[pos + 7..];
             if let Some(end) = rest.find('"') {
@@ -259,6 +270,7 @@ impl FromRequestParts<Shared> for AuthUser {
     async fn from_request_parts(parts: &mut Parts, state: &Shared) -> Result<Self, Self::Rejection> {
         let token = extract_token(parts)
             .or_else(|| query_param(parts, "api_key"))
+            .or_else(|| query_param(parts, "apikey"))
             .or_else(|| query_param(parts, "token"))
             .ok_or(ApiError::Unauthorized)?;
         let ip = peer_ip(state, parts);
