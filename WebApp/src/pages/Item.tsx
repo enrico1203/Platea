@@ -153,8 +153,9 @@ export default function ItemPage() {
           {item.images.logo && item.kind !== "episode" ? <img className="detail__logo" src={imageUrl(item.images.logo, 500)} alt={item.title} /> : <h1 className="t-display">{item.title}</h1>}
           <div className="detail__meta t-small">{meta.map((m, i) => <span key={i}>{m}</span>)}</div>
           {item.genres.length > 0 && <div className="chips">{item.genres.map((g) => <Badge key={g}>{g}</Badge>)}</div>}
+          {me?.permissions.expired && <Alert tone="warning">{t("item.expired")}</Alert>}
           <div className="detail__actions">
-            {(isPlayable || nextEpisode) && (
+            {(isPlayable || nextEpisode) && !me?.permissions.expired && (
               <>
                 <button className="pl-btn pl-btn--play" onClick={play} aria-label={t("player.play")}><Play fill="currentColor" /></button>
                 <span className="t-label">

@@ -298,8 +298,8 @@ struct AuthBody {
 }
 
 async fn user_dto(state: &Shared, user_id: i64) -> ApiResult<Value> {
-    let (name, is_admin, last): (String, i64, Option<i64>) =
-        sqlx::query_as("SELECT username, is_admin, last_login_at FROM users WHERE id = ?").bind(user_id).fetch_one(&state.db.read).await?;
+    let (name, is_admin, last, expires): (String, i64, Option<i64>, Option<i64>) =
+        sqlx::query_as("SELECT username, is_admin, last_login_at, expires_at FROM users WHERE id = ?").bind(user_id).fetch_one(&state.db.read).await?;
     Ok(json!({
         "Name": name,
         "ServerId": state.server_id,
@@ -324,7 +324,7 @@ async fn user_dto(state: &Shared, user_id: i64) -> ApiResult<Value> {
             "IsHidden": true,
             "IsDisabled": false,
             "EnableAllFolders": true,
-            "EnableMediaPlayback": true,
+            "EnableMediaPlayback": is_admin != 0 || expires.is_none_or(|e| now_ms() < e),
             "EnableAudioPlaybackTranscoding": true,
             "EnableVideoPlaybackTranscoding": true,
             "EnablePlaybackRemuxing": true,
@@ -1241,6 +1241,7 @@ async fn serve_image(state: &Shared, item: &str, kind: &str, w: Option<u32>, _he
 // Riproduzione: solo direct play. Infuse decodifica da sé quasi tutti i formati.
 
 async fn playback_info(State(state): State<Shared>, user: AuthUser, Path(item): Path<String>) -> ApiResult<Json<Value>> {
+    user.require_playback()?;
     let id = item_id(&state, &item)?;
     crate::api::items::load_item(&state, &user, id).await?;
     let sources = media_sources(&state, id).await?;
@@ -1297,6 +1298,7 @@ async fn choose_file(state: &Shared, item: i64, source: Option<&str>) -> ApiResu
 }
 
 async fn do_stream(state: &Shared, user: &AuthUser, item: &str, uri: &Uri, method: &Method, headers: &HeaderMap) -> ApiResult<Response> {
+    user.require_playback()?;
     let id = item_id(state, item)?;
     crate::api::items::load_item(state, user, id).await?;
     let source = uri.query().and_then(|q| {
@@ -1344,6 +1346,7 @@ async fn subtitle(State(state): State<Shared>, user: AuthUser, Path((item, sourc
 
 /// Sottotitoli esterni serviti così come sono (srt, ass, vtt): Infuse li disegna da sé.
 async fn serve_subtitle(state: &Shared, user: &AuthUser, item: &str, source: &str, index: i64, _name: &str) -> ApiResult<Response> {
+    user.require_playback()?;
     let id = item_id(state, item)?;
     crate::api::items::load_item(state, user, id).await?;
     let fid = choose_file(state, id, Some(source)).await?;
@@ -1423,6 +1426,7 @@ async fn ensure_session(state: &Shared, user: &AuthUser, item: i64, source: Opti
         token,
         user_id: user.user_id,
         token_id: user.token_id,
+        expires_at: if user.is_admin { None } else { user.perms.expires_at },
         username: user.username.clone(),
         item_id: item,
         file_id: fid,
@@ -1450,6 +1454,9 @@ async fn ensure_session(state: &Shared, user: &AuthUser, item: i64, source: Opti
 }
 
 async fn report(state: &Shared, user: &AuthUser, r: &PlayReport) -> ApiResult<Option<Arc<PlaySession>>> {
+    if user.require_playback().is_err() {
+        return Ok(None);
+    }
     let Some(item) = r.item_id.as_deref().and_then(|i| match parse_ref(state, i) {
         Some(Ref::Item(x)) => Some(x),
         _ => None,

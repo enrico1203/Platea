@@ -7,6 +7,7 @@ Platea serve il file originale quando il client lo regge, fa remux o transcodifi
 - **Direct play prima di tutto.** Il client dichiara cosa sa riprodurre; il server sceglie direct play, poi remux, poi transcodifica, e registra il motivo (`VideoCodecNotSupported`, `ContainerNotSupported`, ...).
 - **Scansioni leggere.** Una scansione legge solo l'elenco delle cartelle: zero file aperti se nulla è cambiato. Se il mount cade, la scansione si ferma e non cancella nulla.
 - **Nessuna licenza, nessun limite.** Utenti, dispositivi, stream e funzioni illimitati, transcodifica hardware inclusa.
+- **Account con scadenza.** Dopo la data scelta l'utente continua a sfogliare la libreria ma non riproduce né scarica.
 - **Tutto dalla dashboard.** Nessun file di configurazione da modificare dopo il primo avvio.
 
 ## Avvio rapido

@@ -2,7 +2,7 @@ export interface SystemInfo { name: string; id: string; version: string; product
 export interface UserRef { id: string; username: string; is_admin: boolean }
 export interface Me extends UserRef {
   device_name: string;
-  permissions: { all_libraries: boolean; library_ids: string[]; allow_remux: boolean; allow_transcode: boolean; max_bitrate: number | null; max_streams: number | null; allow_remote: boolean; manage_devices: boolean };
+  permissions: { all_libraries: boolean; library_ids: string[]; allow_remux: boolean; allow_transcode: boolean; max_bitrate: number | null; max_streams: number | null; allow_remote: boolean; manage_devices: boolean; expires_at: number | null; expired: boolean };
 }
 export type ItemKind = "movie" | "series" | "season" | "episode";
 export interface UserData { position_ms: number; played: boolean; play_count: number; favorite: boolean; last_played_at: number | null }
@@ -48,7 +48,7 @@ export interface Overview {
 }
 export interface UserAdmin {
   id: string; username: string; is_admin: boolean; disabled: boolean; all_libraries: boolean; library_ids: string[]; allow_remux: boolean; allow_transcode: boolean;
-  max_bitrate: number | null; max_streams: number | null; max_rating: string | null; allow_remote: boolean; manage_devices: boolean; created_at: number; last_login_at: number | null; devices: number; active_streams: number;
+  max_bitrate: number | null; max_streams: number | null; max_rating: string | null; allow_remote: boolean; manage_devices: boolean; created_at: number; last_login_at: number | null; devices: number; active_streams: number; expires_at: number | null; expired: boolean;
 }
 export interface Device { id: string; device_id: string; device_name: string; client: string; client_version: string; created_at: number; last_used_at: number; last_ip: string | null; current: boolean }
 export interface Job { id: number; kind: string; payload: Record<string, unknown>; priority: number; state: string; attempts: number; run_after: number; created_at: number; started_at: number | null; finished_at: number | null; error: string | null }

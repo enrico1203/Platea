@@ -123,6 +123,8 @@ async fn me(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<Value
             "max_streams": user.perms.max_streams,
             "allow_remote": user.perms.allow_remote,
             "manage_devices": user.perms.manage_devices,
+            "expires_at": user.perms.expires_at,
+            "expired": !user.is_admin && user.perms.expired(),
         }
     })))
 }

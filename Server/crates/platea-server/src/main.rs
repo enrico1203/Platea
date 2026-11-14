@@ -13,6 +13,7 @@ mod error;
 mod events;
 mod ids;
 mod jobs;
+mod logs;
 mod metadata;
 mod net;
 mod probe;
@@ -57,12 +58,13 @@ fn main() -> anyhow::Result<()> {
         println!("platea {}", state::VERSION);
         return Ok(());
     }
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_new(&boot.log).unwrap_or_else(|_| EnvFilter::new("info")))
-        .with_target(false)
-        .with_ansi(std::io::IsTerminal::is_terminal(&std::io::stdout()))
-        .compact()
-        .init();
+    {
+        use tracing_subscriber::layer::SubscriberExt;
+        use tracing_subscriber::util::SubscriberInitExt;
+        let filter = EnvFilter::try_new(&boot.log).unwrap_or_else(|_| EnvFilter::new("info"));
+        let fmt = tracing_subscriber::fmt::layer().with_target(false).with_ansi(std::io::IsTerminal::is_terminal(&std::io::stdout())).compact();
+        tracing_subscriber::registry().with(filter).with(fmt).with(logs::DashboardLayer).init();
+    }
 
     // Pool di thread bloccanti ampio: ogni mount lento consuma i propri thread, non il runtime.
     let rt = tokio::runtime::Builder::new_multi_thread().enable_all().max_blocking_threads(256).thread_name("platea").build()?;

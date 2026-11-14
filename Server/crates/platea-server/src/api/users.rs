@@ -37,9 +37,10 @@ struct UserRow {
     manage_devices: i64,
     created_at: i64,
     last_login_at: Option<i64>,
+    expires_at: Option<i64>,
 }
 
-const USER_COLS: &str = "id, username, is_admin, disabled, all_libraries, allow_remux, allow_transcode, max_bitrate, max_streams, max_rating, allow_remote, manage_devices, created_at, last_login_at";
+const USER_COLS: &str = "id, username, is_admin, disabled, all_libraries, allow_remux, allow_transcode, max_bitrate, max_streams, max_rating, allow_remote, manage_devices, created_at, last_login_at, expires_at";
 
 async fn view(state: &Shared, u: UserRow) -> ApiResult<Value> {
     let libs: Vec<i64> = sqlx::query_scalar("SELECT library_id FROM user_library_access WHERE user_id = ?").bind(u.id).fetch_all(&state.db.read).await?;
@@ -60,6 +61,8 @@ async fn view(state: &Shared, u: UserRow) -> ApiResult<Value> {
         "manage_devices": u.manage_devices != 0,
         "created_at": u.created_at,
         "last_login_at": u.last_login_at,
+        "expires_at": u.expires_at,
+        "expired": u.is_admin == 0 && u.expires_at.is_some_and(|e| now_ms() >= e),
         "devices": devices,
         "active_streams": state.sessions.user_count(u.id),
     }))
@@ -99,11 +102,17 @@ struct UserPatch {
     library_ids: Option<Vec<String>>,
     allow_remux: Option<bool>,
     allow_transcode: Option<bool>,
+    #[serde(deserialize_with = "crate::util::double_option")]
     max_bitrate: Option<Option<i64>>,
+    #[serde(deserialize_with = "crate::util::double_option")]
     max_streams: Option<Option<i64>>,
+    #[serde(deserialize_with = "crate::util::double_option")]
     max_rating: Option<Option<String>>,
     allow_remote: Option<bool>,
     manage_devices: Option<bool>,
+    /// Scadenza in ms; `null` = nessuna scadenza.
+    #[serde(deserialize_with = "crate::util::double_option")]
+    expires_at: Option<Option<i64>>,
 }
 
 async fn create(State(state): State<Shared>, AdminUser(admin): AdminUser, Json(p): Json<UserPatch>) -> ApiResult<Json<Value>> {
@@ -178,6 +187,9 @@ async fn apply_patch(state: &Shared, id: i64, p: UserPatch) -> ApiResult<()> {
     }
     if let Some(v) = p.max_streams {
         sqlx::query("UPDATE users SET max_streams = ? WHERE id = ?").bind(v.filter(|b| *b > 0)).bind(id).execute(&mut *tx).await?;
+    }
+    if let Some(v) = p.expires_at {
+        sqlx::query("UPDATE users SET expires_at = ? WHERE id = ?").bind(v).bind(id).execute(&mut *tx).await?;
     }
     if let Some(v) = p.max_rating {
         sqlx::query("UPDATE users SET max_rating = ? WHERE id = ?").bind(v.filter(|r| !r.is_empty())).bind(id).execute(&mut *tx).await?;

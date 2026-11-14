@@ -20,6 +20,8 @@ pub struct PlaySession {
     pub user_id: i64,
     /// Token del dispositivo: una nuova riproduzione dallo stesso dispositivo chiude la precedente.
     pub token_id: i64,
+    /// Scadenza dell'account del proprietario: alla scadenza la sessione si chiude.
+    pub expires_at: Option<i64>,
     pub username: String,
     pub item_id: i64,
     pub file_id: i64,
@@ -220,6 +222,11 @@ pub async fn run_maintenance(state: Shared) {
         let idle_ms = s.playback.session_idle_seconds as i64 * 1000;
         let now = now_ms();
         for sess in state.sessions.all() {
+            if sess.expires_at.is_some_and(|e| now >= e) {
+                tracing::info!(session = %sess.id, user = %sess.username, "sessione chiusa: account scaduto");
+                stop_session(&state, &sess.id).await;
+                continue;
+            }
             if now - sess.last_seen.load(Ordering::Relaxed) > idle_ms {
                 tracing::info!(session = %sess.id, user = %sess.username, "sessione chiusa per inattività");
                 stop_session(&state, &sess.id).await;

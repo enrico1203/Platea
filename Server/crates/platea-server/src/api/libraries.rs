@@ -1,7 +1,7 @@
 //! Librerie: percorsi, tipo, profilo Locale o Remoto, pianificazione, limiti dell'analisi.
 
 use super::{Access, Api};
-use crate::auth::{AdminUser, AuthUser};
+use crate::auth::{AdminUser, AuthUser, ScanAccess};
 use crate::error::{ApiError, ApiResult};
 use crate::jobs::{self, priority, JobKind};
 use crate::state::Shared;
@@ -128,10 +128,14 @@ struct LibPatch {
     scan_profile: Option<String>,
     language: Option<String>,
     country: Option<String>,
+    #[serde(deserialize_with = "crate::util::double_option")]
     scan_interval_minutes: Option<Option<i64>>,
     probe_concurrency: Option<i64>,
+    #[serde(deserialize_with = "crate::util::double_option")]
     probe_per_minute: Option<Option<i64>>,
+    #[serde(deserialize_with = "crate::util::double_option")]
     probe_window_start: Option<Option<i64>>,
+    #[serde(deserialize_with = "crate::util::double_option")]
     probe_window_end: Option<Option<i64>>,
     probe_pause_on_play: Option<bool>,
     extract_keyframes: Option<bool>,
@@ -294,14 +298,14 @@ struct ScanReq {
     path: Option<String>,
 }
 
-async fn scan(State(state): State<Shared>, _a: AdminUser, Path(id): Path<String>, body: Option<Json<ScanReq>>) -> ApiResult<Json<Value>> {
+async fn scan(State(state): State<Shared>, _a: ScanAccess, Path(id): Path<String>, body: Option<Json<ScanReq>>) -> ApiResult<Json<Value>> {
     let lid = decode(&state, &id)?;
     let sub = body.and_then(|b| b.0.path).filter(|p| !p.trim().is_empty());
     jobs::enqueue(&state, JobKind::ScanLibrary { library_id: lid, subpath: sub }, priority::INTERACTIVE, Some(lid)).await?;
     Ok(Json(json!({ "queued": true })))
 }
 
-async fn scan_all(State(state): State<Shared>, _a: AdminUser) -> ApiResult<Json<Value>> {
+async fn scan_all(State(state): State<Shared>, _a: ScanAccess) -> ApiResult<Json<Value>> {
     let ids: Vec<i64> = sqlx::query_scalar("SELECT id FROM libraries").fetch_all(&state.db.read).await?;
     for lid in &ids {
         jobs::enqueue(&state, JobKind::ScanLibrary { library_id: *lid, subpath: None }, priority::INTERACTIVE, Some(*lid)).await?;
@@ -310,7 +314,7 @@ async fn scan_all(State(state): State<Shared>, _a: AdminUser) -> ApiResult<Json<
 }
 
 /// Lo strumento che aggiunge un file avvisa il server: la scansione tocca una sola cartella.
-async fn scan_path(State(state): State<Shared>, _a: AdminUser, Json(req): Json<ScanReq>) -> ApiResult<Json<Value>> {
+async fn scan_path(State(state): State<Shared>, _a: ScanAccess, Json(req): Json<ScanReq>) -> ApiResult<Json<Value>> {
     let path = req.path.unwrap_or_default();
     if !path.starts_with('/') {
         return Err(ApiError::BadRequest("Serve un percorso assoluto".into()));

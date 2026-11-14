@@ -247,6 +247,7 @@ fn decision_error(e: DecisionError) -> ApiError {
 }
 
 async fn info(State(state): State<Shared>, user: AuthUser, Json(req): Json<InfoReq>) -> ApiResult<Json<Value>> {
+    user.require_playback()?;
     let item_id = state.ids.decode(&req.item_id).ok_or_else(|| ApiError::not_found("Elemento"))?;
     let item = super::items::load_item(&state, &user, item_id).await?;
     if item.kind != "movie" && item.kind != "episode" {
@@ -434,6 +435,7 @@ async fn info(State(state): State<Shared>, user: AuthUser, Json(req): Json<InfoR
         token: token.clone(),
         user_id: user.user_id,
         token_id: user.token_id,
+        expires_at: if user.is_admin { None } else { user.perms.expires_at },
         username: user.username.clone(),
         item_id,
         file_id: file.id,
@@ -556,6 +558,10 @@ fn session_by_token(state: &Shared, id: &str, t: Option<&str>) -> ApiResult<Arc<
     let s = state.sessions.by_token(t).ok_or(ApiError::Unauthorized)?;
     if s.id != id {
         return Err(ApiError::Unauthorized);
+    }
+    // Account scaduto durante la riproduzione: lo stream si ferma.
+    if s.expires_at.is_some_and(|e| now_ms() >= e) {
+        return Err(ApiError::coded(StatusCode::FORBIDDEN, "AccountExpired", "Account scaduto"));
     }
     s.touch();
     Ok(s)

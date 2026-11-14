@@ -9,7 +9,7 @@ import { LOCALES, type LocaleCode } from "../i18n/locales";
 import { getTheme, setTheme, type Theme } from "../lib/theme";
 
 export default function Account() {
-  const { t, locale, setLocale, relative } = useI18n();
+  const { t, locale, setLocale, relative, date } = useI18n();
   const { me, logout } = useSession();
   const qc = useQueryClient();
   const [theme, setThemeState] = useState<Theme>(getTheme());
@@ -20,6 +20,7 @@ export default function Account() {
   return (
     <div className="stack-lg" style={{ maxWidth: 760 }}>
       <div className="page-head" style={{ marginBottom: 0 }}><h1 className="t-h1">{me?.username}</h1></div>
+      {me?.permissions.expired ? <Alert tone="warning">{t("item.expired")}</Alert> : me?.permissions.expires_at ? <Alert>{t("account.expiresOn", { date: date(me.permissions.expires_at) })}</Alert> : null}
 
       <section className="pl-panel panel-pad stack">
         <h2 className="t-h3">{t("account.preferences")}</h2>

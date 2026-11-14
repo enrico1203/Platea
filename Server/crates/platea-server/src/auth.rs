@@ -39,6 +39,14 @@ pub struct Permissions {
     pub max_streams: Option<i64>,
     pub allow_remote: bool,
     pub manage_devices: bool,
+    /// Scadenza dell'account (ms). Dopo questa data l'utente sfoglia ma non riproduce né scarica.
+    pub expires_at: Option<i64>,
+}
+
+impl Permissions {
+    pub fn expired(&self) -> bool {
+        self.expires_at.is_some_and(|e| now_ms() >= e)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -70,6 +78,18 @@ impl AuthUser {
             let ids: Vec<String> = self.perms.library_ids.iter().map(|i| i.to_string()).collect();
             format!(" AND {column} IN ({})", ids.join(","))
         }
+    }
+
+    /// Riproduzione e download: negati agli account scaduti. Gli amministratori non scadono.
+    pub fn require_playback(&self) -> ApiResult<()> {
+        if !self.is_admin && self.perms.expired() {
+            return Err(ApiError::coded(
+                axum::http::StatusCode::FORBIDDEN,
+                "AccountExpired",
+                "Account scaduto: puoi sfogliare la libreria ma non riprodurre. Chiedi all'amministratore di rinnovarlo.",
+            ));
+        }
+        Ok(())
     }
 
     pub fn require_admin(&self) -> ApiResult<()> {
@@ -157,14 +177,16 @@ pub fn peer_ip(state: &Shared, parts: &Parts) -> Option<IpAddr> {
 }
 
 pub async fn load_permissions(state: &Shared, user_id: i64) -> anyhow::Result<Option<(String, bool, Permissions)>> {
-    let row: Option<(String, i64, i64, i64, i64, Option<i64>, Option<i64>, i64, i64, i64)> = sqlx::query_as(
-        "SELECT username, is_admin, all_libraries, allow_remux, allow_transcode, max_bitrate, max_streams, allow_remote, manage_devices, disabled
+    let row: Option<(String, i64, i64, i64, i64, Option<i64>, Option<i64>, i64, i64, i64, Option<i64>)> = sqlx::query_as(
+        "SELECT username, is_admin, all_libraries, allow_remux, allow_transcode, max_bitrate, max_streams, allow_remote, manage_devices, disabled, expires_at
          FROM users WHERE id = ?",
     )
     .bind(user_id)
     .fetch_optional(&state.db.read)
     .await?;
-    let Some((username, is_admin, all_libraries, allow_remux, allow_transcode, max_bitrate, max_streams, allow_remote, manage_devices, disabled)) = row else {
+    let Some((username, is_admin, all_libraries, allow_remux, allow_transcode, max_bitrate, max_streams, allow_remote, manage_devices, disabled, expires_at)) =
+        row
+    else {
         return Ok(None);
     };
     if disabled != 0 {
@@ -187,6 +209,7 @@ pub async fn load_permissions(state: &Shared, user_id: i64) -> anyhow::Result<Op
             max_streams,
             allow_remote: allow_remote != 0,
             manage_devices: manage_devices != 0,
+            expires_at,
         },
     )))
 }
@@ -268,6 +291,36 @@ impl FromRequestParts<Shared> for AdminUser {
         let user = AuthUser::from_request_parts(parts, state).await?;
         user.require_admin()?;
         Ok(AdminUser(user))
+    }
+}
+
+/// Accesso per le scansioni: un amministratore oppure una chiave API con ambito `scan`.
+/// Chiave nell'intestazione `X-Platea-Key` o nel parametro `key`.
+pub struct ScanAccess;
+
+pub const API_SCOPES: &[&str] = &["scan"];
+
+impl FromRequestParts<Shared> for ScanAccess {
+    type Rejection = ApiError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &Shared) -> Result<Self, Self::Rejection> {
+        let key = parts.headers.get("x-platea-key").and_then(|v| v.to_str().ok()).map(String::from).or_else(|| query_param(parts, "key"));
+        if let Some(k) = key {
+            let row: Option<(i64, String)> =
+                sqlx::query_as("SELECT id, scopes FROM api_keys WHERE key_hash = ?").bind(sha256_hex(k.trim())).fetch_optional(&state.db.read).await?;
+            return match row {
+                Some((id, scopes)) if scopes.split(',').any(|s| s == "scan") => {
+                    let db = state.db.clone();
+                    tokio::spawn(async move {
+                        let _ = sqlx::query("UPDATE api_keys SET last_used_at = ? WHERE id = ?").bind(now_ms()).bind(id).execute(&db.write).await;
+                    });
+                    Ok(ScanAccess)
+                }
+                Some(_) => Err(ApiError::Forbidden("Questa chiave API non ha l'ambito scan".into())),
+                None => Err(ApiError::Unauthorized),
+            };
+        }
+        AdminUser::from_request_parts(parts, state).await.map(|_| ScanAccess)
     }
 }
 

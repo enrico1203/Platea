@@ -25,6 +25,8 @@ Se la sessione si interrompe, alla ripresa ("continua") si riparte da qui: legge
 
 ## Note sull'ambiente
 
+- Funzione richiesta: scadenza dell'account utente. Dopo la data l'utente resta attivo e vede tutto,
+  ma non può riprodurre né scaricare. (Fatta: vedi sotto.)
 - Host condiviso con altri progetti Docker: le porte 8096 (server) e 8080 (web) erano libere all'inizio.
 - Nessun cargo/node sull'host: build solo via Docker.
 
@@ -63,6 +65,14 @@ Se la sessione si interrompe, alla ripresa ("continua") si riparte da qui: legge
   stagioni ed episodi, cast, generi, studi, classificazione, immagini con colore segnaposto, foto attori su richiesta.
   Non c'è una chiave TMDB vera in questo ambiente: va provata dall'utente.
 - [x] CI GitHub Actions (`.github/workflows/ci.yml`): fmt, clippy -D warnings, test, typecheck e build web, build immagini.
+
+- [x] Scadenza account (migrazione 0002 `users.expires_at`): `require_playback()` su playback/info, stream diretto,
+  HLS, sottotitoli, strato Infuse (Policy.EnableMediaPlayback=false, 403); sessioni in corso chiuse alla scadenza;
+  campo data nel dialogo utente, badge "Scaduto"/"scade il", avviso all'utente. Gli amministratori non scadono.
+  Testato end-to-end (scaduto → bloccato, rinnovo → riproduce subito).
+- [x] Corretto: `null` nelle PATCH non azzerava i campi opzionali (serde Option<Option>): `util::double_option`.
+- [x] Log in tempo reale (`logs.rs`, pagina Amministrazione → Log, righe via WebSocket `log.line`).
+- [x] Chiavi API con ambito `scan` (header `X-Platea-Key`) per Sonarr/Radarr/script; gestione in Sistema.
 
 ## Benchmark (2026-11-14, 8 CPU, disco locale, libreria sintetica da 100.000 file vuoti)
 

@@ -7,6 +7,12 @@ import { Alert, Badge, Confirm, Dialog, Switch, TextField, toast } from "../../c
 import { useSession } from "../../session";
 import { useI18n } from "../../i18n";
 
+function toDateInput(ms: number): string {
+  const d = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 function UserDialog({ user, onClose }: { user: UserAdmin | null; onClose: () => void }) {
   const { t, relative } = useI18n();
   const qc = useQueryClient();
@@ -16,12 +22,17 @@ function UserDialog({ user, onClose }: { user: UserAdmin | null; onClose: () => 
     username: user?.username ?? "", password: "", is_admin: user?.is_admin ?? false, disabled: user?.disabled ?? false,
     all_libraries: user?.all_libraries ?? true, library_ids: user?.library_ids ?? [], allow_remux: user?.allow_remux ?? true, allow_transcode: user?.allow_transcode ?? true,
     max_bitrate: user?.max_bitrate ? String(user.max_bitrate / 1_000_000) : "", max_streams: user?.max_streams ? String(user.max_streams) : "", allow_remote: user?.allow_remote ?? true, manage_devices: user?.manage_devices ?? true,
+    expires: user?.expires_at ? toDateInput(user.expires_at) : "",
   });
   const [error, setError] = useState<string | null>(null);
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF({ ...f, [k]: v });
   const save = async () => {
     setError(null);
-    const body: Record<string, unknown> = { ...f, max_bitrate: f.max_bitrate ? Math.round(Number(f.max_bitrate.replace(",", ".")) * 1_000_000) : null, max_streams: f.max_streams ? Number(f.max_streams) : null };
+    // La scadenza vale fino alla fine del giorno scelto, ora locale.
+    const expires_at = f.expires ? new Date(`${f.expires}T23:59:59`).getTime() : null;
+    const { expires: _e, ...rest } = f;
+    void _e;
+    const body: Record<string, unknown> = { ...rest, expires_at, max_bitrate: f.max_bitrate ? Math.round(Number(f.max_bitrate.replace(",", ".")) * 1_000_000) : null, max_streams: f.max_streams ? Number(f.max_streams) : null };
     if (!f.password) delete body.password;
     try {
       if (user) await api(`/api/v1/users/${user.id}`, { method: "PATCH", body });
@@ -58,6 +69,7 @@ function UserDialog({ user, onClose }: { user: UserAdmin | null; onClose: () => 
       <Switch checked={f.allow_transcode} onChange={(v) => set("allow_transcode", v)} label={t("admin.users.allowTranscode")} />
       <Switch checked={f.allow_remote} onChange={(v) => set("allow_remote", v)} label={t("admin.users.allowRemote")} />
       <Switch checked={f.manage_devices} onChange={(v) => set("manage_devices", v)} label={t("admin.users.manageDevices")} />
+      <TextField label={t("admin.users.expires")} type="date" value={f.expires} onChange={(e) => set("expires", e.target.value)} hint={t("admin.users.expiresHint")} />
       <div className="form-grid">
         <TextField label={t("admin.users.maxBitrate")} inputMode="decimal" value={f.max_bitrate} onChange={(e) => set("max_bitrate", e.target.value)} hint={t("admin.users.unlimitedHint")} />
         <TextField label={t("admin.users.maxStreams")} inputMode="numeric" value={f.max_streams} onChange={(e) => set("max_streams", e.target.value)} hint={t("admin.users.unlimitedHint")} />
@@ -78,7 +90,7 @@ function UserDialog({ user, onClose }: { user: UserAdmin | null; onClose: () => 
 }
 
 export default function Users() {
-  const { t, relative } = useI18n();
+  const { t, relative, date } = useI18n();
   const { me } = useSession();
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["admin", "users"], queryFn: () => api<Page<UserAdmin>>("/api/v1/users").then((r) => r.items) });
@@ -99,7 +111,8 @@ export default function Users() {
             {data?.map((u) => (
               <tr key={u.id}>
                 <td className="t-label">{u.username} {u.id === me?.id && <span className="subtle t-small">({t("admin.users.you")})</span>}</td>
-                <td>{u.is_admin ? <Badge>{t("admin.users.admin")}</Badge> : t("admin.users.user")} {u.disabled && <Badge tone="danger">{t("admin.users.disabledBadge")}</Badge>}</td>
+                <td>{u.is_admin ? <Badge>{t("admin.users.admin")}</Badge> : t("admin.users.user")} {u.disabled && <Badge tone="danger">{t("admin.users.disabledBadge")}</Badge>}
+                  {u.expired ? <Badge tone="danger">{t("admin.users.expiredBadge")}</Badge> : u.expires_at ? <span className="t-small subtle"> {t("admin.users.expiresOn", { date: date(u.expires_at) })}</span> : null}</td>
                 <td className="t-small muted">{u.last_login_at ? relative(u.last_login_at) : "—"}</td>
                 <td className="t-mono">{u.devices}{u.active_streams > 0 ? ` · ${t("admin.users.streaming", { count: u.active_streams })}` : ""}</td>
                 <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>

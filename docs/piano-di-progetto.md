@@ -514,6 +514,7 @@ Due ruoli, amministratore e utente, più permessi impostabili utente per utente.
 | Classificazione per età massima | Nessuna |
 | Accesso da fuori rete locale | Sì |
 | Gestione dei propri dispositivi | Sì |
+| Scadenza dell'account | Nessuna. Dopo la data l'utente resta attivo e sfoglia tutto, ma non riproduce né scarica (codice `AccountExpired`); le riproduzioni in corso si chiudono |
 
 I limiti esistono come strumenti per l'amministratore, non come restrizioni del prodotto: di serie è tutto aperto.
 

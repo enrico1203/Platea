@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Home, Search, Film, Tv, LayoutDashboard, FolderOpen, Users, ListChecks, SearchCheck, Cpu, Settings, ScrollText, Server, User, Info, LogOut, Library as LibraryIcon } from "lucide-react";
+import { Home, Search, Film, Tv, LayoutDashboard, FolderOpen, Users, ListChecks, SearchCheck, Cpu, Settings, ScrollText, Server, Terminal, User, Info, LogOut, Library as LibraryIcon } from "lucide-react";
 import { Logo } from "./Logo";
 import { api } from "../api/client";
 import type { Library, Page } from "../api/types";
@@ -42,6 +42,7 @@ export function Layout() {
             <NavLink to="/admin/transcode" className={link}><Cpu />{t("admin.transcode.title")}</NavLink>
             <NavLink to="/admin/settings" className={link}><Settings />{t("admin.settings.title")}</NavLink>
             <NavLink to="/admin/activity" className={link}><ScrollText />{t("admin.activity.title")}</NavLink>
+            <NavLink to="/admin/logs" className={link}><Terminal />{t("admin.logs.title")}</NavLink>
             <NavLink to="/admin/system" className={link}><Server />{t("admin.system.title")}</NavLink>
           </nav>
         )}

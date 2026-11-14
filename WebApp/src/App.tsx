@@ -27,6 +27,7 @@ const AdminTranscode = lazy(() => import("./pages/admin/Transcode"));
 const AdminSettings = lazy(() => import("./pages/admin/Settings"));
 const AdminActivity = lazy(() => import("./pages/admin/Activity"));
 const AdminSystem = lazy(() => import("./pages/admin/System"));
+const AdminLogs = lazy(() => import("./pages/admin/Logs"));
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, refetchOnWindowFocus: false, retry: (n, e) => n < 2 && (e as { status?: number }).status !== 404 && (e as { status?: number }).status !== 403 } },
@@ -68,6 +69,7 @@ function Routed() {
           <Route path="admin/settings/:group?" element={<Guard admin><AdminSettings /></Guard>} />
           <Route path="admin/activity" element={<Guard admin><AdminActivity /></Guard>} />
           <Route path="admin/system" element={<Guard admin><AdminSystem /></Guard>} />
+          <Route path="admin/logs" element={<Guard admin><AdminLogs /></Guard>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

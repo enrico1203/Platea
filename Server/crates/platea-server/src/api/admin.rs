@@ -37,6 +37,10 @@ pub fn routes(api: Api) -> Api {
         .post("/api/v1/admin/transcode/test", "Transcodifica", Access::Admin, "Prova ora: rileva di nuovo le GPU", transcode_test)
         .get("/api/v1/admin/system", "Sistema", Access::Admin, "Versione, percorsi, database", system)
         .post("/api/v1/admin/backup", "Sistema", Access::Admin, "Copia di sicurezza del database da scaricare", backup)
+        .get("/api/v1/admin/api-keys", "Sistema", Access::Admin, "Chiavi API per le integrazioni", api_keys)
+        .post("/api/v1/admin/api-keys", "Sistema", Access::Admin, "Crea una chiave API (mostrata una sola volta)", api_key_create)
+        .delete("/api/v1/admin/api-keys/{id}", "Sistema", Access::Admin, "Revoca una chiave API", api_key_delete)
+        .get("/api/v1/admin/logs", "Sistema", Access::Admin, "Ultime righe del log (le nuove arrivano sul WebSocket come log.line)", logs)
 }
 
 async fn overview(State(state): State<Shared>, _a: AdminUser) -> ApiResult<Json<Value>> {
@@ -389,6 +393,62 @@ async fn system(State(state): State<Shared>, _a: AdminUser) -> ApiResult<Json<Va
         "started_at": state.started_at,
         "ffmpeg": *state.ffmpeg.get(),
     })))
+}
+
+async fn api_keys(State(state): State<Shared>, _a: AdminUser) -> ApiResult<Json<Value>> {
+    let rows: Vec<(i64, String, String, i64, Option<i64>)> =
+        sqlx::query_as("SELECT id, name, scopes, created_at, last_used_at FROM api_keys ORDER BY created_at DESC").fetch_all(&state.db.read).await?;
+    Ok(Json(json!({
+        "items": rows.into_iter().map(|(id, name, scopes, c, l)| json!({ "id": state.ids.encode(id), "name": name, "scopes": scopes.split(',').collect::<Vec<_>>(), "created_at": c, "last_used_at": l })).collect::<Vec<_>>(),
+        "available_scopes": crate::auth::API_SCOPES,
+    })))
+}
+
+#[derive(Deserialize)]
+struct NewKey {
+    name: String,
+    scopes: Vec<String>,
+}
+
+async fn api_key_create(State(state): State<Shared>, AdminUser(admin): AdminUser, Json(req): Json<NewKey>) -> ApiResult<Json<Value>> {
+    let name = req.name.trim();
+    if name.is_empty() {
+        return Err(ApiError::BadRequest("Serve un nome".into()));
+    }
+    let scopes: Vec<&str> = req.scopes.iter().map(|s| s.as_str()).filter(|s| crate::auth::API_SCOPES.contains(s)).collect();
+    if scopes.is_empty() {
+        return Err(ApiError::BadRequest("Serve almeno un ambito valido".into()));
+    }
+    let key = crate::util::random_hex(24);
+    let id = sqlx::query("INSERT INTO api_keys (name, key_hash, scopes, created_at) VALUES (?, ?, ?, ?)")
+        .bind(name)
+        .bind(crate::util::sha256_hex(&key))
+        .bind(scopes.join(","))
+        .bind(now_ms())
+        .execute(&state.db.write)
+        .await?
+        .last_insert_rowid();
+    state.db.activity(Some(admin.user_id), "api_key_created", &format!("{} ha creato la chiave API {name}", admin.username), None).await;
+    Ok(Json(json!({ "id": state.ids.encode(id), "key": key })))
+}
+
+async fn api_key_delete(State(state): State<Shared>, AdminUser(admin): AdminUser, Path(id): Path<String>) -> ApiResult<Json<Value>> {
+    let kid = state.ids.decode(&id).ok_or_else(|| ApiError::not_found("Chiave"))?;
+    sqlx::query("DELETE FROM api_keys WHERE id = ?").bind(kid).execute(&state.db.write).await?;
+    state.db.activity(Some(admin.user_id), "api_key_deleted", &format!("{} ha revocato una chiave API", admin.username), None).await;
+    Ok(Json(json!({ "ok": true })))
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct LogQuery {
+    level: Option<String>,
+    limit: Option<usize>,
+}
+
+async fn logs(_a: AdminUser, Query(q): Query<LogQuery>) -> ApiResult<Json<Value>> {
+    let min = crate::logs::level_rank(&q.level.unwrap_or_else(|| "INFO".into()).to_uppercase());
+    Ok(Json(json!({ "items": crate::logs::LOGS.recent(min, q.limit.unwrap_or(500).min(2000)) })))
 }
 
 /// Copia coerente del database (VACUUM INTO) restituita come file da scaricare.
