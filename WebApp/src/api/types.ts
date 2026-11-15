@@ -26,7 +26,7 @@ export interface Page<T> { items: T[]; next_cursor?: string | null }
 export interface Library {
   id: string; name: string; kind: "movies" | "shows"; item_count: number;
   paths?: string[]; scan_profile?: "local" | "remote"; language?: string; country?: string; scan_interval_minutes?: number | null;
-  probe_concurrency?: number; probe_per_minute?: number | null; probe_window_start?: number | null; probe_window_end?: number | null; probe_pause_on_play?: boolean; extract_keyframes?: boolean;
+  probe_concurrency?: number; probe_per_minute?: number | null; probe_window_start?: number | null; probe_window_end?: number | null; probe_pause_on_play?: boolean; extract_keyframes?: boolean; trickplay?: boolean; trickplay_done?: number;
   last_scan_at?: number | null; last_scan_status?: string | null; last_scan_message?: string | null; missing_held?: number; file_count?: number; probe_pending?: number;
 }
 export interface Home { resume: Item[]; next_up: Item[]; recent: { library_id: string; library_name: string; kind: string; items: Item[] }[] }
@@ -38,8 +38,11 @@ export interface PlaybackInfo {
   subtitles: { index: number; codec: string; language: string | null; title: string | null; external: boolean; forced: boolean; default: boolean; image: boolean; url: string | null }[];
   subtitle: { delivery: string; index?: number };
   subtitle_default: number | null;
+  trickplay: Trickplay | null;
   container: string;
 }
+/** Miniature della barra di avanzamento: griglie `cols`×`rows`, una ogni `interval_ms`; `{n}` nell'URL = numero della griglia. */
+export interface Trickplay { interval_ms: number; width: number; height: number; cols: number; rows: number; count: number; url: string }
 export interface SessionView { id: string; user: string; item_id: string; title: string; subtitle: string | null; poster_url: string | null; device_name: string; client: string; method: Method; reasons: string[]; chain: string; bitrate: number | null; position_ms: number; duration_ms: number; paused: boolean; throttled: boolean; started_at: number;
   server_now: number; position_at: number; paused_since: number | null; last_seen: number; ip: string | null; remote: boolean;
   details: SessionDetails; buffered_until_ms: number | null; backend: string | null; bandwidth_bps: number; bytes_sent: number }

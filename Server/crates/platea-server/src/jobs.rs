@@ -46,6 +46,9 @@ pub enum JobKind {
     DownloadImage {
         image_id: i64,
     },
+    GenerateTrickplay {
+        file_id: i64,
+    },
     CleanupMissing,
 }
 
@@ -58,6 +61,7 @@ impl JobKind {
             JobKind::MatchItem { .. } => "match_item",
             JobKind::RefreshMetadata { .. } => "refresh_metadata",
             JobKind::DownloadImage { .. } => "download_image",
+            JobKind::GenerateTrickplay { .. } => "generate_trickplay",
             JobKind::CleanupMissing => "cleanup_missing",
         }
     }
@@ -70,6 +74,7 @@ impl JobKind {
             JobKind::MatchItem { item_id } => format!("match:{item_id}"),
             JobKind::RefreshMetadata { item_id } => format!("refresh:{item_id}"),
             JobKind::DownloadImage { image_id } => format!("img:{image_id}"),
+            JobKind::GenerateTrickplay { file_id } => format!("tp:{file_id}"),
             JobKind::CleanupMissing => "cleanup".into(),
         })
     }
@@ -81,6 +86,7 @@ impl JobKind {
             JobKind::ProbeFile { .. } | JobKind::ExtractKeyframes { .. } => "probe",
             JobKind::MatchItem { .. } | JobKind::RefreshMetadata { .. } => "metadata",
             JobKind::DownloadImage { .. } => "images",
+            JobKind::GenerateTrickplay { .. } => "trickplay",
             JobKind::CleanupMissing => "maintenance",
         }
     }
@@ -106,6 +112,8 @@ impl JobQueue {
         lanes.insert("metadata", Arc::new(Semaphore::new(4)));
         lanes.insert("images", Arc::new(Semaphore::new(4)));
         lanes.insert("maintenance", Arc::new(Semaphore::new(1)));
+        // Le miniature decodificano tutto il video: una alla volta.
+        lanes.insert("trickplay", Arc::new(Semaphore::new(1)));
         JobQueue {
             notify: Arc::new(Notify::new()),
             lanes: Arc::new(lanes),
@@ -264,6 +272,7 @@ const LANES: &[(&str, &[&str])] = &[
     ("images", &["download_image"]),
     ("probe", &["probe_file", "extract_keyframes"]),
     ("maintenance", &["cleanup_missing"]),
+    ("trickplay", &["generate_trickplay"]),
 ];
 
 /// Lavori pronti, presi corsia per corsia (e libreria per libreria per le analisi): migliaia di
@@ -345,6 +354,14 @@ async fn dispatch_some(state: &Shared) -> anyhow::Result<usize> {
                     }
                     ProbeGate::Busy => continue,
                 }
+            }
+        }
+        // Miniature: fascia oraria delle analisi della libreria e pausa durante le riproduzioni.
+        if job.lane() == "trickplay" {
+            if let Some(wait) = trickplay_wait(state, row.library_id).await {
+                let _ =
+                    sqlx::query("UPDATE jobs SET run_after = ? WHERE id = ? AND state = 'queued'").bind(now + wait).bind(row.id).execute(&state.db.write).await;
+                continue;
             }
         }
         // Prenotazione atomica: se un altro ciclo l'ha già preso, si salta.
@@ -433,6 +450,24 @@ async fn probe_gate(state: &Shared, library_id: i64) -> ProbeGate {
     }
 }
 
+/// Attesa prima di generare miniature, se non è il momento.
+async fn trickplay_wait(state: &Shared, library_id: Option<i64>) -> Option<i64> {
+    if state.settings.get().playback.trickplay_pause_on_play && state.sessions.active_count() > 0 {
+        return Some(60_000);
+    }
+    let lib = library_id?;
+    let win: Option<(Option<i64>, Option<i64>)> =
+        sqlx::query_as("SELECT probe_window_start, probe_window_end FROM libraries WHERE id = ?").bind(lib).fetch_optional(&state.db.read).await.ok().flatten();
+    if let Some((Some(s), Some(e))) = win {
+        let hour = current_hour();
+        let inside = if s <= e { hour >= s && hour < e } else { hour >= s || hour < e };
+        if !inside {
+            return Some(10 * 60_000);
+        }
+    }
+    None
+}
+
 fn current_hour() -> i64 {
     // Ora locale del server (TZ del container, ora legale compresa).
     (crate::util::local_now().1 / 60) as i64
@@ -470,6 +505,7 @@ async fn execute(state: &Shared, job: JobKind) -> anyhow::Result<()> {
         JobKind::MatchItem { item_id } => crate::metadata::match_item(state, item_id).await,
         JobKind::RefreshMetadata { item_id } => crate::metadata::refresh_item(state, item_id).await,
         JobKind::DownloadImage { image_id } => crate::metadata::images::download_image(state, image_id).await,
+        JobKind::GenerateTrickplay { file_id } => crate::trickplay::generate_job(state, file_id).await,
         JobKind::CleanupMissing => crate::scanner::cleanup_missing(state).await,
     }
 }

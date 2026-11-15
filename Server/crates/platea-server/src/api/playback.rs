@@ -35,6 +35,7 @@ pub fn routes(api: Api) -> Api {
         .get("/api/v1/stream/{session}", "Riproduzione", Access::Stream, "Direct play: file originale con richieste Range", direct)
         .get("/api/v1/hls/{session}/{file}", "Riproduzione", Access::Stream, "Playlist HLS (main.m3u8) e segmenti (N.ts)", hls)
         .get("/api/v1/subtitles/{session}/{file}", "Riproduzione", Access::Stream, "Sottotitolo in WebVTT (INDICE.vtt)", subtitle)
+        .get("/api/v1/trickplay/{session}/{file}", "Riproduzione", Access::Stream, "Griglia di miniature per la barra di avanzamento (N.jpg)", trickplay)
 }
 
 #[derive(Deserialize)]
@@ -538,6 +539,18 @@ async fn info(State(state): State<Shared>, user: AuthUser, Json(req): Json<InfoR
             })
         })
         .collect();
+    // Miniature per la barra di avanzamento, se generate: griglie di `cols`×`rows`, una miniatura ogni `interval_ms`.
+    let trickplay = crate::trickplay::manifest(&state, file.id).await.map(|m| {
+        json!({
+            "interval_ms": m.interval_ms,
+            "width": m.width,
+            "height": m.height,
+            "cols": m.cols,
+            "rows": m.rows,
+            "count": m.count,
+            "url": format!("/api/v1/trickplay/{session_id}/{{n}}.jpg{q}"),
+        })
+    });
     Ok(Json(json!({
         "session_id": session_id,
         "stream_token": token,
@@ -560,6 +573,7 @@ async fn info(State(state): State<Shared>, user: AuthUser, Json(req): Json<InfoR
         },
         "audio_tracks": file.media.audio.iter().map(|a| json!({ "index": a.index, "codec": a.codec, "channels": a.channels, "language": a.language, "default": a.default })).collect::<Vec<_>>(),
         "subtitles": subtitles,
+        "trickplay": trickplay,
         "container": file.media.container,
     })))
 }
@@ -821,4 +835,12 @@ async fn subtitle(State(state): State<Shared>, Path((id, name)): Path<(String, S
         .header(header::CACHE_CONTROL, "private, max-age=86400")
         .body(Body::from(body))
         .unwrap())
+}
+
+async fn trickplay(State(state): State<Shared>, Path((id, name)): Path<(String, String)>, Query(q): Query<TokenQuery>) -> ApiResult<Response> {
+    let s = session_by_token(&state, &id, q.t.as_deref())?;
+    let n: u32 = name.strip_suffix(".jpg").and_then(|n| n.parse().ok()).ok_or_else(|| ApiError::not_found("Miniature"))?;
+    let path = crate::trickplay::dir(&state, s.file_id).join(format!("{n}.jpg"));
+    let body = tokio::fs::read(&path).await.map_err(|_| ApiError::not_found("Miniature"))?;
+    Ok(Response::builder().header(header::CONTENT_TYPE, "image/jpeg").header(header::CACHE_CONTROL, "private, max-age=86400").body(Body::from(body)).unwrap())
 }

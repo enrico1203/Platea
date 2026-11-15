@@ -108,6 +108,18 @@ pub struct PlaybackSettings {
     /// Segmenti fMP4 anche quando il video copiato è H.264 (HEVC e AV1 usano sempre fMP4).
     #[schemars(title = "fMP4 anche per H.264")]
     pub fmp4_always: bool,
+    /// Ogni quanti secondi una miniatura sulla barra di avanzamento (librerie con le miniature attive).
+    #[schemars(title = "Intervallo delle miniature (s)", range(min = 2, max = 60))]
+    pub trickplay_interval_seconds: u32,
+    /// Larghezza delle miniature in pixel.
+    #[schemars(title = "Larghezza delle miniature", range(min = 160, max = 640))]
+    pub trickplay_width: u32,
+    /// Thread di FFmpeg per la generazione delle miniature (un file alla volta).
+    #[schemars(title = "Thread per le miniature", range(min = 1, max = 16))]
+    pub trickplay_threads: u32,
+    /// Le miniature aspettano quando qualcuno sta guardando.
+    #[schemars(title = "Miniature in pausa durante le riproduzioni")]
+    pub trickplay_pause_on_play: bool,
 }
 
 impl Default for PlaybackSettings {
@@ -120,6 +132,10 @@ impl Default for PlaybackSettings {
             played_threshold_percent: 90,
             resume_min_seconds: 30,
             fmp4_always: false,
+            trickplay_interval_seconds: 10,
+            trickplay_width: 320,
+            trickplay_threads: 2,
+            trickplay_pause_on_play: true,
         }
     }
 }

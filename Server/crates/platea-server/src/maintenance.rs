@@ -85,6 +85,12 @@ pub async fn full(state: &Shared) -> Report {
         tracing::warn!(error = %format!("{e:#}"), "manutenzione del database non completa");
         r.error = Some(format!("{e:#}"));
     }
+    // Miniature di file non più in libreria.
+    match crate::trickplay::cleanup_orphans(state).await {
+        Ok(n) if n > 0 => tracing::info!(cartelle = n, "miniature orfane rimosse"),
+        Ok(_) => {}
+        Err(e) => tracing::warn!(error = %e, "pulizia delle miniature non riuscita"),
+    }
     r.ms = t0.elapsed().as_millis() as u64;
     r.size_after = file_size(&db_path);
     r.wal_after = file_size(&wal_path);

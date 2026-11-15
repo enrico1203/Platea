@@ -256,6 +256,7 @@ pub async fn probe_file_job(state: &Shared, file_id: i64) -> anyhow::Result<()> 
             crate::jobs::enqueue(state, crate::jobs::JobKind::ExtractKeyframes { file_id }, crate::jobs::priority::MAINTENANCE, Some(library_id)).await?;
         }
     }
+    crate::trickplay::after_probe(state, file_id, library_id).await;
     state.events.publish("item.probed", serde_json::json!({ "file_id": state.ids.encode(file_id) }));
     Ok(())
 }

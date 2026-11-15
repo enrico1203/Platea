@@ -298,7 +298,18 @@ restano 321 "da verificare" e 328 non riconosciuti (da vedere a mano dall'utente
 1. [x] Keyframe degli MP4/MOV dal box `moov` (`mp4.rs`: stss + stts + ctts + elst), anche remoti: identici a ffprobe
    su 5 file di prova (H.264/HEVC, moov in testa e in coda, MOV, ritardo iniziale) e su un episodio vero dal cloud
    (190 keyframe, scarto 0 ms). MP4 frammentati: ancora ffprobe (solo locali).
-2. Miniature sulla barra di avanzamento (trickplay), opzionali per libreria.
+2. [x] Miniature sulla barra di avanzamento (`trickplay.rs`, migrazione 0013): opzione per libreria (`libraries.trickplay`),
+   lavoro `generate_trickplay` in corsia propria (1 alla volta, `nice`, pausa durante le riproduzioni e fuori dalla fascia
+   oraria delle analisi), griglie 10×10 JPEG in `cache/trickplay/<file_id>/`, solo keyframe (`-skip_frame nokey`, con
+   ripiego alla decodifica completa se non esce nulla: certi HEVC a GOP aperto escono fuori ordine), tone mapping per
+   l'HDR. Manifesto in `playback/info` (`trickplay`), griglie da `/api/v1/trickplay/{sessione}/{n}.jpg` (permessi della
+   sessione). Player: anteprima al passaggio del mouse e trascinando. Pulizia delle orfane nella manutenzione notturna.
+   Impostazioni in Riproduzione (intervallo 10 s, larghezza 320, thread, pausa). Provato su server separato: film di
+   10 min in 0,65 s, HDR in 0,27 s, API 200/404/401, anteprima nel browser al punto giusto, zero errori in console.
+   **Richiesta dell'utente: le librerie remote hanno tutto spento per default.** La creazione di una libreria remota forza
+   `extract_keyframes` e `trickplay` a falso (prima il dialogo mandava i suoi valori e accendeva i keyframe); nel dialogo
+   scegliere Remoto spegne le letture complete e, per una libreria nuova, mette 360 min e 1 analisi alla volta.
+   Le librerie dell'utente (tutte remote): keyframe e miniature spenti.
 3. Quick Connect: accesso con un codice da un altro dispositivo (serve alle app TV).
 4. `.plexmatch` righe `ep:` e NFO dei singoli episodi.
 5. Fase 3: QSV/VA-API/NVENC/AMD, tone mapping in GPU, uscita HEVC/AV1 su hardware reale (qui non c'è GPU).
@@ -311,6 +322,8 @@ restano 321 "da verificare" e 328 non riconosciuti (da vedere a mano dall'utente
 - Vedi il punto 4 dei Prossimi passi.
 
 ## Registro
+
+- 2026-11-15 — Miniature sulla barra di avanzamento; librerie remote con tutte le letture complete spente.
 
 - 2026-11-15 — Keyframe degli MP4 dal moov: remux anche per gli MP4 remoti.
 

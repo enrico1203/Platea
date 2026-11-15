@@ -53,6 +53,7 @@ struct LibRow {
     probe_window_end: Option<i64>,
     probe_pause_on_play: i64,
     extract_keyframes: i64,
+    trickplay: i64,
     created_at: i64,
     last_scan_at: Option<i64>,
     last_scan_status: Option<String>,
@@ -60,7 +61,7 @@ struct LibRow {
     missing_held: i64,
 }
 
-const COLS: &str = "id, name, kind, scan_profile, language, country, scan_interval_minutes, probe_concurrency, probe_per_minute, probe_window_start, probe_window_end, probe_pause_on_play, extract_keyframes, created_at, last_scan_at, last_scan_status, last_scan_message, missing_held";
+const COLS: &str = "id, name, kind, scan_profile, language, country, scan_interval_minutes, probe_concurrency, probe_per_minute, probe_window_start, probe_window_end, probe_pause_on_play, extract_keyframes, trickplay, created_at, last_scan_at, last_scan_status, last_scan_message, missing_held";
 
 async fn view(state: &Shared, l: LibRow, admin: bool) -> ApiResult<Value> {
     let paths: Vec<String> =
@@ -97,6 +98,16 @@ async fn view(state: &Shared, l: LibRow, admin: bool) -> ApiResult<Value> {
         o.insert("probe_window_end".into(), json!(l.probe_window_end));
         o.insert("probe_pause_on_play".into(), json!(l.probe_pause_on_play != 0));
         o.insert("extract_keyframes".into(), json!(l.extract_keyframes != 0));
+        o.insert("trickplay".into(), json!(l.trickplay != 0));
+        if l.trickplay != 0 {
+            let done: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM trickplay t JOIN media_files f ON f.id = t.file_id JOIN library_paths p ON p.id = f.library_path_id WHERE p.library_id = ?",
+            )
+            .bind(l.id)
+            .fetch_one(&state.db.read)
+            .await?;
+            o.insert("trickplay_done".into(), json!(done));
+        }
         o.insert("created_at".into(), json!(l.created_at));
         o.insert("last_scan_at".into(), json!(l.last_scan_at));
         o.insert("last_scan_status".into(), json!(l.last_scan_status));
@@ -155,6 +166,8 @@ struct LibPatch {
     probe_window_end: Option<Option<i64>>,
     probe_pause_on_play: Option<bool>,
     extract_keyframes: Option<bool>,
+    /// Miniature sulla barra di avanzamento; `true` mette in coda i file che non le hanno ancora.
+    trickplay: Option<bool>,
     scan_now: Option<bool>,
 }
 
@@ -215,6 +228,8 @@ async fn create(State(state): State<Shared>, AdminUser(admin): AdminUser, Json(p
     for path in valid {
         sqlx::query("INSERT OR IGNORE INTO library_paths (library_id, path) VALUES (?, ?)").bind(id).bind(path).execute(&state.db.write).await?;
     }
+    // Remota: le opzioni che leggono i file per intero partono sempre spente; si accendono dopo, modificando la libreria.
+    let p = if remote { LibPatch { extract_keyframes: Some(false), trickplay: Some(false), ..p } } else { p };
     apply_patch(&state, id, LibPatch { paths: None, name: None, kind: None, ..p }).await?;
     state.db.activity(Some(admin.user_id), "library_created", &format!("{} ha creato la libreria {name}", admin.username), None).await;
     jobs::enqueue(&state, JobKind::ScanLibrary { library_id: id, subpath: None }, priority::INTERACTIVE, Some(id)).await?;
@@ -258,6 +273,15 @@ async fn apply_patch(state: &Shared, id: i64, p: LibPatch) -> ApiResult<()> {
     }
     if let Some(v) = p.extract_keyframes {
         sqlx::query("UPDATE libraries SET extract_keyframes = ? WHERE id = ?").bind(v as i64).bind(id).execute(&state.db.write).await?;
+    }
+    if let Some(v) = p.trickplay {
+        sqlx::query("UPDATE libraries SET trickplay = ? WHERE id = ?").bind(v as i64).bind(id).execute(&state.db.write).await?;
+        if v {
+            crate::trickplay::enqueue_library(state, id).await.map_err(ApiError::Internal)?;
+        } else {
+            // Spente: i lavori in coda si tolgono, le miniature già fatte restano.
+            sqlx::query("DELETE FROM jobs WHERE kind = 'generate_trickplay' AND state = 'queued' AND library_id = ?").bind(id).execute(&state.db.write).await?;
+        }
     }
     if let Some(paths) = p.paths {
         let mut valid = Vec::new();

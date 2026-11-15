@@ -64,7 +64,8 @@ Poi in **Amministrazione → Transcodifica → Prova ora**: il server codifica e
 
 Monta lo storage sull'host e aggiungi il punto di mount ai `volumes` del servizio `server` (l'opzione `rslave` fa vedere al container anche un mount fatto dopo l'avvio). Crea la libreria con il profilo **Remoto**: scansione ogni 6 ore, un'analisi alla volta, cartelle elencate in parallelo.
 
-- **Remux senza scaricare il film.** Per gli MKV l'indice dei keyframe viene dai Cues del file (poche centinaia di KB), non dalla lettura di tutti i pacchetti: un salto a metà film parte in meno di un secondo.
+- **Remux senza scaricare il film.** Per gli MKV l'indice dei keyframe viene dai Cues del file, per gli MP4/MOV dal box `moov` (poche centinaia di KB), non dalla lettura di tutti i pacchetti: un salto a metà film parte in meno di un secondo.
+- **Miniature sulla barra di avanzamento**, attivabili per libreria (spente di default e sempre spente alla creazione di una libreria remota, perché richiedono di leggere ogni file per intero): griglie JPEG in `cache/trickplay`, solo keyframe decodificati, un file alla volta, in pausa durante le riproduzioni.
 - **Controllo remoto di rclone.** Se il mount ha `--rc` (per esempio `--rc --rc-addr :5572`), in **Impostazioni → Scansione** imposta l'URL (`http://host.docker.internal:5572`, aggiungendo al servizio `server` `extra_hosts: ["host.docker.internal:host-gateway"]`) e il percorso in cui il server vede la radice del mount (es. `/media`). Prima di ogni scansione il server chiede a rclone di aggiornare l'elenco delle cartelle in un colpo solo (`vfs/refresh`).
 - **Protezione dal mount assente.** Vedi sopra: se il mount salta durante una scansione pianificata non si perde niente; se hai cancellato tu molti file insieme, conferma da **Amministrazione → Librerie**.
 

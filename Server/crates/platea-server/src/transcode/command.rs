@@ -335,7 +335,7 @@ fn copy_cut_tolerance_ms(start_ms: i64, cuts: &[i64]) -> i64 {
 /// Tone mapping HDR → SDR in software, dopo il ridimensionamento (su 4K → 1080p è un quarto dei pixel).
 /// Misurato su 1917 4K HDR10 → 1080p, 8 core: zscale prima dello scale 1,5×, tonemapx dopo 3,4× (la decodifica 4K
 /// da sola arriva a 3,8×).
-fn sw_tonemap(tonemapx: bool) -> &'static str {
+pub(crate) fn sw_tonemap(tonemapx: bool) -> &'static str {
     if tonemapx {
         "tonemapx=tonemap=bt2390:desat=0:peak=100:t=bt709:m=bt709:p=bt709:format=yuv420p"
     } else {

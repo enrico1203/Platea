@@ -5,7 +5,7 @@ import type Hls from "hls.js";
 import { ArrowLeft, Play, Pause, RotateCcw, RotateCw, Maximize, Minimize, Volume2, VolumeX, Captions, Settings2, Info, SkipForward, ListOrdered, Cast, Airplay } from "lucide-react";
 import { api, ApiError, getToken, imageUrl, mediaUrl, serverUrl } from "../api/client";
 import { castContext, castLoad, castProfile, loadCast } from "../lib/cast";
-import type { ItemDetail, Item, PlaybackInfo, PlaylistDetail } from "../api/types";
+import type { ItemDetail, Item, PlaybackInfo, PlaylistDetail, Trickplay } from "../api/types";
 import { buildProfile } from "../lib/profile";
 import { MethodBadge } from "../components/ui";
 import { useI18n } from "../i18n";
@@ -79,6 +79,8 @@ export default function Player() {
   const [quality, setQuality] = useState<number>(readQuality);
   const [seekHint, setSeekHint] = useState<{ side: "left" | "right"; text: string } | null>(null);
   const [dragging, setDragging] = useState<number | null>(null);
+  // Posizione sotto il mouse sulla barra (anteprima senza trascinare).
+  const [hoverPos, setHoverPos] = useState<number | null>(null);
   const hideTimer = useRef<number | undefined>(undefined);
 
   const fileParam = search.get("file");
@@ -590,7 +592,8 @@ export default function Player() {
             className="player__bar"
             ref={barRef}
             onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); setDragging(posFromEvent(e.clientX)); poke(); }}
-            onPointerMove={(e) => { if (dragging !== null) setDragging(posFromEvent(e.clientX)); }}
+            onPointerMove={(e) => { if (dragging !== null) setDragging(posFromEvent(e.clientX)); else if (e.pointerType === "mouse") setHoverPos(posFromEvent(e.clientX)); }}
+            onPointerLeave={() => setHoverPos(null)}
             onPointerUp={(e) => { if (dragging !== null) { seekTo(posFromEvent(e.clientX)); setDragging(null); } }}
             role="slider"
             aria-label={t("player.position")}
@@ -607,6 +610,9 @@ export default function Player() {
               ))}
             </div>
             <div className="player__thumb" style={{ left: `${duration ? (shown / duration) * 100 : 0}%` }} />
+            {info?.trickplay && duration > 0 && (dragging ?? hoverPos) !== null && (
+              <TrickplayPreview tp={info.trickplay} sec={(dragging ?? hoverPos)!} duration={duration} />
+            )}
           </div>
           <div className="player__controls">
             <span className="player__time">{clock(shown * 1000)} / {clock(duration * 1000)}</span>
@@ -733,6 +739,33 @@ export default function Player() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Anteprima sopra la barra: la miniatura del punto indicato, ritagliata dalla sua griglia, con l'orario sotto. */
+function TrickplayPreview({ tp, sec, duration }: { tp: Trickplay; sec: number; duration: number }) {
+  const { clock } = useI18n();
+  const idx = Math.max(0, Math.min(tp.count - 1, Math.floor((sec * 1000) / tp.interval_ms)));
+  const perSheet = tp.cols * tp.rows;
+  const sheet = Math.floor(idx / perSheet);
+  const cell = idx % perSheet;
+  // Su schermi stretti la miniatura si rimpicciolisce; la griglia scala con lei.
+  const w = Math.min(tp.width, typeof window !== "undefined" && window.innerWidth < 600 ? 160 : tp.width);
+  const scale = w / tp.width;
+  const h = Math.round(tp.height * scale);
+  return (
+    <div className="player__preview" style={{ left: `clamp(${w / 2}px, ${(sec / duration) * 100}%, calc(100% - ${w / 2}px))`, width: w }} aria-hidden>
+      <div
+        className="player__preview-img"
+        style={{
+          height: h,
+          backgroundImage: `url(${mediaUrl(tp.url.replace("{n}", String(sheet)))})`,
+          backgroundSize: `${tp.cols * w}px ${tp.rows * h}px`,
+          backgroundPosition: `-${(cell % tp.cols) * w}px -${Math.floor(cell / tp.cols) * h}px`,
+        }}
+      />
+      <span className="player__preview-time">{clock(sec * 1000)}</span>
     </div>
   );
 }

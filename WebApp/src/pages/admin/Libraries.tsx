@@ -23,11 +23,23 @@ function LibraryDialog({ lib, onClose }: { lib: Library | null; onClose: () => v
   const [winEnd, setWinEnd] = useState(lib?.probe_window_end != null ? String(lib.probe_window_end) : "");
   const [pause, setPause] = useState(lib?.probe_pause_on_play ?? false);
   const [kf, setKf] = useState(lib?.extract_keyframes ?? true);
+  const [tp, setTp] = useState(lib?.trickplay ?? false);
   const [error, setError] = useState<string | null>(null);
+  // Profilo Remoto: tutto ciò che legge i file per intero parte spento, con scansioni rade e un'analisi alla volta.
+  // Per una libreria nuova si applicano i valori del profilo; per una esistente si spengono solo le letture complete.
+  const changeProfile = (v: "local" | "remote") => {
+    setProfile(v);
+    if (v === "remote") { setKf(false); setTp(false); }
+    if (!lib) {
+      setIntervalV(v === "remote" ? "360" : "60");
+      setConc(v === "remote" ? "1" : "4");
+      if (v === "local") setKf(true);
+    }
+  };
   const n = (v: string) => (v.trim() === "" ? null : Number(v));
   const save = async () => {
     setError(null);
-    const body = { name, kind, paths, scan_profile: profile, language, country: language.split("-")[1], scan_interval_minutes: n(interval), probe_concurrency: n(conc) ?? 1, probe_per_minute: n(perMin), probe_window_start: n(winStart), probe_window_end: n(winEnd), probe_pause_on_play: pause, extract_keyframes: kf };
+    const body = { name, kind, paths, scan_profile: profile, language, country: language.split("-")[1], scan_interval_minutes: n(interval), probe_concurrency: n(conc) ?? 1, probe_per_minute: n(perMin), probe_window_start: n(winStart), probe_window_end: n(winEnd), probe_pause_on_play: pause, extract_keyframes: kf, trickplay: tp };
     try {
       if (lib) await api(`/api/v1/libraries/${lib.id}`, { method: "PATCH", body });
       else await api("/api/v1/libraries", { body });
@@ -51,7 +63,7 @@ function LibraryDialog({ lib, onClose }: { lib: Library | null; onClose: () => v
       </div>
       <FolderBrowser value={browse} onChange={setBrowse} />
       <div><button className="pl-btn pl-btn--secondary pl-btn--sm" disabled={!browse || paths.includes(browse)} onClick={() => setPaths([...paths, browse])}>{t("admin.libraries.addFolder")}</button></div>
-      <SelectField label={t("admin.libraries.profile")} value={profile} onChange={(v) => setProfile(v as "local" | "remote")} hint={profile === "remote" ? t("library.remoteHint") : t("admin.libraries.localHint")} options={[{ value: "local", label: t("admin.libraries.local") }, { value: "remote", label: t("admin.libraries.remote") }]} />
+      <SelectField label={t("admin.libraries.profile")} value={profile} onChange={(v) => changeProfile(v as "local" | "remote")} hint={profile === "remote" ? t("library.remoteHint") : t("admin.libraries.localHint")} options={[{ value: "local", label: t("admin.libraries.local") }, { value: "remote", label: t("admin.libraries.remote") }]} />
       <div className="form-grid">
         <SelectField label={t("setup.metadataLanguage")} value={language} onChange={setLanguage} options={[{ value: "it-IT", label: "Italiano" }, { value: "en-US", label: "English (US)" }, { value: "en-GB", label: "English (UK)" }, { value: "de-DE", label: "Deutsch" }, { value: "fr-FR", label: "Français" }, { value: "es-ES", label: "Español" }]} />
         <TextField label={t("admin.libraries.interval")} inputMode="numeric" value={interval} onChange={(e) => setIntervalV(e.target.value)} hint={t("admin.libraries.intervalHint")} />
@@ -62,6 +74,7 @@ function LibraryDialog({ lib, onClose }: { lib: Library | null; onClose: () => v
       </div>
       <Switch checked={pause} onChange={setPause} label={t("admin.libraries.pauseOnPlay")} />
       <Switch checked={kf} onChange={setKf} label={t("admin.libraries.keyframes")} hint={t("admin.libraries.keyframesHint")} />
+      <Switch checked={tp} onChange={setTp} label={t("admin.libraries.trickplay")} hint={t(profile === "remote" ? "admin.libraries.trickplayHintRemote" : "admin.libraries.trickplayHint")} />
     </Dialog>
   );
 }
@@ -96,7 +109,7 @@ export default function Libraries() {
             <div className="row row--between">
               <div>
                 <div className="t-h3">{l.name} <Badge>{l.kind === "movies" ? t("library.movies") : t("library.shows")}</Badge> <Badge>{l.scan_profile === "remote" ? t("admin.libraries.remote") : t("admin.libraries.local")}</Badge></div>
-                <div className="t-small subtle">{t(l.kind === "movies" ? "library.countMovies" : "library.countShows", { count: l.item_count })} · {t("admin.libraries.files", { count: l.file_count ?? 0 })}{l.probe_pending ? ` · ${t("admin.libraries.probePending", { count: l.probe_pending })}` : ""}</div>
+                <div className="t-small subtle">{t(l.kind === "movies" ? "library.countMovies" : "library.countShows", { count: l.item_count })} · {t("admin.libraries.files", { count: l.file_count ?? 0 })}{l.probe_pending ? ` · ${t("admin.libraries.probePending", { count: l.probe_pending })}` : ""}{l.trickplay ? ` · ${t("admin.libraries.trickplayDone", { done: l.trickplay_done ?? 0, total: l.file_count ?? 0 })}` : ""}</div>
               </div>
               <div className="row">
                 <button className="pl-btn pl-btn--secondary pl-btn--sm" onClick={async () => { await api(`/api/v1/libraries/${l.id}/scan`, { method: "POST" }); toast(t("admin.libraries.scanQueued")); }}><RefreshCw />{t("admin.libraries.scan")}</button>
