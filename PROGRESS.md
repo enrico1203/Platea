@@ -395,6 +395,9 @@ restano 321 "da verificare" e 328 non riconosciuti (da vedere a mano dall'utente
    la sessione HLS di Platea (`playback::start`, ora riusabile) e la restituisce come `TranscodingUrl`; i rapporti con
    `PlaySessionId` vanno a quella sessione. Infuse resta sempre in direct play. Provato: profilo solo MP4 → remux HLS,
    segmenti scaricati, progresso e stop agganciati; profilo con MKV e Infuse → direct play.
+4p. App Android indicate nel README come compatibili da provare (l'utente le proverà): Findroid (telefoni) e Jellyfin
+   per Android TV (nativa, a differenza dell'app per telefoni). Se danno errore: log ("percorso non gestito",
+   "richiesta Jellyfin senza token riconosciuto"), eventualmente `PLATEA_LOG=info,tower_http=debug` per un po'.
 5. Fase 3: QSV/VA-API/NVENC/AMD, tone mapping in GPU, uscita HEVC/AV1 su hardware reale (qui non c'è GPU).
 6. Fase 5 (rilascio). [x] Revisione di sicurezza interna (15/11/2026), corretti:
    - download delle immagini: la risposta era letta tutta prima del controllo di dimensione (una risposta senza fine
