@@ -27,12 +27,14 @@ pub async fn link(tx: &mut Transaction<'_, Sqlite>, library_id: i64, item_id: i6
             .await?;
     }
     if found.is_none() {
-        found = sqlx::query_scalar("SELECT id FROM items WHERE library_id = ? AND kind = 'collection' AND (match_key = ? OR sort_title = ?)")
-            .bind(library_id)
-            .bind(&by_name)
-            .bind(platea_naming::sort_title(name))
-            .fetch_optional(&mut **tx)
-            .await?;
+        found = sqlx::query_scalar(
+            "SELECT id FROM items WHERE library_id = ? AND kind = 'collection' AND (match_key = ? OR sort_title = ?) AND match_key NOT LIKE 'manual:%'",
+        )
+        .bind(library_id)
+        .bind(&by_name)
+        .bind(platea_naming::sort_title(name))
+        .fetch_optional(&mut **tx)
+        .await?;
     }
     let now = now_ms();
     let cid = match found {
@@ -57,14 +59,22 @@ pub async fn link(tx: &mut Transaction<'_, Sqlite>, library_id: i64, item_id: i6
         .await?
         .last_insert_rowid(),
     };
-    sqlx::query("DELETE FROM collection_members WHERE item_id = ? AND collection_id <> ?").bind(item_id).bind(cid).execute(&mut **tx).await?;
+    // Il film lascia le altre collezioni automatiche; quelle create a mano dall'amministratore restano.
+    sqlx::query(
+        "DELETE FROM collection_members WHERE item_id = ? AND collection_id <> ?
+         AND collection_id NOT IN (SELECT id FROM items WHERE kind = 'collection' AND match_key LIKE 'manual:%')",
+    )
+    .bind(item_id)
+    .bind(cid)
+    .execute(&mut **tx)
+    .await?;
     sqlx::query("INSERT OR IGNORE INTO collection_members (collection_id, item_id) VALUES (?, ?)").bind(cid).bind(item_id).execute(&mut **tx).await?;
     refresh(tx, cid).await?;
     Ok(Some(cid))
 }
 
 /// Anno (il primo film) e data di aggiunta (l'ultimo arrivato) della collezione.
-async fn refresh(tx: &mut Transaction<'_, Sqlite>, cid: i64) -> anyhow::Result<()> {
+pub async fn refresh(tx: &mut Transaction<'_, Sqlite>, cid: i64) -> anyhow::Result<()> {
     sqlx::query(
         "UPDATE items SET
            year = (SELECT MIN(m.year) FROM collection_members c JOIN items m ON m.id = c.item_id WHERE c.collection_id = items.id),

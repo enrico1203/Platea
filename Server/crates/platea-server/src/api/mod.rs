@@ -4,6 +4,7 @@
 
 pub mod admin;
 pub mod auth;
+pub mod collections;
 pub mod download;
 pub mod events;
 pub mod items;
@@ -151,6 +152,7 @@ pub fn router(state: Shared) -> Router {
     let api = playlists::routes(api);
     let api = quickconnect::routes(api);
     let api = subtitles::routes(api);
+    let api = collections::routes(api);
     let api = download::routes(api);
     let api = admin::routes(api);
     let api = events::routes(api);

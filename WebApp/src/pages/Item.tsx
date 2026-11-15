@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Play, Check, Heart, SearchCheck, RefreshCw, Pencil, ListPlus, Download, Upload, Clapperboard, X } from "lucide-react";
+import { Play, Check, Heart, SearchCheck, RefreshCw, Pencil, ListPlus, Download, Upload, Clapperboard, X, Library, Trash2 } from "lucide-react";
 import { AddToPlaylist } from "./Playlists";
 import { api, ApiError, getToken, imageUrl, mediaUrl, serverUrl } from "../api/client";
 import type { Candidate, Item as ItemT, ItemDetail, MediaFile, MissingEpisode, Page } from "../api/types";
 import { PosterCard } from "../components/PosterCard";
-import { Alert, Badge, Dialog, TextField, toast, SelectField } from "../components/ui";
+import { Alert, Badge, Dialog, TextField, toast, SelectField, Confirm } from "../components/ui";
 import { useSession } from "../session";
 import { useI18n } from "../i18n";
 
@@ -175,6 +175,53 @@ function EditDialog({ item, onClose }: { item: ItemDetail; onClose: () => void }
   );
 }
 
+/** "Aggiungi a collezione": le collezioni create a mano, oppure una nuova. */
+function AddToCollection({ itemId, onClose }: { itemId: string; onClose: () => void }) {
+  const { t } = useI18n();
+  const qc = useQueryClient();
+  const [name, setName] = useState("");
+  const { data } = useQuery({ queryKey: ["collections", "manual"], queryFn: () => api<{ items: { id: string; title: string; count: number }[] }>("/api/v1/collections/manual").then((r) => r.items) });
+  const done = (title: string) => { qc.invalidateQueries(); toast(t("collection.added", { name: title })); onClose(); };
+  return (
+    <Dialog title={t("collection.addTo")} onClose={onClose} footer={<button className="pl-btn pl-btn--ghost" onClick={onClose}>{t("common.cancel")}</button>}>
+      {data && data.length > 0 && (
+        <div className="pl-panel">
+          {data.map((c) => (
+            <button key={c.id} className="list-row" style={{ width: "100%", textAlign: "left", background: "none", border: 0, color: "inherit", cursor: "pointer" }} onClick={async () => {
+              await api(`/api/v1/collections/${c.id}/items`, { body: { item_ids: [itemId] } });
+              done(c.title);
+            }}>
+              <Library size={20} />
+              <div className="spacer"><div className="t-label">{c.title}</div><div className="t-small subtle">{t("item.collectionCount", { count: c.count })}</div></div>
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="row" style={{ alignItems: "flex-end", flexWrap: "nowrap" }}>
+        <div className="spacer"><TextField label={t("collection.newName")} value={name} onChange={(e) => setName(e.target.value)} /></div>
+        <button className="pl-btn pl-btn--secondary" disabled={!name.trim()} onClick={async () => {
+          await api("/api/v1/collections", { body: { name: name.trim(), item_ids: [itemId] } });
+          done(name.trim());
+        }}>{t("collection.create")}</button>
+      </div>
+      <div className="t-small subtle">{t("collection.hint")}</div>
+    </Dialog>
+  );
+}
+
+function CollectionName({ initial, onSave, onClose }: { initial: string; onSave: (name: string) => Promise<void>; onClose: () => void }) {
+  const { t } = useI18n();
+  const [name, setName] = useState(initial);
+  return (
+    <Dialog title={t("collection.rename")} onClose={onClose} footer={<>
+      <button className="pl-btn pl-btn--ghost" onClick={onClose}>{t("common.cancel")}</button>
+      <button className="pl-btn pl-btn--primary" disabled={!name.trim()} onClick={async () => { await onSave(name.trim()); onClose(); }}>{t("common.save")}</button>
+    </>}>
+      <TextField label={t("collection.name")} value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+    </Dialog>
+  );
+}
+
 /** Griglia delle alternative di TMDB: un clic sceglie l'immagine (e la blocca ai prossimi aggiornamenti). */
 function RemoteImagePicker({ item, kind, onClose }: { item: ItemDetail; kind: "poster" | "backdrop" | "logo"; onClose: () => void }) {
   const { t } = useI18n();
@@ -253,7 +300,7 @@ export default function ItemPage() {
   const [season, setSeason] = useState<string | null>(null);
   const [trailer, setTrailer] = useState<{ key: string; name: string | null } | null>(null);
   const [fileIdx, setFileIdx] = useState(0);
-  const [dialog, setDialog] = useState<"identify" | "edit" | "playlist" | null>(null);
+  const [dialog, setDialog] = useState<"identify" | "edit" | "playlist" | "collection" | "renameCollection" | "deleteCollection" | null>(null);
   const { data: item, error } = useQuery({ queryKey: ["item", id], queryFn: () => api<ItemDetail>(`/api/v1/items/${id}`) });
   const seriesId = item?.kind === "series" ? item.id : item?.kind === "season" ? item.parent_id : null;
   const { data: seasons } = useQuery({ queryKey: ["items", "children", seriesId], queryFn: () => api<Page<ItemT>>(`/api/v1/items/${seriesId}/children`).then((r) => r.items), enabled: !!seriesId });
@@ -362,11 +409,16 @@ export default function ItemPage() {
             <button className="icon-btn" onClick={() => setDialog("playlist")} aria-label={t("playlist.addTo")} title={t("playlist.addTo")}><ListPlus /></button>
             {me?.is_admin && (item.kind === "movie" || item.kind === "series") && (
               <>
+                <button className="icon-btn" onClick={() => setDialog("collection")} aria-label={t("collection.addTo")} title={t("collection.addTo")}><Library /></button>
                 <button className="icon-btn" onClick={() => setDialog("identify")} aria-label={t("item.identify")} title={t("item.identify")}><SearchCheck /></button>
                 <button className="icon-btn" onClick={async () => { await api(`/api/v1/items/${item.id}/refresh`, { method: "POST" }); toast(t("item.refreshQueued")); }} aria-label={t("item.refresh")} title={t("item.refresh")}><RefreshCw /></button>
               </>
             )}
-            {me?.is_admin && <button className="icon-btn" onClick={() => setDialog("edit")} aria-label={t("item.edit")} title={t("item.edit")}><Pencil /></button>}
+            {me?.is_admin && item.manual_collection && <>
+              <button className="icon-btn" onClick={() => setDialog("renameCollection")} aria-label={t("collection.rename")} title={t("collection.rename")}><Pencil /></button>
+              <button className="icon-btn" onClick={() => setDialog("deleteCollection")} aria-label={t("collection.delete")} title={t("collection.delete")}><Trash2 /></button>
+            </>}
+            {me?.is_admin && !item.manual_collection && <button className="icon-btn" onClick={() => setDialog("edit")} aria-label={t("item.edit")} title={t("item.edit")}><Pencil /></button>}
           </div>
           {item.tagline && <div className="t-label muted">{item.tagline}</div>}
           {item.overview && <p className="t-body-lg muted" style={{ margin: 0 }}>{item.overview}</p>}
@@ -378,7 +430,17 @@ export default function ItemPage() {
         {members && members.length > 0 && (
           <section className="stack">
             <h2 className="t-h3">{t("item.collectionMovies")}</h2>
-            <div className="poster-grid">{members.map((m) => <PosterCard key={m.id} item={m} />)}</div>
+            <div className="poster-grid">{members.map((m) => (
+              <div key={m.id} className="removable">
+                <PosterCard item={m} />
+                {me?.is_admin && item.manual_collection && (
+                  <button type="button" className="removable__x icon-btn" aria-label={t("collection.removeItem", { title: m.title })} title={t("collection.removeItem", { title: m.title })} onClick={async () => {
+                    await api(`/api/v1/collections/${item.id}/items/${m.id}`, { method: "DELETE" });
+                    qc.invalidateQueries({ queryKey: ["items", "children", id, "members"] });
+                  }}><X size={16} /></button>
+                )}
+              </div>
+            ))}</div>
           </section>
         )}
 
@@ -461,6 +523,16 @@ export default function ItemPage() {
       {dialog === "identify" && <IdentifyDialog item={item} onClose={() => setDialog(null)} />}
       {dialog === "edit" && <EditDialog item={item} onClose={() => setDialog(null)} />}
       {dialog === "playlist" && <AddToPlaylist itemId={item.id} onClose={() => setDialog(null)} />}
+      {dialog === "collection" && <AddToCollection itemId={item.id} onClose={() => setDialog(null)} />}
+      {dialog === "renameCollection" && <CollectionName initial={item.title} onClose={() => setDialog(null)} onSave={async (name) => {
+        await api(`/api/v1/collections/${item.id}`, { method: "PATCH", body: { name } });
+        qc.invalidateQueries();
+      }} />}
+      {dialog === "deleteCollection" && <Confirm danger title={t("collection.deleteTitle", { name: item.title })} message={t("collection.deleteMessage")} confirmLabel={t("common.delete")} onClose={() => setDialog(null)} onConfirm={async () => {
+        await api(`/api/v1/collections/${item.id}`, { method: "DELETE" });
+        qc.invalidateQueries();
+        nav(-1);
+      }} />}
     </div>
   );
 }

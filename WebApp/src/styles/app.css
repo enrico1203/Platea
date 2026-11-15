@@ -476,3 +476,5 @@ a.person:focus-visible .person__img { outline: 2px solid var(--focus); outline-o
 .chip-removable .icon-btn { width: 24px; height: 24px; }
 .os-result { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-3); align-items: center; padding: var(--space-3) 0; border-bottom: 1px solid var(--line); }
 .subtitles-langs .pl-field { min-width: 110px; }
+.removable { position: relative; }
+.removable__x { position: absolute; top: 6px; right: 6px; background: rgba(12,14,17,.8); color: #f3f5f7; }

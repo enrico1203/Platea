@@ -371,6 +371,10 @@ restano 321 "da verificare" e 328 non riconosciuti (da vedere a mano dall'utente
    da 128 KB; download con token se c'è l'account). Salvati in `cache/subtitles/added/`, registrati come esterni con
    percorso `@platea/…` e indice ≥ 2000: la scansione li lascia, web e Infuse li servono dalla cache. Provato con un
    finto OpenSubtitles (`PLATEA_OPENSUBTITLES_BASE`): ricerca con hash, login, download, VTT corretto, scansione.
+4m. [x] Collezioni create a mano (`api/collections.rs`, chiave `manual:…`, match_state `manual`): crea, rinomina,
+   cancella, aggiungi/togli film e serie (anche di librerie diverse). Il collegamento automatico alle saghe non le
+   tocca più (`collections::link`). Web: "Aggiungi a collezione" nel dettaglio, gestione nella pagina della collezione.
+   Provato sulla copia: Goldfinger resta in James Bond e nella collezione manuale dopo il rinnovo.
 5. Fase 3: QSV/VA-API/NVENC/AMD, tone mapping in GPU, uscita HEVC/AV1 su hardware reale (qui non c'è GPU).
 6. Fase 5 (rilascio). [x] Revisione di sicurezza interna (15/11/2026), corretti:
    - download delle immagini: la risposta era letta tutta prima del controllo di dimensione (una risposta senza fine
