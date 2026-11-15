@@ -1,108 +1,145 @@
 # Platea
 
-Open source media server
+Platea is an open source media server for movies and TV shows, written in Rust, that plays the original file whenever the client can and works well with libraries on cloud storage.
 
-Platea serve il file originale quando il client lo regge, fa remux o transcodifica (anche su GPU Intel, NVIDIA o AMD) solo quando deve, e scansiona librerie anche su storage cloud senza aprire i file. Server in Rust a processo unico, web UI separata, un'API pubblica per tutti i client.
+## Compatible apps
 
-- **Remux leggero anche per HEVC.** Un browser che decodifica HEVC (Safari, Chrome ed Edge con supporto hardware) riceve il video copiato in segmenti fMP4: il server converte solo l'audio.
-- **Direct play prima di tutto.** Il client dichiara cosa sa riprodurre; il server sceglie direct play, poi remux, poi transcodifica, e registra il motivo (`VideoCodecNotSupported`, `ContainerNotSupported`, ...).
-- **Scansioni leggere.** Una scansione legge solo l'elenco delle cartelle, diverse in parallelo: zero file aperti se nulla è cambiato. Migliaia di film su un mount rclone si elencano in meno di un minuto. Sui dischi locali un film copiato compare da solo dopo pochi secondi.
-- **Il mount che cade non cancella nulla.** Radice vuota o illeggibile: la scansione si ferma. Cartella che va in errore: i suoi file restano. Tanti file spariti insieme (mount a metà): nessuna rimozione finché non confermi. I file che cancelli davvero, pochi alla volta, spariscono da soli.
-- **NFO e .plexmatch.** Legge gli NFO di Kodi, Jellyfin e Radarr e i `.plexmatch` di Plex: identificativi esatti e, anche senza chiave TMDB, trama, cast, generi e locandine. Le cartelle dei media non vengono mai scritte: immagini e metadati stanno nel database e nella cache.
-- **Nessuna licenza, nessun limite.** Utenti, dispositivi, stream e funzioni illimitati, transcodifica hardware inclusa.
-- **Collezioni automatiche.** Le saghe (James Bond, Harry Potter…) si formano da sole dagli NFO e da TMDB.
-- **Limite per età e per genere.** Per ogni utente una classificazione massima e, se serve, generi nascosti o solo alcuni generi consentiti. Per la classificazione, le sigle di ogni paese (T, VM14, PG-13, TV-MA…) diventano età, e i titoli oltre il limite spariscono ovunque, Infuse compreso.
-- **Ogni utente a modo suo.** Lingua dell'audio e dei sottotitoli, episodio successivo automatico, home su misura, immagine del profilo; per l'amministratore download consentito o no, fasce orarie, profili per bambini.
-- **Account con scadenza.** Dopo la data scelta l'utente continua a sfogliare la libreria ma non riproduce né scarica.
-- **Miniature sulla barra di avanzamento**, attivabili per libreria (spente di default e sempre spente alla creazione di una libreria remota, perché richiedono di leggere ogni file per intero): griglie JPEG in `cache/trickplay`, solo keyframe decodificati, un file alla volta, in pausa durante le riproduzioni.
-- **Quick Connect.** Sul televisore o in un'app si sceglie "Accedi con un codice": si conferma il codice di 6 cifre da un dispositivo già collegato (Account › Collega un dispositivo, oppure `/link`). Funziona anche con le app Jellyfin che lo supportano. Si spegne in Impostazioni › Generali.
-- **Qualità predefinita.** Ogni utente sceglie una qualità per la rete di casa e una per fuori casa; nel player si cambia per il singolo video.
-- **Generi e studi.** Dal dettaglio di un titolo si apre la pagina di un genere o di uno studio (HBO, Pixar…) con i titoli di tutte le librerie.
-- **Trailer ed extra.** Trailer da TMDB e dagli NFO di Kodi (anche in Infuse); i contenuti extra nelle cartelle `Extras/`, `Trailers/`, `Featurettes/`, `Behind The Scenes/`… o con suffissi come `-trailer` compaiono nel dettaglio del titolo.
-- **Notifiche.** Webhook verso Discord, ntfy, Home Assistant o uno script: riproduzioni, titoli nuovi, accessi, mount che non risponde (Impostazioni › Notifiche).
-- **Sottotitoli in più.** L'amministratore carica un SRT/VTT/ASS o lo cerca su OpenSubtitles (con l'hash del file, per la versione giusta): finisce nella cache di Platea, non nella cartella del film.
-- **App Jellyfin.** Oltre a Infuse, le app Jellyfin si collegano al server (Swiftfin 1.7 provato: Platea si presenta come Jellyfin 12.1); quando un'app non apre un formato, Platea fa remux o transcodifica in HLS come per la web UI.
-- **Tutto dalla dashboard.** Nessun file di configurazione da modificare dopo il primo avvio.
+| App | Devices | Status |
+| --- | --- | --- |
+| Platea web app | Any browser on a computer, tablet or phone. Can be installed as a web app. | Works |
+| [Infuse](https://firecore.com/infuse) | iPhone, iPad, Apple TV, Mac | Works (tested with Infuse 8.5 on iPhone) |
+| [Swiftfin](https://github.com/jellyfin/Swiftfin) | iPhone, iPad, Apple TV | Works (tested with Swiftfin 1.7 on iPhone) |
+| [Findroid](https://github.com/jarnedemeulemeester/findroid) | Android phones and tablets | Should work, not tested yet |
+| [Jellyfin for Android TV](https://github.com/jellyfin/jellyfin-androidtv) | Android TV, Google TV, Fire TV | Should work, not tested yet |
+| Official "Jellyfin" app | Phones, desktop | Does not work, see below |
+| Native Platea apps | Android, Android TV, iOS | Planned |
 
-## Avvio rapido
+Infuse and the Jellyfin apps connect to Platea as if it were a Jellyfin server: use the server address on port 8096 (or a hostname that points to it) and your Platea username and password. Platea reports itself as Jellyfin 12.1 and implements the part of the Jellyfin API these apps use. Infuse always plays the original file. For the other apps Platea reads the device profile and remuxes or transcodes to HLS when the app can't play a format.
 
-Serve Docker con il plugin Compose.
+The official "Jellyfin" app for phones and desktops doesn't draw its own screens. It loads the Jellyfin web interface from the server at `/web/`, which Platea doesn't include, so it stops with a 404 error. The Android TV app is a native app and is not affected.
 
-```sh
-git clone https://github.com/enrico1203/Platea.git
-cd Platea
-cp .env.example .env          # porte, fuso orario, versione, tunnel (facoltativo)
-# in docker-compose.yml, servizio server → volumes: una riga per ogni cartella dei media
-docker compose pull           # immagini pronte da GitHub Container Registry (amd64 e arm64)
-docker compose up -d
-docker compose logs server | grep -i codice
+## Quick start
+
+You need Docker with the Compose plugin. Create a folder with this `docker-compose.yml`:
+
+```yaml
+services:
+  server:
+    image: ghcr.io/enrico1203/platea-server:latest
+    container_name: platea-server
+    restart: unless-stopped
+    ports:
+      - "8096:8096"
+    environment:
+      PLATEA_DATA_DIR: /data
+      PLATEA_CACHE_DIR: /cache
+      PLATEA_TRANSCODE_DIR: /transcode
+      TZ: Europe/Rome
+    volumes:
+      - ./data:/data
+      - ./cache:/cache
+      - ./transcode:/transcode
+      # Your media folders, always read-only. Add one line per folder.
+      - /path/to/movies:/media/movies:ro
+      - /path/to/shows:/media/shows:ro
+
+  web:
+    image: ghcr.io/enrico1203/platea-web:latest
+    container_name: platea-web
+    restart: unless-stopped
+    depends_on:
+      - server
+    ports:
+      - "8080:80"
+    environment:
+      PLATEA_SERVER_URL: http://server:8096
 ```
 
-Le immagini sono `ghcr.io/enrico1203/platea-server` e `ghcr.io/enrico1203/platea-web`: `latest` è l'ultima versione,
-`edge` l'ultimo commit su `main`, oppure un numero di versione (`PLATEA_TAG` nel `.env`). Per costruirle dai sorgenti:
-`docker compose up -d --build`.
+Then start it:
 
-Apri `http://<host>:8080`, inserisci il codice di primo avvio stampato nei log e segui la procedura guidata: amministratore, prima libreria, chiave TMDB, prova della GPU.
+```sh
+mkdir -p data cache transcode
+sudo chown -R 1000:1000 data cache transcode   # the server runs as uid 1000, not root
+docker compose up -d
+docker compose logs server | grep -i codice    # the line with the first-run setup code
+```
 
-| Servizio | Porta | A cosa serve |
+Open `http://<host>:8080`, enter the setup code and follow the wizard: administrator account, first library, TMDB key, GPU test.
+
+The images support amd64 and arm64. `latest` is the latest release, `edge` is the latest commit on `main`, and you can also pin a version like `0.1.0`.
+
+The [`docker-compose.yml`](docker-compose.yml) in this repository is more complete. It has the GPU settings, a Cloudflare tunnel and a `.env` file for ports and versions. To build the images from source, clone the repository and run `docker compose up -d --build`.
+
+| Service | Port | Purpose |
 | --- | --- | --- |
-| `web` | 8080 | Web UI (nginx con i file statici; inoltra `/api` al server) |
-| `server` | 8096 | API pubblica, streaming, Infuse |
+| `web` | 8080 | Web app (static files served by nginx, which forwards `/api` to the server) |
+| `server` | 8096 | API, streaming, Infuse and Jellyfin apps |
 
-| Cartella | Contenuto | Si può cancellare |
+| Folder | Contents | Safe to delete |
 | --- | --- | --- |
-| `./data` | Database e segreto dell'installazione | No: va nel backup |
-| `./cache` | Immagini ridimensionate, sottotitoli estratti | Sì |
-| `./transcode` | Segmenti delle sessioni attive | Sì |
-| Cartelle dei media → `/media/…` | La libreria, in sola lettura: una riga per ognuna nei `volumes` del servizio `server` (es. `/mnt/cloud:/media/cloud:ro,rslave`) | — |
+| `./data` | Database and the installation secret | No, back it up |
+| `./cache` | Resized images, thumbnails, extracted subtitles | Yes |
+| `./transcode` | Segments of active playback sessions | Yes |
 
-**Utente dei container.** Server e web UI non girano come root: il server usa l'utente `platea` (uid e gid 1000), nginx l'utente `nginx`. Le cartelle `data`, `cache` e `transcode` devono appartenere all'uid 1000; aggiornando da una versione precedente: `docker compose down && sudo chown -R 1000:1000 data cache transcode && docker compose up -d`. Se non sono scrivibili, il server si ferma con questo messaggio nei log.
+## Features
 
-**Password dimenticata.** Da terminale, con il server in funzione: `docker compose exec server platea reset-password <utente>` stampa una password nuova (o `… reset-password <utente> <password>` per sceglierla). L'account torna attivo e tutti i suoi dispositivi vengono scollegati.
+- Direct play first. The client declares what it can play and the server picks direct play, then remux, then transcoding, and records the reason.
+- Light remux, HEVC included. A browser that decodes HEVC gets the video copied into fMP4 segments, and only the audio is converted.
+- Hardware transcoding on Intel (QSV, VA-API), NVIDIA (NVENC) and AMD (VA-API), with HDR to SDR tone mapping. If the GPU fails, the session falls back to software.
+- Fast scans. A scan only lists folders, several at a time, and opens no files when nothing changed. Thousands of movies on an rclone mount are listed in under a minute. New files on local disks show up within seconds.
+- A missing mount never deletes anything. If the library root is empty or unreadable, the scan stops. If many files disappear at once, nothing is removed until you confirm.
+- Metadata from TMDB, from Kodi `.nfo` files (episode NFOs included) and from Plex `.plexmatch` files. Media folders are never written to.
+- Automatic collections, trailers from TMDB, local extras (`Extras/`, `Trailers/`, `Featurettes/`, files ending in `-trailer` and similar) and missing episodes shown in each season.
+- Per-user settings: audio and subtitle language, default quality at home and away, autoplay of the next episode, home page layout, profile picture.
+- Per-user limits: libraries, age rating, hidden or allowed genres, playback hours, downloads, remote access, account expiry date, lockout after failed logins.
+- Quick Connect: sign in on a TV by confirming a 6-digit code from a device that is already signed in.
+- Seek bar thumbnails, chapters, subtitles uploaded by an admin or downloaded from OpenSubtitles, shared playlists.
+- Webhooks for Discord, ntfy or any URL: playback, new titles, sign-ins and mount problems.
+- Everything is configured from the web dashboard. There are no config files to edit after the first start.
 
-Per aggiornare: `git pull && docker compose pull && docker compose up -d` (oppure `--build` se le costruisci dai sorgenti). Le migrazioni del database partono da sole, dopo una copia di sicurezza (`data/platea.db.bak-…`, si tengono le ultime 2). Provato aggiornando dalla prima versione pubblicata a quella attuale in un colpo solo: account, token, stato di visione e preferiti restano. Le versioni più vecchie giravano come root: se dopo l'aggiornamento il server si ferma con «i dati non sono accessibili all'utente del server», esegui il `chown` indicato sopra.
-
-**Backup.** Ogni 24 ore il server copia il database in `./data/backups` (le ultime 7; intervallo e numero in Impostazioni → Generali). Da **Amministrazione → Sistema** si crea una copia al volo, la si scarica, o si ripristina il database da una copia o da un file: il server si riavvia da solo e il database precedente resta in `./data` come `platea.db.before-restore-…`.
+## Configuration
 
 ### GPU
 
-Togli il commento alle righe nel servizio `server` di `docker-compose.yml`:
+Uncomment the matching lines in the `server` service of [`docker-compose.yml`](docker-compose.yml):
 
-- Intel (QSV, VA-API) e AMD (VA-API): `devices: - /dev/dri:/dev/dri` e `group_add` con il gruppo che possiede `/dev/dri/renderD128` sull'host (`stat -c %g /dev/dri/renderD128`): il server non gira come root
-- NVIDIA (NVENC): il blocco `deploy` con il runtime NVIDIA
+- Intel and AMD: `devices: - /dev/dri:/dev/dri` and `group_add` with the group that owns `/dev/dri/renderD128` on the host (`stat -c %g /dev/dri/renderD128`).
+- NVIDIA: the `deploy` block with the NVIDIA runtime.
 
-Poi in **Amministrazione → Transcodifica → Prova ora**: il server codifica e decodifica un secondo di video vero per ogni combinazione e mostra la matrice delle capacità. Se la GPU fallisce, la sessione riparte in software da sola.
+Then go to Administration › Transcoding › Test now. The server encodes and decodes one second of real video for each combination and shows what works.
 
-### Storage cloud (rclone)
+### Cloud storage with rclone
 
-Monta lo storage sull'host e aggiungi il punto di mount ai `volumes` del servizio `server` (l'opzione `rslave` fa vedere al container anche un mount fatto dopo l'avvio). Crea la libreria con il profilo **Remoto**: scansione ogni 6 ore, un'analisi alla volta, cartelle elencate in parallelo.
+Mount the storage on the host and add the mount point to the `server` volumes with `:ro,rslave` (`rslave` lets the container see a mount made after it started). Create the library with the Remote profile: it scans every 6 hours, probes one file at a time and lists folders in parallel.
 
-- **Remux senza scaricare il film.** Per gli MKV l'indice dei keyframe viene dai Cues del file, per gli MP4/MOV dal box `moov` (poche centinaia di KB), non dalla lettura di tutti i pacchetti: un salto a metà film parte in meno di un secondo.
-- **Controllo remoto di rclone.** Se il mount ha `--rc` (per esempio `--rc --rc-addr :5572`), in **Impostazioni → Scansione** imposta l'URL (`http://host.docker.internal:5572`, aggiungendo al servizio `server` `extra_hosts: ["host.docker.internal:host-gateway"]`) e il percorso in cui il server vede la radice del mount (es. `/media`). Prima di ogni scansione il server chiede a rclone di aggiornare l'elenco delle cartelle in un colpo solo (`vfs/refresh`).
-- **Protezione dal mount assente.** Vedi sopra: se il mount salta durante una scansione pianificata non si perde niente; se hai cancellato tu molti file insieme, conferma da **Amministrazione → Librerie**.
+Seeking in a remuxed movie doesn't download the file. The keyframe index comes from the MKV Cues or the MP4 `moov` box, which are a few hundred KB.
 
-Per scansionare solo la cartella cambiata da uno strumento esterno:
+If the mount runs with `--rc` (for example `--rc --rc-addr :5572`), set its address in Settings › Scanning, for example `http://host.docker.internal:5572`. You also need `extra_hosts: ["host.docker.internal:host-gateway"]` on the `server` service. Before each scan the server asks rclone to refresh the folder listing.
+
+To scan only the folder that changed, for example from Sonarr or Radarr:
 
 ```sh
 curl -X POST http://<host>:8096/api/v1/scan/path \
-  -H "Authorization: Bearer <token>" -H "Content-Type: application/json" \
-  -d '{"path": "/media/Film/Nuovo film (2026)"}'
+  -H "X-Platea-Key: <api key>" -H "Content-Type: application/json" \
+  -d '{"path": "/media/movies/New Movie (2026)"}'
 ```
 
-### Accesso da fuori (tunnel Cloudflare)
+API keys are created in Administration › System.
 
-Il compose ha un servizio `cloudflared`, spento finché non lo attivi: nessuna porta da aprire sul router.
+### Remote access with a Cloudflare tunnel
 
-1. Nel pannello Cloudflare, **Zero Trust → Networks → Tunnels → Create a tunnel** (tipo Cloudflared), e copia il token.
-2. In `.env`: `COMPOSE_PROFILES=tunnel` e `CLOUDFLARE_TUNNEL_TOKEN=<token>`, poi `docker compose up -d`.
-3. Nel tunnel, **Public hostnames**: `platea.tuodominio.it` → `http://web:80` (web UI) e, per Infuse, `infuse.tuodominio.it` → `http://server:8096`. Infuse si collega a `https://infuse.tuodominio.it` sulla porta 443.
-4. In **Impostazioni → Generali → URL pubblico** l'indirizzo per Infuse (`https://infuse.tuodominio.it`): è quello che il server comunica alle app Jellyfin.
+The repository compose file has a `cloudflared` service that stays off until you enable it. No router ports need to be opened.
 
-Il server legge l'indirizzo vero del client da `X-Forwarded-For` (il tunnel arriva da una rete Docker, già tra i proxy fidati): chi entra dal tunnel è un accesso remoto, quindi valgono il permesso di accesso da remoto e il bitrate massimo da remoto. Due limiti di Cloudflare: le richieste oltre 100 MB non passano (il ripristino del database da file si fa dalla rete locale) e le condizioni del piano gratuito non sono pensate per molto traffico video. Cloudflare Access (il login di Cloudflare) si può mettere davanti alla web UI, non davanti all'hostname di Infuse: Infuse non sa superarlo.
+1. In the Cloudflare dashboard go to Zero Trust › Networks › Tunnels, create a tunnel and copy its token.
+2. In `.env` set `COMPOSE_PROFILES=tunnel` and `CLOUDFLARE_TUNNEL_TOKEN=<token>`, then run `docker compose up -d`.
+3. Add two public hostnames to the tunnel: `platea.example.com` to `http://web:80`, and `media.example.com` to `http://server:8096` for Infuse and the Jellyfin apps.
+4. In Settings › General › Public URL enter `https://media.example.com`.
+
+Clients coming through the tunnel count as remote, so the remote access permission and the remote bitrate limit apply. Cloudflare blocks requests larger than 100 MB, so restore database backups from the local network.
 
 ### Reverse proxy
 
-La web UI (porta 8080) inoltra già `/api` al server: basta mettere il proxy davanti a lei. Per le app Jellyfin (Infuse) serve un nome a parte verso la porta 8096. Il proxy deve: passare il WebSocket (`/api/v1/events`), non bufferizzare (i video passano in streaming, le richieste Range restano tali), avere timeout lunghi, e mandare `X-Forwarded-For`. L'indirizzo del proxy va in **Impostazioni → Rete → Proxy fidati** se non è già nelle reti private predefinite.
+Put the proxy in front of the web app (port 8080), which already forwards `/api` to the server. Infuse and the Jellyfin apps need a second hostname pointing to port 8096. The proxy must pass WebSockets, must not buffer responses, needs long timeouts and should send `X-Forwarded-For`. If the proxy is not on a private network, add its address in Settings › Network › Trusted proxies.
 
 Caddy:
 
@@ -112,7 +149,7 @@ platea.example.com {
         flush_interval -1
     }
 }
-infuse.example.com {
+media.example.com {
     reverse_proxy 127.0.0.1:8096 {
         flush_interval -1
     }
@@ -135,96 +172,96 @@ server {
         proxy_buffering off;
         proxy_request_buffering off;
         proxy_read_timeout 3600s;
-        client_max_body_size 0;    # ripristino del database da file
+        client_max_body_size 0;
     }
 }
 ```
 
-Poi **Impostazioni → Generali → URL pubblico** con l'indirizzo per le app Jellyfin.
-
-### Nomi dei file
-
-Le stesse convenzioni di Jellyfin ed Emby: `Film/Titolo (Anno)/Titolo (Anno).mkv`, `Serie/Nome/Season 01/Nome S01E02.mkv`, episodi multipli `S01E01-E02`, episodi per data, numerazione assoluta per gli anime, identificativi espliciti `[tmdbid-603]`, `[imdbid-tt0133093]`, `[tvdbid-…]`. Sottotitoli esterni accanto al video: `Titolo (Anno).it.srt`, `.it.forced.srt`.
-
-Metadati locali, letti una volta e mai scritti:
-
-- `Titolo (Anno).nfo` o `movie.nfo` accanto al film, `tvshow.nfo` nella cartella della serie (formato Kodi). Con una chiave TMDB danno l'identificativo esatto; senza, i loro campi diventano i metadati.
-- `.plexmatch` nella cartella del film o della serie (formato Plex: `title:`, `year:`, `tmdbid:`, `imdbid:`, `tvdbid:`, `guid: tmdb://…`). È la scelta esplicita dell'utente e vince sugli NFO.
-- Nella cartella di una serie, righe `ep:` del `.plexmatch` per i file con nomi qualsiasi: `ep: S01E01: /Stagione 1/Il pilota.mkv`, `ep: S01E02-E03: …`, `ep: 2x04: …`, `ep: 12: …` (numerazione assoluta), `ep: 2023-05-01: …` (per data). Il percorso è relativo alla cartella della serie.
-- `<episodio>.nfo` accanto al video di un episodio (`<episodedetails>`, anche più blocchi per i file con più episodi): titolo, trama, data e voto vincono su quelli di TMDB. Lo scanner nota l'NFO dall'elenco della cartella, senza aprire nulla.
-
-## App compatibili
-
-| Client | Piattaforme | Stato |
-| --- | --- | --- |
-| WebApp Platea | Qualunque browser: computer, tablet, telefono (installabile come app web) | OK |
-| Infuse | iPhone, iPad, Apple TV, Mac (collegamento come server Jellyfin) | OK (provato su iPhone con Infuse 8.5, anche dal tunnel Cloudflare) |
-| Swiftfin | iPhone, iPad, Apple TV (app Jellyfin ufficiale) | OK (provato su iPhone con Swiftfin 1.7, dal tunnel Cloudflare: accesso, home, Media, riproduzione) |
-| Findroid | Telefoni e tablet Android | Compatibile (usa solo l'API Jellyfin), da provare |
-| Jellyfin per Android TV | Android TV, Google TV, Fire TV con Fire OS | Compatibile (app nativa, usa solo l'API Jellyfin), da provare |
-| App ufficiale "Jellyfin" (iOS, Android, desktop) | — | Non supportata: è un contenitore dell'interfaccia web di Jellyfin, che Platea non include. Usare Swiftfin, Infuse, Findroid o la WebApp (la versione per Android TV invece è nativa: vedi sopra) |
-| App Android nativa | Telefoni, tablet, Android TV, Fire TV con Fire OS | TODO (fase 6) |
-| App iOS nativa | iPhone, iPad, Mac | TODO (fase 6) |
-
-Infuse e Swiftfin si collegano come a un server Jellyfin: indirizzo del server sulla porta 8096 (o il nome del tunnel che punta lì), utente e password di Platea. Platea si presenta come Jellyfin 12.1 ed espone la parte dell'API Jellyfin che serve alle app: login (anche Quick Connect), librerie, elenchi, dettagli, immagini, ricerca, stato di visione, stream del file originale con Range, rapporti di riproduzione, WebSocket. Infuse riproduce sempre il file originale; per le altre app Platea legge il profilo del dispositivo e, se serve, fa remux o transcodifica in HLS. Le riproduzioni compaiono in Panoramica.
-
-L'app ufficiale "Jellyfin" (e Jellyfin Media Player sul computer) non funziona: non disegna le pagine da sé ma apre l'interfaccia web di Jellyfin servita dal server a `/web/`, che Platea non contiene, e si ferma con «Il server Jellyfin ha restituito un errore» (codice 404). Funzionano invece le app che usano solo l'API: Swiftfin, Infuse e, su Android, Findroid e Jellyfin per Android TV.
-
-## Lingue
-
-La web UI è in italiano e inglese. Le traduzioni stanno in `WebApp/src/i18n/`: un file per lingua, con chiavi verificate da TypeScript sul dizionario italiano. Per aggiungere una lingua basta un nuovo file registrato in `locales.ts`.
-
-## Struttura del repository
-
-```
-Server/                 Rust workspace
-  crates/platea-naming    lettura dei nomi di film e serie (con test)
-  crates/platea-playback  profilo dispositivo e decisione di riproduzione (funzione pura, con test)
-  crates/platea-server    eseguibile: API, scanner, analisi, metadati, transcodifica, sessioni
-  Dockerfile              build Rust → debian:trixie-slim + jellyfin-ffmpeg
-WebApp/                 React + Vite + TypeScript, TanStack Query, hls.js
-  Dockerfile              build Node → nginx:alpine
-docker-compose.yml      avvia server e web UI
-docs/                   piano di progetto e brand identity
-scripts/cargo.sh        cargo dentro un container Rust
-PROGRESS.md             stato dei lavori
-```
-
-## Sviluppo
-
-Tutto gira in container: non servono Rust, Node o FFmpeg sull'host.
+### Updating
 
 ```sh
-scripts/cargo.sh test                     # test del server
-scripts/cargo.sh build -p platea-server   # build di sviluppo
-docker run --rm -v "$PWD/WebApp:/app" -w /app node:22-alpine npx tsc -b --noEmit   # controllo dei tipi della web UI
-docker compose up -d --build              # tutto lo stack
+docker compose pull
+docker compose up -d
 ```
 
-L'API è descritta da un documento OpenAPI generato dalla stessa tabella che registra le route: `GET /api/v1/openapi.json`, con gli schemi dei dati presi dai tipi TypeScript della web UI (`scripts/openapi-schemas.sh`). Autenticazione con `Authorization: Bearer <token>` ottenuto da `POST /api/v1/auth/login`. `scripts/generate-clients.sh` genera da quel documento i client Kotlin e Swift per le app.
+Database migrations run on start, after an automatic backup (`data/platea.db.bak-…`, the last 2 are kept). Upgrading from the first release to the current one in a single step has been tested. Very early versions ran as root. If the server stops after an update saying the data is not accessible, run `sudo chown -R 1000:1000 data cache transcode`.
 
-## Come contribuire
+### Backups
 
-Segnalazioni, idee e pull request sono benvenute: vedi [CONTRIBUTING.md](CONTRIBUTING.md). Per le vulnerabilità di sicurezza non aprire una issue pubblica: segui [SECURITY.md](SECURITY.md).
+Every 24 hours the server copies the database to `./data/backups` and keeps the last 7. In Administration › System you can make a backup, download it, or restore one. After a restore the server restarts and keeps the previous database in `./data` as `platea.db.before-restore-…`.
 
-## Licenza
+### Forgotten password
 
-Platea è software libero, distribuito con la licenza [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only): puoi usarlo, studiarlo, modificarlo e ridistribuirlo; se lo modifichi e lo offri ad altri via rete, devi rendere disponibile anche il codice delle tue modifiche.
+```sh
+docker compose exec server platea reset-password <username>
+```
 
-## Progetti collegati e ringraziamenti
+This prints a new password. Add a second argument to choose it yourself. The account is re-enabled and all its devices are signed out.
 
-Platea non sarebbe possibile senza questi progetti. I nomi citati appartengono ai rispettivi titolari e sono usati solo per indicare la compatibilità: Platea è un progetto indipendente, non affiliato né approvato da nessuno di loro, e non ne usa i loghi.
+## File naming
 
-| Progetto | Che cosa c'entra con Platea | Licenza |
+Platea uses the same conventions as Jellyfin and Emby:
+
+- Movies: `Movies/Title (Year)/Title (Year).mkv`
+- Shows: `Shows/Name/Season 01/Name S01E02.mkv`, multi-episode files `S01E01-E02`, date-based episodes, absolute numbering for anime
+- Explicit IDs in folder names: `[tmdbid-603]`, `[imdbid-tt0133093]`, `[tvdbid-…]`
+- External subtitles next to the video: `Title (Year).en.srt`, `Title (Year).en.forced.srt`
+
+Local metadata is read once and never written:
+
+- `Title (Year).nfo` or `movie.nfo` next to a movie, `tvshow.nfo` in a show folder and `<episode>.nfo` next to an episode (Kodi format). With a TMDB key they give the exact ID. Without one, their fields become the metadata.
+- `.plexmatch` in a movie or show folder (Plex format: `title:`, `year:`, `tmdbid:`, `imdbid:`, `tvdbid:`, `guid:`). It wins over NFO files. In a show folder, `ep:` lines map files with any name to episodes, for example `ep: S01E01: /Season 1/Pilot.mkv`.
+
+## Languages
+
+The web app is available in Italian and English. Translations live in `WebApp/src/i18n/`, one file per language, with keys checked by TypeScript. Adding a language means adding a file and registering it in `locales.ts`.
+
+## Development
+
+Everything runs in containers, so you don't need Rust, Node or FFmpeg on the host.
+
+```sh
+git clone https://github.com/enrico1203/Platea.git && cd Platea
+cp .env.example .env
+docker compose up -d --build                  # server on :8096, web app on :8080
+scripts/cargo.sh test                         # server tests
+docker run --rm -v "$PWD/WebApp:/app" -w /app node:22-alpine npm run typecheck
+```
+
+```
+Server/       Rust workspace
+  crates/platea-naming     file and folder name parsing
+  crates/platea-playback   direct play, remux or transcode decision
+  crates/platea-server     the server binary
+WebApp/       React, Vite, TypeScript, TanStack Query, hls.js
+scripts/      cargo in Docker, schema and API client generation, test tools
+docs/         project plan and brand identity (Italian)
+```
+
+The API is described by an OpenAPI document at `GET /api/v1/openapi.json`. Authenticate with `Authorization: Bearer <token>` from `POST /api/v1/auth/login`. `scripts/generate-clients.sh` generates Kotlin and Swift clients from it.
+
+## Contributing
+
+Bug reports, ideas and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). Please report security issues privately as described in [SECURITY.md](SECURITY.md).
+
+## License
+
+Platea is free software under the [GNU Affero General Public License v3.0](LICENSE). You can use, study, change and share it. If you change it and offer it to others over a network, you must also make your changed source code available.
+
+## Related projects and thanks
+
+Platea builds on, or works with, these projects. Their names belong to their owners and are used here only to describe compatibility. Platea is an independent project, it is not affiliated with or endorsed by any of them, and it doesn't use their logos.
+
+| Project | Relation to Platea | License |
 | --- | --- | --- |
-| [Jellyfin](https://jellyfin.org) | Il media server libero a cui Platea si ispira. Platea non ne contiene il codice: implementa da sé una parte della sua API pubblica, per far funzionare le app esistenti. "Jellyfin" è un nome riservato al progetto Jellyfin e ai suoi client ufficiali | [GPL-2.0](https://github.com/jellyfin/jellyfin/blob/master/LICENSE) |
-| [jellyfin-ffmpeg](https://github.com/jellyfin/jellyfin-ffmpeg) | La build di FFmpeg incluse nell'immagine Docker del server, avviata come programma separato per analisi e transcodifica | FFmpeg: [LGPL-2.1+, con parti GPL](https://github.com/jellyfin/jellyfin-ffmpeg/blob/jellyfin/LICENSE.md); i sorgenti della versione inclusa sono nel loro repository |
-| [Swiftfin](https://github.com/jellyfin/Swiftfin) | App Jellyfin per iPhone, iPad e Apple TV, compatibile con Platea | [MPL-2.0](https://github.com/jellyfin/Swiftfin/blob/main/LICENSE.md) |
-| [Infuse](https://firecore.com/infuse) | Player di Firecore per iPhone, iPad, Apple TV e Mac, compatibile con Platea come server Jellyfin | Proprietaria (Firecore, LLC) |
-| [Findroid](https://github.com/jarnedemeulemeester/findroid) | App Jellyfin per Android | [GPL-3.0](https://github.com/jarnedemeulemeester/findroid/blob/main/LICENSE) |
-| [Jellyfin per Android TV](https://github.com/jellyfin/jellyfin-androidtv) | App Jellyfin per Android TV e Fire TV | [GPL-2.0](https://github.com/jellyfin/jellyfin-androidtv/blob/master/LICENSE) |
-| [The Movie Database (TMDB)](https://www.themoviedb.org) | Metadati e immagini. Questo prodotto usa l'API di TMDB ma non è approvato né certificato da TMDB (l'attribuzione con il logo è nella pagina Informazioni della web UI) | [Termini dell'API](https://www.themoviedb.org/api-terms-of-use) |
-| [rclone](https://rclone.org) | Montare gli storage cloud letti da Platea, con il controllo remoto usato dalla scansione | [MIT](https://github.com/rclone/rclone/blob/master/COPYING) |
-| [Kodi](https://kodi.tv), [Plex](https://www.plex.tv) | Formati dei file `.nfo` e `.plexmatch`, letti per i metadati locali | — |
+| [Jellyfin](https://jellyfin.org) | The free media server that inspired Platea. Platea contains no Jellyfin code. It implements part of the public Jellyfin API on its own so that existing apps work. The name "Jellyfin" is reserved for the Jellyfin project and its official clients. | [GPL-2.0](https://github.com/jellyfin/jellyfin/blob/master/LICENSE) |
+| [jellyfin-ffmpeg](https://github.com/jellyfin/jellyfin-ffmpeg) | The FFmpeg build shipped in the server image and run as a separate program for probing and transcoding | [LGPL-2.1+ with GPL parts](https://github.com/jellyfin/jellyfin-ffmpeg/blob/jellyfin/LICENSE.md), source in their repository |
+| [Swiftfin](https://github.com/jellyfin/Swiftfin) | Jellyfin app for iPhone, iPad and Apple TV | [MPL-2.0](https://github.com/jellyfin/Swiftfin/blob/main/LICENSE.md) |
+| [Infuse](https://firecore.com/infuse) | Video player by Firecore for Apple devices | Proprietary (Firecore, LLC) |
+| [Findroid](https://github.com/jarnedemeulemeester/findroid) | Jellyfin app for Android | [GPL-3.0](https://github.com/jarnedemeulemeester/findroid/blob/main/LICENSE) |
+| [Jellyfin for Android TV](https://github.com/jellyfin/jellyfin-androidtv) | Jellyfin app for Android TV and Fire TV | [GPL-2.0](https://github.com/jellyfin/jellyfin-androidtv/blob/master/LICENSE) |
+| [The Movie Database (TMDB)](https://www.themoviedb.org) | Metadata and images. This product uses the TMDB API but is not endorsed or certified by TMDB. The attribution with the TMDB logo is on the About page of the web app. | [API terms](https://www.themoviedb.org/api-terms-of-use) |
+| [rclone](https://rclone.org) | Mounting cloud storage, and the remote control used by scans | [MIT](https://github.com/rclone/rclone/blob/master/COPYING) |
+| [Kodi](https://kodi.tv), [Plex](https://www.plex.tv) | The `.nfo` and `.plexmatch` file formats | |
 
-Il server usa librerie Rust come [tokio](https://tokio.rs), [axum](https://github.com/tokio-rs/axum), [sqlx](https://github.com/launchbadge/sqlx) e [SQLite](https://sqlite.org); la web UI [React](https://react.dev), [Vite](https://vite.dev), [TanStack Query](https://tanstack.com/query), [hls.js](https://github.com/video-dev/hls.js) e [Lucide](https://lucide.dev). Le loro licenze (MIT, Apache-2.0 e simili) sono nei rispettivi pacchetti. Grazie a tutte le persone che li mantengono.
+The server is built on Rust libraries such as [tokio](https://tokio.rs), [axum](https://github.com/tokio-rs/axum), [sqlx](https://github.com/launchbadge/sqlx) and [SQLite](https://sqlite.org). The web app uses [React](https://react.dev), [Vite](https://vite.dev), [TanStack Query](https://tanstack.com/query), [hls.js](https://github.com/video-dev/hls.js) and [Lucide](https://lucide.dev). Their licenses are included in their packages. Thanks to everyone who maintains them.

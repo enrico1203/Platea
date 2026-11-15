@@ -11,7 +11,8 @@ Le note sull'installazione dell'utente (mount, porte, librerie) stanno in `PROGR
 - Un `docker-compose.yml` nella root che avvia sia `Server/` sia `WebApp/`.
 - Repository GitHub privata `Platea`; fare sempre commit e push su `main`.
 - Testare da soli le cose (build, test unitari, prove end-to-end con curl/browser nei container).
-- Tenere aggiornato il README.
+- Tenere aggiornato il README. **Dal 15/11/2026 il README è in inglese, scritto in modo semplice (niente formule da
+  intelligenza artificiale, niente grassetti a inizio elenco): una frase, app compatibili, compose d'esempio, poi il resto.**
 - Scaricare da soli FFmpeg (jellyfin-ffmpeg) e le altre dipendenze.
 - Fare domande solo se indispensabile, cercando di non fermarsi mai.
 - Scrivere sempre in questo file cosa è stato fatto e dove si è arrivati.
