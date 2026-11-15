@@ -13,3 +13,4 @@ WebApp/dist/
 WebApp/*.tsbuildinfo
 /docker-compose.override.yml
 clients/
+PROGRESS.local.md

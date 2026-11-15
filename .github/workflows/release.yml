@@ -1,0 +1,81 @@
+# Pubblica le immagini Docker di server e web UI.
+# - Su GitHub Container Registry (ghcr.io/<proprietario>/platea-server|platea-web): sempre, con il token del workflow.
+# - Su Docker Hub (docker.io/<utente>/platea-server|platea-web): se nel repository ci sono i segreti
+#   DOCKERHUB_USERNAME e DOCKERHUB_TOKEN (Settings › Secrets and variables › Actions).
+# Un tag vX.Y.Z pubblica X.Y.Z, X.Y e latest; un push su main pubblica "edge"; si può avviare anche a mano.
+name: Release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  images:
+    name: Immagine ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    env:
+      # Vuoto se il segreto non c'è: Docker Hub si salta.
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: platea-server
+            context: ./Server
+          - image: platea-web
+            context: ./WebApp
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Accesso a GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Accesso a Docker Hub (se configurato)
+        id: dockerhub
+        if: ${{ env.DOCKERHUB_USERNAME != '' }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Nomi e tag
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+            name=docker.io/${{ env.DOCKERHUB_USERNAME }}/${{ matrix.image }},enable=${{ env.DOCKERHUB_USERNAME != '' }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=edge,enable=${{ github.ref == 'refs/heads/main' }}
+          labels: |
+            org.opencontainers.image.title=${{ matrix.image }}
+            org.opencontainers.image.description=Platea, open source media server
+            org.opencontainers.image.licenses=AGPL-3.0-only
+
+      # Il server (Rust) si compila per arm64 solo nelle versioni con tag: in emulazione richiede molto tempo.
+      - name: Build e pubblicazione
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          platforms: ${{ startsWith(github.ref, 'refs/tags/v') && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}

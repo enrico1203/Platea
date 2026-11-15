@@ -31,11 +31,16 @@ Serve Docker con il plugin Compose.
 ```sh
 git clone https://github.com/enrico1203/Platea.git
 cd Platea
-cp .env.example .env          # porte, fuso orario, tunnel (facoltativo)
+cp .env.example .env          # porte, fuso orario, versione, tunnel (facoltativo)
 # in docker-compose.yml, servizio server → volumes: una riga per ogni cartella dei media
-docker compose up -d --build
+docker compose pull           # immagini pronte da GitHub Container Registry (amd64 e arm64)
+docker compose up -d
 docker compose logs server | grep -i codice
 ```
+
+Le immagini sono `ghcr.io/enrico1203/platea-server` e `ghcr.io/enrico1203/platea-web`: `latest` è l'ultima versione,
+`edge` l'ultimo commit su `main`, oppure un numero di versione (`PLATEA_TAG` nel `.env`). Per costruirle dai sorgenti:
+`docker compose up -d --build`.
 
 Apri `http://<host>:8080`, inserisci il codice di primo avvio stampato nei log e segui la procedura guidata: amministratore, prima libreria, chiave TMDB, prova della GPU.
 
@@ -55,7 +60,7 @@ Apri `http://<host>:8080`, inserisci il codice di primo avvio stampato nei log e
 
 **Password dimenticata.** Da terminale, con il server in funzione: `docker compose exec server platea reset-password <utente>` stampa una password nuova (o `… reset-password <utente> <password>` per sceglierla). L'account torna attivo e tutti i suoi dispositivi vengono scollegati.
 
-Per aggiornare: `git pull && docker compose up -d --build`. Le migrazioni del database partono da sole, dopo una copia di sicurezza (`data/platea.db.bak-…`, si tengono le ultime 2). Provato aggiornando dalla prima versione pubblicata a quella attuale in un colpo solo: account, token, stato di visione e preferiti restano. Le versioni più vecchie giravano come root: se dopo l'aggiornamento il server si ferma con «i dati non sono accessibili all'utente del server», esegui il `chown` indicato sopra.
+Per aggiornare: `git pull && docker compose pull && docker compose up -d` (oppure `--build` se le costruisci dai sorgenti). Le migrazioni del database partono da sole, dopo una copia di sicurezza (`data/platea.db.bak-…`, si tengono le ultime 2). Provato aggiornando dalla prima versione pubblicata a quella attuale in un colpo solo: account, token, stato di visione e preferiti restano. Le versioni più vecchie giravano come root: se dopo l'aggiornamento il server si ferma con «i dati non sono accessibili all'utente del server», esegui il `chown` indicato sopra.
 
 **Backup.** Ogni 24 ore il server copia il database in `./data/backups` (le ultime 7; intervallo e numero in Impostazioni → Generali). Da **Amministrazione → Sistema** si crea una copia al volo, la si scarica, o si ripristina il database da una copia o da un file: il server si riavvia da solo e il database precedente resta in `./data` come `platea.db.before-restore-…`.
 

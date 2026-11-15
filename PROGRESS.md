@@ -2,6 +2,7 @@
 
 Questo file è la memoria del progetto tra una sessione e l'altra. Va aggiornato a ogni passo concluso.
 Se la sessione si interrompe, alla ripresa ("continua") si riparte da qui: leggere **Dove sono arrivato** e **Prossimi passi**.
+Le note sull'installazione dell'utente (mount, porte, librerie) stanno in `PROGRESS.local.md`, non versionato: leggerlo insieme a questo.
 
 ## Indicazioni di lavoro (dall'utente)
 
@@ -31,10 +32,8 @@ Se la sessione si interrompe, alla ripresa ("continua") si riparte da qui: legge
 - Nessun cargo/node sull'host: build solo via Docker.
 - 14/11/2026: l'installazione locale è stata azzerata su richiesta dell'utente (data, cache, transcode):
   l'onboarding lo fa l'utente. Niente account o librerie di prova sul database dell'utente.
-  Cartelle dei media dell'utente in `docker-compose.override.yml` (NON versionato): `/mnt/{jotta2,ortiad,john,
-  audiolibri,film,serie}` → `/media/<nome>:ro,rslave` (mount rclone dell'host). rc di rclone: jotta2 :6470,
-  film :8573, serie :8574, john :8575, ortiad :8578, audiolibri :8579 — in Impostazioni → Scansione → "Mount rclone"
-  (`/media/<nome>=http://host.docker.internal:<porta>`), uno per mount; ogni cartella di libreria usa il suo.
+  Cartelle dei media, mount rclone e loro controllo remoto: in `docker-compose.override.yml` e in `PROGRESS.local.md`
+  (entrambi non versionati).
   Tunnel Cloudflare attivo (profilo `tunnel`, token in `.env`). Password dimenticata:
   `docker compose exec server platea reset-password <utente>`.
 - 15/11/2026: da telefono le sezioni admin non erano raggiungibili (menu laterale nascosto, la tab porta solo a
@@ -122,9 +121,9 @@ Se la sessione si interrompe, alla ripresa ("continua") si riparte da qui: legge
 
 ### Prova sulla libreria reale dell'utente (2026-11-14)
 
-Mount rclone (Jottacloud crypt) dell'utente su `/mnt/jotta2`: 8.517 cartelle, 8.495 MKV quasi tutti con `.nfo` Kodi.
+Mount rclone di uno storage cloud cifrato: 8.517 cartelle, 8.495 MKV quasi tutti con `.nfo` Kodi.
 Montato SOLO in lettura nel container (`docker-compose.override.yml` locale, non versionato:
-`/mnt/jotta2:/media/jotta2:ro,rslave` + `extra_hosts host.docker.internal:host-gateway` per l'rc di rclone su :6470).
+`/mnt/<mount>:/media/<mount>:ro,rslave` + `extra_hosts host.docker.internal:host-gateway` per l'rc di rclone).
 **Regola dell'utente: mai scrivere nelle cartelle dei media; copertine e metadati solo nel DB o in cache locale.**
 Libreria "Film cloud" (profilo Remoto) creata nel compose locale.
 
@@ -292,8 +291,7 @@ Script del benchmark: `scripts/bench_library.py` (genera la libreria sintetica).
 
 ## Prossimi passi
 
-Aggiornati il 15/11/2026. Chiave TMDB inserita dall'utente durante l'onboarding: 10.883 film e 5.790 serie associati;
-restano 321 "da verificare" e 328 non riconosciuti (da vedere a mano dall'utente).
+Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.local.md` (non versionato).
 
 1. [x] Keyframe degli MP4/MOV dal box `moov` (`mp4.rs`: stss + stts + ctts + elst), anche remoti: identici a ffprobe
    su 5 file di prova (H.264/HEVC, moov in testa e in coda, MOV, ritardo iniziale) e su un episodio vero dal cloud
@@ -399,6 +397,14 @@ restano 321 "da verificare" e 328 non riconosciuti (da vedere a mano dall'utente
    per Android TV (nativa, a differenza dell'app per telefoni). Se danno errore: log ("percorso non gestito",
    "richiesta Jellyfin senza token riconosciuto"), eventualmente `PLATEA_LOG=info,tower_http=debug` per un po'.
 5. Fase 3: QSV/VA-API/NVENC/AMD, tone mapping in GPU, uscita HEVC/AV1 su hardware reale (qui non c'è GPU).
+5b. [x] Apertura del progetto (15/11/2026, richiesta dell'utente): repository pubblica; README con licenza
+   AGPL-3.0, progetti collegati con link e licenze verificate (Jellyfin GPL-2.0, Swiftfin MPL-2.0, Findroid GPL-3.0,
+   Jellyfin per Android TV GPL-2.0, jellyfin-ffmpeg LGPL/GPL, Infuse proprietaria, TMDB con logo e avviso,
+   rclone MIT), nessun logo altrui, avviso di non affiliazione; CONTRIBUTING.md, SECURITY.md (segnalazione privata di
+   GitHub); logo TMDB approvato in Informazioni (era solo testo); esempi generici (niente dati dell'installazione).
+   Immagini: `.github/workflows/release.yml` su ghcr.io (edge da main, versione + latest dai tag v*, arm64 solo nei
+   tag); Docker Hub pronto ma spento finché non ci sono i segreti DOCKERHUB_USERNAME e DOCKERHUB_TOKEN.
+   docker-compose usa ghcr.io/enrico1203/platea-*:${PLATEA_TAG:-latest}. Commit con email noreply di GitHub.
 6. Fase 5 (rilascio). [x] Revisione di sicurezza interna (15/11/2026), corretti:
    - download delle immagini: la risposta era letta tutta prima del controllo di dimensione (una risposta senza fine
      riempiva la RAM) → lettura a pezzi, tetto 20 MB, Content-Length controllato;

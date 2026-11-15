@@ -897,8 +897,8 @@ Criterio di uscita: un'installazione nuova si configura per intero dal browser, 
 - [ ] Raggiungimento degli obiettivi della sezione Prestazioni
 - [ ] Revisione di sicurezza esterna
 - [ ] Documentazione completa per installazione, GPU, proxy e rclone
-- [ ] Immagine Docker (binari per Linux, Windows e macOS rimandati: per ora solo Docker, decisione del 15/11/2026)
-- [ ] Procedura di aggiornamento provata tra versioni
+- [x] Immagine Docker su ghcr.io, amd64 e arm64 (binari per Linux, Windows e macOS rimandati: per ora solo Docker, decisione del 15/11/2026)
+- [x] Procedura di aggiornamento provata tra versioni
 
 Criterio di uscita: obiettivi di prestazione raggiunti e nessun problema di sicurezza aperto. Rilascio della 1.0.
 
@@ -958,7 +958,7 @@ Il rischio principale è l'ampiezza: Jellyfin è il risultato di anni di lavoro 
 - [x] Installazione
 
   Docker Compose con server e web UI, e procedura guidata nel browser.
-- [ ] Licenza: AGPL-3.0 come proposto, oppure permissiva
+- [x] Licenza: AGPL-3.0-only
 - [ ] Motore per il direct play di MKV nelle app Apple: mpv, VLC, oppure remux dal server
 - [ ] Fire TV con Vega OS: fuori dal piano, oppure un'app dedicata in futuro
 - [ ] Chiave TMDB: una per installazione oppure una distribuita con il progetto

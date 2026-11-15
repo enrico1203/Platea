@@ -47,7 +47,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: docker compose build
       - name: Upload images for the security scan
-        run: docker save platea-server:latest platea-web:latest -o images.tar
+        run: docker save ghcr.io/enrico1203/platea-server:latest ghcr.io/enrico1203/platea-web:latest -o images.tar
       - uses: actions/upload-artifact@v4
         with:
           name: images
@@ -79,9 +79,9 @@ jobs:
           $TRIVY config --quiet --exit-code 1 --severity HIGH,CRITICAL /src/WebApp
       - name: Images (fixable)
         run: |
-          $TRIVY image --quiet --exit-code 1 --ignore-unfixed --scanners vuln --severity HIGH,CRITICAL platea-server:latest
-          $TRIVY image --quiet --exit-code 1 --ignore-unfixed --scanners vuln --severity HIGH,CRITICAL platea-web:latest
+          $TRIVY image --quiet --exit-code 1 --ignore-unfixed --scanners vuln --severity HIGH,CRITICAL ghcr.io/enrico1203/platea-server:latest
+          $TRIVY image --quiet --exit-code 1 --ignore-unfixed --scanners vuln --severity HIGH,CRITICAL ghcr.io/enrico1203/platea-web:latest
       - name: Images (not yet fixed upstream, report only)
         run: |
-          $TRIVY image --quiet --scanners vuln --severity HIGH,CRITICAL platea-server:latest
-          $TRIVY image --quiet --scanners vuln --severity HIGH,CRITICAL platea-web:latest
+          $TRIVY image --quiet --scanners vuln --severity HIGH,CRITICAL ghcr.io/enrico1203/platea-server:latest
+          $TRIVY image --quiet --scanners vuln --severity HIGH,CRITICAL ghcr.io/enrico1203/platea-web:latest
