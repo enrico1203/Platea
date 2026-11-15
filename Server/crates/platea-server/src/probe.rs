@@ -242,9 +242,9 @@ pub async fn probe_file_job(state: &Shared, file_id: i64) -> anyhow::Result<()> 
     save_probe(state, file_id, &rel, &out).await?;
     tracing::debug!(file = %rel, ms = t0.elapsed().as_millis() as u64, "analisi completata");
 
-    // Matroska: l'indice dei keyframe viene dai Cues, costa poco anche sul cloud e accelera il primo remux.
+    // MKV e MP4: l'indice dei keyframe viene dal contenitore (Cues, moov), costa poco anche sul cloud e accelera il primo remux.
     if !matches!(sqlx::query_scalar::<_, i64>("SELECT 1 FROM keyframes WHERE file_id = ?").bind(file_id).fetch_optional(&state.db.read).await, Ok(Some(_))) {
-        if let Some(times) = mkv_cues(state, &abs, &rel, size).await {
+        if let Some(times) = container_keyframes(state, &abs, &rel, size).await {
             save_keyframes(state, file_id, &times).await?;
         }
     }
@@ -352,8 +352,8 @@ pub async fn extract_keyframes_job(state: &Shared, file_id: i64) -> anyhow::Resu
         return Ok(decode_keyframes(&blob));
     }
     let Some((abs, rel, size, _mtime, library_id)) = file_abs_path(state, file_id).await? else { bail!("file non trovato") };
-    // Matroska: l'indice dei Cues basta e costa poche letture.
-    if let Some(times) = mkv_cues(state, &abs, &rel, size).await {
+    // MKV e MP4: l'indice del contenitore basta e costa poche letture.
+    if let Some(times) = container_keyframes(state, &abs, &rel, size).await {
         save_keyframes(state, file_id, &times).await?;
         return Ok(times);
     }
@@ -405,21 +405,27 @@ async fn save_keyframes(state: &Shared, file_id: i64, times: &[i64]) -> anyhow::
     Ok(())
 }
 
-/// Keyframe dai Cues di un MKV, con un tempo limite: un mount lento non blocca nulla.
-async fn mkv_cues(state: &Shared, abs: &std::path::Path, rel: &str, size: i64) -> Option<Vec<i64>> {
+/// Keyframe dall'indice del contenitore (Cues di un MKV, `moov` di un MP4/MOV), con un tempo limite:
+/// poche letture anche su un mount cloud, e un mount lento non blocca nulla.
+async fn container_keyframes(state: &Shared, abs: &std::path::Path, rel: &str, size: i64) -> Option<Vec<i64>> {
     let ext = platea_naming::extension(rel).unwrap_or_default().to_ascii_lowercase();
-    if !matches!(ext.as_str(), "mkv" | "webm" | "mk3d") {
+    let mkv = matches!(ext.as_str(), "mkv" | "webm" | "mk3d");
+    if !mkv && !matches!(ext.as_str(), "mp4" | "m4v" | "mov") {
         return None;
     }
     let path = abs.to_path_buf();
     let timeout = Duration::from_secs(state.settings.get().scanner.fs_timeout_seconds.max(5) as u64 * 2);
     let t0 = std::time::Instant::now();
     let task = tokio::task::spawn_blocking(move || {
-        let f = std::fs::File::open(&path).ok()?;
-        crate::mkv::cue_keyframes(std::io::BufReader::with_capacity(64 * 1024, f), size.max(0) as u64)
+        let f = std::io::BufReader::with_capacity(64 * 1024, std::fs::File::open(&path).ok()?);
+        if mkv {
+            crate::mkv::cue_keyframes(f, size.max(0) as u64)
+        } else {
+            crate::mp4::sync_keyframes(f, size.max(0) as u64)
+        }
     });
     let r = tokio::time::timeout(timeout, task).await.ok()?.ok()?;
-    tracing::debug!(file = rel, ms = t0.elapsed().as_millis() as u64, keyframes = r.as_ref().map(|v| v.len()), "indice Cues MKV");
+    tracing::debug!(file = rel, ms = t0.elapsed().as_millis() as u64, keyframes = r.as_ref().map(|v| v.len()), "indice dei keyframe dal contenitore");
     r
 }
 

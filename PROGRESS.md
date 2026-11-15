@@ -295,7 +295,9 @@ Script del benchmark: `scripts/bench_library.py` (genera la libreria sintetica).
 Aggiornati il 15/11/2026. Chiave TMDB messa dall'utente nelle Impostazioni: 10.883 film e 5.790 serie associati;
 restano 321 "da verificare" e 328 non riconosciuti (da vedere a mano dall'utente).
 
-1. Keyframe degli MP4 remoti dal box `stss` (ora un MP4 remoto senza indice va sempre in transcodifica).
+1. [x] Keyframe degli MP4/MOV dal box `moov` (`mp4.rs`: stss + stts + ctts + elst), anche remoti: identici a ffprobe
+   su 5 file di prova (H.264/HEVC, moov in testa e in coda, MOV, ritardo iniziale) e su un episodio vero dal cloud
+   (190 keyframe, scarto 0 ms). MP4 frammentati: ancora ffprobe (solo locali).
 2. Miniature sulla barra di avanzamento (trickplay), opzionali per libreria.
 3. Quick Connect: accesso con un codice da un altro dispositivo (serve alle app TV).
 4. `.plexmatch` righe `ep:` e NFO dei singoli episodi.
@@ -306,9 +308,11 @@ restano 321 "da verificare" e 328 non riconosciuti (da vedere a mano dall'utente
 
 ## Debito tecnico noto (da fare dopo)
 
-- Vedi i punti 1 e 4 dei Prossimi passi.
+- Vedi il punto 4 dei Prossimi passi.
 
 ## Registro
+
+- 2026-11-15 — Keyframe degli MP4 dal moov: remux anche per gli MP4 remoti.
 
 - 2026-11-14 — Filtri per decennio e qualità, capitoli nel player, immagini caricate a mano; corretto il riuso degli ID immagine.
 - 2026-11-14 — Personalizzazione utenti (download, fasce orarie, preferenze, avatar), persona e simili, home "in scena".

@@ -19,6 +19,7 @@ mod logs;
 mod maintenance;
 mod metadata;
 mod mkv;
+mod mp4;
 mod net;
 mod prefs;
 mod probe;
