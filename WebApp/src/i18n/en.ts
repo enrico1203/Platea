@@ -236,6 +236,7 @@ const en = {
     next: "Next episode",
     subtitlesAudio: "Subtitles and audio",
     quality: "Quality",
+    qualityAuto: "Automatic",
     original: "Original",
     info: "Playback info",
     fullscreen: "Full screen",
@@ -258,6 +259,9 @@ const en = {
   },
   account: {
     rememberTracks: "Remember chosen tracks",
+    qualityLocal: "Default quality at home",
+    qualityRemote: "Default quality away from home",
+    qualityHint: "Away from home applies when the server sees you from a non-local network (for example through the tunnel). In the player you can always pick another one for the video you're watching.",
     rememberTracksHint: "Audio and subtitles picked in the player apply to that movie, or to every episode of the show.",
     revokeOthers: "Sign out all others",
     revokedOthers: { one: "{count} device signed out.", other: "{count} devices signed out." },

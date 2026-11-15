@@ -58,6 +58,9 @@ pub struct InfoReq {
     /// Lingua dell'interfaccia del client (es. "it"): per i sottotitoli quando l'utente non ne ha scelta una.
     #[serde(default)]
     pub ui_language: Option<String>,
+    /// Qualità scelta a mano nel player (anche "originale"): la qualità predefinita delle preferenze non si applica.
+    #[serde(default)]
+    pub explicit_quality: bool,
 }
 
 #[derive(sqlx::FromRow)]
@@ -300,14 +303,17 @@ async fn info(State(state): State<Shared>, user: AuthUser, Json(req): Json<InfoR
     }
 
     let s = state.settings.get();
-    // Limite di bitrate: utente, client, eventualmente da remoto.
+    let mut prefs = crate::prefs::load(&state, user.user_id).await;
+    // Limite di bitrate: utente, client, eventualmente da remoto, qualità predefinita dell'utente.
     let mut user_max = user.perms.max_bitrate.map(|b| b as u64);
-    if let Some(ip) = user.ip {
-        let remote = !crate::net::in_any(&s.network.local_networks, ip);
-        let remote_max = s.network.remote_max_bitrate_mbps as u64 * 1_000_000;
-        if remote && remote_max > 0 {
-            user_max = Some(user_max.map_or(remote_max, |u| u.min(remote_max)));
-        }
+    let remote = user.ip.is_some_and(|ip| !crate::net::in_any(&s.network.local_networks, ip));
+    let remote_max = s.network.remote_max_bitrate_mbps as u64 * 1_000_000;
+    if remote && remote_max > 0 {
+        user_max = Some(user_max.map_or(remote_max, |u| u.min(remote_max)));
+    }
+    let pref_max = if remote { prefs.max_bitrate_remote } else { prefs.max_bitrate_local };
+    if !req.explicit_quality && pref_max > 0 {
+        user_max = Some(user_max.map_or(pref_max, |u| u.min(pref_max)));
     }
     if let Some(m) = req.max_bitrate.filter(|m| *m > 0) {
         user_max = Some(user_max.map_or(m, |u| u.min(m)));
@@ -324,7 +330,6 @@ async fn info(State(state): State<Shared>, user: AuthUser, Json(req): Json<InfoR
 
     // Preferenze dell'utente: lingua audio (per file, gli indici cambiano tra versioni) e sottotitoli suggeriti.
     // Le tracce scelte l'ultima volta per questo film o per questa serie vincono sulle preferenze generali.
-    let mut prefs = crate::prefs::load(&state, user.user_id).await;
     let mut subtitles_off = false;
     if prefs.remember_tracks {
         let key = if item.kind == "episode" { item.series_id.unwrap_or(item_id) } else { item_id };
@@ -574,6 +579,8 @@ async fn info(State(state): State<Shared>, user: AuthUser, Json(req): Json<InfoR
         "audio_tracks": file.media.audio.iter().map(|a| json!({ "index": a.index, "codec": a.codec, "channels": a.channels, "language": a.language, "default": a.default })).collect::<Vec<_>>(),
         "subtitles": subtitles,
         "trickplay": trickplay,
+        // Limite di bitrate applicato (permessi, rete, qualità predefinita o scelta nel player); null = originale.
+        "max_bitrate": user_max,
         "container": file.media.container,
     })))
 }

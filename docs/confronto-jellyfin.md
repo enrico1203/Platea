@@ -42,7 +42,7 @@ La colonna **Priorità** indica l'ordine di lavoro: **A** subito, **B** dopo, **
 | Nascondere i già visti tra gli "aggiunti di recente" | ✅ | ✅ | — |
 | Immagine del profilo | ✅ | ✅ | — |
 | Tema chiaro/scuro | ✅ | ✅ | — |
-| Qualità massima predefinita | ✅ | 🟡 (ogni video parte in originale; un limite scelto nel player vale per quel video) | B |
+| Qualità massima predefinita | ✅ | ✅ (in casa e fuori casa, nell'Account; una scelta nel player vale per quel video) | — |
 | Cambio password | ✅ | ✅ | — |
 
 ## Libreria e navigazione

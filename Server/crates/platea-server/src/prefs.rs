@@ -48,6 +48,10 @@ pub struct UserPrefs {
     pub theme: String,
     /// Ricordare per ogni film e serie le tracce scelte nel player.
     pub remember_tracks: bool,
+    /// Qualità predefinita (bit/s) nella rete di casa; 0 = originale. Una scelta nel player vale per quel video.
+    pub max_bitrate_local: u64,
+    /// Qualità predefinita (bit/s) da fuori casa; 0 = originale.
+    pub max_bitrate_remote: u64,
 }
 
 pub const HOME_SECTIONS: &[&str] = &["resume", "next_up", "recent"];
@@ -69,6 +73,8 @@ impl Default for UserPrefs {
             hide_played_in_recent: false,
             theme: "auto".into(),
             remember_tracks: true,
+            max_bitrate_local: 0,
+            max_bitrate_remote: 0,
         }
     }
 }
@@ -92,6 +98,12 @@ impl UserPrefs {
         let mut seen = std::collections::HashSet::new();
         self.home_sections.retain(|s| HOME_SECTIONS.contains(&s.as_str()) && seen.insert(s.clone()));
         self.home_hidden_libraries.truncate(200);
+        // Sotto 500 kb/s non si vede nulla: valori più bassi sono un errore del client.
+        for b in [&mut self.max_bitrate_local, &mut self.max_bitrate_remote] {
+            if *b != 0 {
+                *b = (*b).clamp(500_000, 400_000_000);
+            }
+        }
         self
     }
 

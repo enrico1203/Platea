@@ -13,7 +13,7 @@ import { getTheme, setTheme, type Theme } from "../lib/theme";
 import { DEFAULT_PREFS, LANGUAGES, languageName, savePrefs } from "../lib/prefs";
 
 export default function Account() {
-  const { t, locale, setLocale, relative, date, tag } = useI18n();
+  const { t, locale, setLocale, relative, date, tag, bitrate } = useI18n();
   const { me, logout, reload, info } = useSession();
   const qc = useQueryClient();
   const { data: libs } = useLibraries();
@@ -90,6 +90,13 @@ export default function Account() {
           <SelectField label={t("account.subtitleSize")} value={prefs.subtitle_size} onChange={(v) => update({ subtitle_size: v as UserPrefs["subtitle_size"] })} options={(["s", "m", "l", "xl"] as const).map((s) => ({ value: s, label: t(`account.sizes.${s}` as "account.sizes.m") }))} />
           <div style={{ alignSelf: "end" }}><Switch checked={prefs.subtitle_background} onChange={(v) => update({ subtitle_background: v })} label={t("account.subtitleBackground")} /></div>
         </div>
+        <div className="form-grid">
+          {(["max_bitrate_local", "max_bitrate_remote"] as const).map((k) => (
+            <SelectField key={k} label={t(k === "max_bitrate_local" ? "account.qualityLocal" : "account.qualityRemote")} value={String(prefs[k])} onChange={(v) => update({ [k]: Number(v) })}
+              options={[0, 40_000_000, 20_000_000, 8_000_000, 4_000_000, 2_000_000, 1_000_000].map((b) => ({ value: String(b), label: b === 0 ? t("player.original") : bitrate(b) }))} />
+          ))}
+        </div>
+        <p className="t-small subtle" style={{ marginTop: -8 }}>{t("account.qualityHint")}</p>
         <Switch checked={prefs.remember_tracks} onChange={(v) => update({ remember_tracks: v })} label={t("account.rememberTracks")} hint={t("account.rememberTracksHint")} />
         <Switch checked={prefs.autoplay_next} onChange={(v) => update({ autoplay_next: v })} label={t("account.autoplay")} hint={t("account.autoplayHint")} />
         <div className="form-grid">

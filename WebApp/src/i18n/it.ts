@@ -237,6 +237,7 @@ const it = {
     next: "Episodio successivo",
     subtitlesAudio: "Sottotitoli e audio",
     quality: "Qualità",
+    qualityAuto: "Automatica",
     original: "Originale",
     info: "Informazioni sulla riproduzione",
     fullscreen: "Schermo intero",
@@ -259,6 +260,9 @@ const it = {
   },
   account: {
     rememberTracks: "Ricorda le tracce scelte",
+    qualityLocal: "Qualità predefinita in casa",
+    qualityRemote: "Qualità predefinita fuori casa",
+    qualityHint: "Fuori casa vale quando il server ti vede da una rete diversa da quelle locali (per esempio dal tunnel). Nel player puoi sempre sceglierne un'altra per il video che stai guardando.",
     rememberTracksHint: "Audio e sottotitoli scelti nel player valgono per quel film, o per tutti gli episodi della serie.",
     revokeOthers: "Scollega tutti gli altri",
     revokedOthers: { one: "{count} dispositivo scollegato.", other: "{count} dispositivi scollegati." },

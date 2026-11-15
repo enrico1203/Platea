@@ -15,11 +15,11 @@ import { DEFAULT_PREFS } from "../lib/prefs";
 const QUALITIES = [0, 40_000_000, 20_000_000, 8_000_000, 4_000_000, 2_000_000, 1_000_000];
 const K_QUALITY = "platea.maxBitrate";
 
-/** Ogni video parte in qualità originale: un limite scelto nel player vale solo per quel video.
- *  (Prima la scelta restava nel browser e tutti i video successivi partivano limitati.) */
-function readQuality(): number {
+/** Ogni video parte con la qualità predefinita dell'utente (Account, in casa e fuori casa; `null` = automatica):
+ *  un limite scelto nel player vale solo per quel video. (Prima la scelta restava nel browser.) */
+function readQuality(): number | null {
   try { localStorage.removeItem(K_QUALITY); } catch { /* ignora */ }
-  return 0;
+  return null;
 }
 
 type Panel = null | "subs" | "settings" | "info" | "chapters";
@@ -76,7 +76,7 @@ export default function Player() {
   const [panel, setPanel] = useState<Panel>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const [subIndex, setSubIndex] = useState<number | null>(null);
-  const [quality, setQuality] = useState<number>(readQuality);
+  const [quality, setQuality] = useState<number | null>(readQuality);
   const [seekHint, setSeekHint] = useState<{ side: "left" | "right"; text: string } | null>(null);
   const [dragging, setDragging] = useState<number | null>(null);
   // Posizione sotto il mouse sulla barra (anteprima senza trascinare).
@@ -194,6 +194,7 @@ export default function Player() {
           item_id: id,
           file_id: search.get("file") ?? undefined,
           profile: buildProfile(quality || null),
+          explicit_quality: quality !== null,
           audio_index: opts.audioIndex ?? undefined,
           subtitle_index: opts.subtitleIndex ?? undefined,
           start_ms: Math.round(opts.startMs),
@@ -246,7 +247,7 @@ export default function Player() {
     hlsRef.current = null;
     try {
       const p = await api<PlaybackInfo>("/api/v1/playback/info", {
-        body: { item_id: id, file_id: search.get("file") ?? undefined, profile: castProfile(quality || null), audio_index: info?.audio_index ?? undefined, start_ms: Math.round(pos * 1000), ui_language: locale },
+        body: { item_id: id, file_id: search.get("file") ?? undefined, profile: castProfile(quality || null), explicit_quality: quality !== null, audio_index: info?.audio_index ?? undefined, start_ms: Math.round(pos * 1000), ui_language: locale },
       });
       castSessionRef.current = p.session_id;
       const rel = p.hls_url ?? p.stream_url;
@@ -696,6 +697,13 @@ export default function Player() {
       {panel === "settings" && (
         <div className="player__panel">
           <h4>{t("player.quality")}</h4>
+          <button className={quality === null ? "active" : ""} onClick={() => {
+            setQuality(null);
+            setPanel(null);
+            window.setTimeout(() => start({ startMs: (videoRef.current?.currentTime ?? 0) * 1000, audioIndex: info?.audio_index }), 0);
+          }}>
+            <span>{t("player.qualityAuto")}{quality === null && info ? ` · ${info.max_bitrate ? bitrate(info.max_bitrate) : t("player.original")}` : ""}</span>
+          </button>
           {QUALITIES.map((q) => (
             <button key={q} className={quality === q ? "active" : ""} onClick={() => {
               setQuality(q);

@@ -327,6 +327,9 @@ restano 321 "da verificare" e 328 non riconosciuti (da vedere a mano dall'utente
    nessun NFO di episodio, pochi `.plexmatch` senza righe `ep:`; 8.435 episodi "in attesa" sono numeri che TMDB non ha.
    Provato su server separato: ep: → episodi 1 e 2-3 della stessa serie, NFO dell'episodio applicato, episodio aggiunto
    dopo → serie aggiornata da sola con l'NFO nuovo.
+4b. [x] Qualità predefinita per utente (`max_bitrate_local`/`max_bitrate_remote` nelle preferenze, Account): applicata dal
+   server in `playback/info` se il player non ha scelto (`explicit_quality`), risposta con `max_bitrate` applicato; nel
+   player la voce "Automatica". Provato: 4 Mb/s in casa → transcodifica a 4 Mb/s; scelta esplicita → originale.
 5. Fase 3: QSV/VA-API/NVENC/AMD, tone mapping in GPU, uscita HEVC/AV1 su hardware reale (qui non c'è GPU).
 6. Fase 5 (rilascio): documentazione completa, aggiornamento tra versioni, revisione di sicurezza.
    **Decisione dell'utente (15/11/2026): solo Docker. Niente binari per Windows/macOS/Linux per ora.**
@@ -338,6 +341,8 @@ restano 321 "da verificare" e 328 non riconosciuti (da vedere a mano dall'utente
 - Nessuno in sospeso dai punti 1–4.
 
 ## Registro
+
+- 2026-11-15 — Qualità predefinita in casa e fuori casa.
 
 - 2026-11-15 — .plexmatch ep:, NFO degli episodi, aggiornamento della serie quando arrivano episodi nuovi.
 

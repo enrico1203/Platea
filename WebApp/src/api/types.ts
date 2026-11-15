@@ -39,6 +39,8 @@ export interface PlaybackInfo {
   subtitle: { delivery: string; index?: number };
   subtitle_default: number | null;
   trickplay: Trickplay | null;
+  /** Limite di bitrate applicato dal server; null = originale. */
+  max_bitrate: number | null;
   container: string;
 }
 /** Miniature della barra di avanzamento: griglie `cols`×`rows`, una ogni `interval_ms`; `{n}` nell'URL = numero della griglia. */
@@ -87,5 +89,6 @@ export interface UserPrefs {
   autoplay_next: boolean; autoplay_countdown_seconds: number; skip_back_seconds: number; skip_forward_seconds: number;
   subtitle_size: "s" | "m" | "l" | "xl"; subtitle_background: boolean;
   home_sections: string[]; home_hidden_libraries: string[]; hide_played_in_recent: boolean; theme: string; remember_tracks: boolean;
+  max_bitrate_local: number; max_bitrate_remote: number;
 }
 export interface PersonDetail { id: string; name: string; image: string | null; tmdb_id: number | null; items: (Item & { roles: { role: string; character: string | null }[] })[] }
