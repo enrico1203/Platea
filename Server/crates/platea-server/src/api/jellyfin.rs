@@ -96,6 +96,10 @@ pub fn router() -> Router<Shared> {
         // Endpoint usati dalle app Jellyfin recenti (Swiftfin, Jellyfin Android/TV, Findroid).
         .route("/System/Configuration", get(system_configuration))
         .route("/socket", get(jf_socket))
+        .route("/Playback/BitrateTest", get(bitrate_test))
+        .route("/LiveTv/Programs/Recommended", get(empty_items))
+        .route("/LiveTv/Programs", get(empty_items).post(empty_items))
+        .route("/LiveTv/Channels", get(empty_items))
         .route("/UserImage", get(user_image).head(user_image))
         .route("/Users/{user}/Images/{kind}", get(user_image_path).head(user_image_path))
         .route("/Branding/Splashscreen", get(splashscreen))
@@ -285,6 +289,12 @@ static CANONICAL: Lazy<HashMap<String, &'static str>> = Lazy::new(|| {
         "UserData",
         "Policy",
         "UserImage",
+        "Playback",
+        "BitrateTest",
+        "LiveTv",
+        "Programs",
+        "Recommended",
+        "Channels",
         "Splashscreen",
         "Css",
     ];
@@ -2278,4 +2288,20 @@ async fn splashscreen() -> Response {
 
 async fn branding_css() -> Response {
     Response::builder().header(header::CONTENT_TYPE, "text/css").body(Body::from("")).unwrap()
+}
+
+/// Prova di velocità di Swiftfin prima della riproduzione: `size` byte da scaricare (al massimo 20 MB), senza compressione.
+async fn bitrate_test(_u: AuthUser, Query(q): Query<HashMap<String, String>>) -> Response {
+    let size = query_ci(&q, "size").and_then(|v| v.parse::<usize>().ok()).unwrap_or(102_400).clamp(1, 20 * 1024 * 1024);
+    // Byte pseudo-casuali: niente di comprimibile lungo il percorso (Cloudflare), la misura resta vera.
+    let mut x: u64 = 0x9E37_79B9_7F4A_7C15 ^ size as u64;
+    let body: Vec<u8> = (0..size)
+        .map(|_| {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            x as u8
+        })
+        .collect();
+    Response::builder().header(header::CONTENT_TYPE, "application/octet-stream").header(header::CACHE_CONTROL, "no-store").body(Body::from(body)).unwrap()
 }
