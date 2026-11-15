@@ -1,0 +1,3697 @@
+{
+ "AudioStream": {
+  "properties": {
+   "bitrate": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "channel_layout": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "channels": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "codec": {
+    "type": "string"
+   },
+   "default": {
+    "type": "boolean"
+   },
+   "index": {
+    "type": "number"
+   },
+   "language": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "title": {
+    "type": [
+     "string",
+     "null"
+    ]
+   }
+  },
+  "required": [
+   "index",
+   "codec",
+   "channels",
+   "channel_layout",
+   "bitrate",
+   "language",
+   "title",
+   "default"
+  ],
+  "type": "object"
+ },
+ "Candidate": {
+  "properties": {
+   "overview": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "poster": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "provider_id": {
+    "type": "string"
+   },
+   "score": {
+    "type": "number"
+   },
+   "title": {
+    "type": "string"
+   },
+   "year": {
+    "type": [
+     "number",
+     "null"
+    ]
+   }
+  },
+  "required": [
+   "provider_id",
+   "title",
+   "year",
+   "score",
+   "poster"
+  ],
+  "type": "object"
+ },
+ "CandidateList": {
+  "properties": {
+   "items": {
+    "items": {
+     "$ref": "#/components/schemas/Candidate"
+    },
+    "type": "array"
+   }
+  },
+  "required": [
+   "items"
+  ],
+  "type": "object"
+ },
+ "Device": {
+  "properties": {
+   "client": {
+    "type": "string"
+   },
+   "client_version": {
+    "type": "string"
+   },
+   "created_at": {
+    "type": "number"
+   },
+   "current": {
+    "type": "boolean"
+   },
+   "device_id": {
+    "type": "string"
+   },
+   "device_name": {
+    "type": "string"
+   },
+   "id": {
+    "type": "string"
+   },
+   "last_ip": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "last_method": {
+    "anyOf": [
+     {
+      "$ref": "#/components/schemas/Method"
+     },
+     {
+      "type": "null"
+     }
+    ]
+   },
+   "last_played_at": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "last_played_title": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "last_used_at": {
+    "type": "number"
+   },
+   "playing": {
+    "properties": {
+     "method": {
+      "$ref": "#/components/schemas/Method"
+     },
+     "paused": {
+      "type": "boolean"
+     },
+     "subtitle": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "title": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "title",
+     "subtitle",
+     "method",
+     "paused"
+    ],
+    "type": "object"
+   },
+   "plays": {
+    "type": "number"
+   },
+   "remote": {
+    "type": [
+     "boolean",
+     "null"
+    ]
+   }
+  },
+  "required": [
+   "id",
+   "device_id",
+   "device_name",
+   "client",
+   "client_version",
+   "created_at",
+   "last_used_at",
+   "last_ip",
+   "current"
+  ],
+  "type": "object"
+ },
+ "DeviceList": {
+  "properties": {
+   "items": {
+    "items": {
+     "$ref": "#/components/schemas/Device"
+    },
+    "type": "array"
+   }
+  },
+  "required": [
+   "items"
+  ],
+  "type": "object"
+ },
+ "DeviceProfile": {
+  "description": "Profilo dispositivo del browser: il client dichiara ciò che sa riprodurre, il server non indovina mai.\n- Direct play: `canPlayType` dell'elemento video.\n- HLS: i segmenti sono MPEG-TS; hls.js li trasforma in MP4 per Media Source (H.264, AAC, MP3).",
+  "properties": {
+   "audio_codecs": {
+    "items": {
+     "properties": {
+      "codec": {
+       "type": "string"
+      },
+      "max_channels": {
+       "type": [
+        "number",
+        "null"
+       ]
+      }
+     },
+     "required": [
+      "codec"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   },
+   "containers": {
+    "items": {
+     "type": "string"
+    },
+    "type": "array"
+   },
+   "hdr": {
+    "items": {
+     "type": "string"
+    },
+    "type": "array"
+   },
+   "hls_audio_codecs": {
+    "items": {
+     "type": "string"
+    },
+    "type": "array"
+   },
+   "hls_video_codecs": {
+    "items": {
+     "type": "string"
+    },
+    "type": "array"
+   },
+   "max_bitrate": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "name": {
+    "type": "string"
+   },
+   "protocols": {
+    "items": {
+     "type": "string"
+    },
+    "type": "array"
+   },
+   "subtitle_image": {
+    "items": {
+     "type": "string"
+    },
+    "type": "array"
+   },
+   "subtitle_text": {
+    "items": {
+     "type": "string"
+    },
+    "type": "array"
+   },
+   "video_codecs": {
+    "items": {
+     "properties": {
+      "codec": {
+       "type": "string"
+      },
+      "max_bit_depth": {
+       "type": [
+        "number",
+        "null"
+       ]
+      },
+      "max_height": {
+       "type": [
+        "number",
+        "null"
+       ]
+      },
+      "max_level": {
+       "type": [
+        "number",
+        "null"
+       ]
+      },
+      "max_width": {
+       "type": [
+        "number",
+        "null"
+       ]
+      },
+      "profiles": {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      }
+     },
+     "required": [
+      "codec"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   }
+  },
+  "required": [
+   "name",
+   "containers",
+   "video_codecs",
+   "audio_codecs",
+   "subtitle_text",
+   "subtitle_image",
+   "hdr",
+   "max_bitrate",
+   "protocols",
+   "hls_video_codecs",
+   "hls_audio_codecs"
+  ],
+  "type": "object"
+ },
+ "Home": {
+  "properties": {
+   "next_up": {
+    "items": {
+     "$ref": "#/components/schemas/Item"
+    },
+    "type": "array"
+   },
+   "recent": {
+    "items": {
+     "properties": {
+      "items": {
+       "items": {
+        "$ref": "#/components/schemas/Item"
+       },
+       "type": "array"
+      },
+      "kind": {
+       "type": "string"
+      },
+      "library_id": {
+       "type": "string"
+      },
+      "library_name": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "library_id",
+      "library_name",
+      "kind",
+      "items"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   },
+   "resume": {
+    "items": {
+     "$ref": "#/components/schemas/Item"
+    },
+    "type": "array"
+   }
+  },
+  "required": [
+   "resume",
+   "next_up",
+   "recent"
+  ],
+  "type": "object"
+ },
+ "Item": {
+  "properties": {
+   "added_at": {
+    "type": "number"
+   },
+   "available": {
+    "type": "boolean"
+   },
+   "child_count": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "community_rating": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "end_date": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "id": {
+    "type": "string"
+   },
+   "images": {
+    "properties": {
+     "backdrop": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "logo": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "poster": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "poster_color": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "still": {
+      "type": [
+       "string",
+       "null"
+      ]
+     }
+    },
+    "required": [
+     "poster",
+     "poster_color",
+     "backdrop",
+     "still"
+    ],
+    "type": "object"
+   },
+   "index_end": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "index_number": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "kind": {
+    "$ref": "#/components/schemas/ItemKind"
+   },
+   "library_id": {
+    "type": "string"
+   },
+   "match_state": {
+    "type": "string"
+   },
+   "official_rating": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "original_title": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "overview": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "parent_id": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "parent_index_number": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "premiere_date": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "runtime_ms": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "series_id": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "series_title": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "status": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "title": {
+    "type": "string"
+   },
+   "unplayed_count": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "user_data": {
+    "$ref": "#/components/schemas/UserData"
+   },
+   "year": {
+    "type": [
+     "number",
+     "null"
+    ]
+   }
+  },
+  "required": [
+   "id",
+   "library_id",
+   "kind",
+   "title",
+   "original_title",
+   "year",
+   "index_number",
+   "index_end",
+   "parent_index_number",
+   "parent_id",
+   "series_id",
+   "series_title",
+   "overview",
+   "runtime_ms",
+   "community_rating",
+   "official_rating",
+   "premiere_date",
+   "end_date",
+   "status",
+   "available",
+   "match_state",
+   "added_at",
+   "images",
+   "user_data",
+   "child_count",
+   "unplayed_count"
+  ],
+  "type": "object"
+ },
+ "ItemDetail": {
+  "properties": {
+   "added_at": {
+    "type": "number"
+   },
+   "available": {
+    "type": "boolean"
+   },
+   "child_count": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "collections": {
+    "items": {
+     "properties": {
+      "id": {
+       "type": "string"
+      },
+      "title": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "id",
+      "title"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   },
+   "community_rating": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "end_date": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "external_ids": {
+    "additionalProperties": {
+     "type": "string"
+    },
+    "type": "object"
+   },
+   "files": {
+    "items": {
+     "$ref": "#/components/schemas/MediaFile"
+    },
+    "type": "array"
+   },
+   "genres": {
+    "items": {
+     "type": "string"
+    },
+    "type": "array"
+   },
+   "id": {
+    "type": "string"
+   },
+   "images": {
+    "properties": {
+     "backdrop": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "logo": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "poster": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "poster_color": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "still": {
+      "type": [
+       "string",
+       "null"
+      ]
+     }
+    },
+    "required": [
+     "poster",
+     "poster_color",
+     "backdrop",
+     "still"
+    ],
+    "type": "object"
+   },
+   "index_end": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "index_number": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "kind": {
+    "$ref": "#/components/schemas/ItemKind"
+   },
+   "library_id": {
+    "type": "string"
+   },
+   "locked_fields": {
+    "items": {
+     "type": "string"
+    },
+    "type": "array"
+   },
+   "manual_collection": {
+    "type": "boolean"
+   },
+   "match_state": {
+    "type": "string"
+   },
+   "official_rating": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "original_title": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "overview": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "parent_id": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "parent_index_number": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "people": {
+    "items": {
+     "$ref": "#/components/schemas/Person"
+    },
+    "type": "array"
+   },
+   "premiere_date": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "runtime_ms": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "series_id": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "series_title": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "status": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "studios": {
+    "items": {
+     "type": "string"
+    },
+    "type": "array"
+   },
+   "tagline": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "title": {
+    "type": "string"
+   },
+   "trailers": {
+    "items": {
+     "properties": {
+      "key": {
+       "type": "string"
+      },
+      "lang": {
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "name": {
+       "type": [
+        "string",
+        "null"
+       ]
+      }
+     },
+     "required": [
+      "key",
+      "name",
+      "lang"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   },
+   "unplayed_count": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "user_data": {
+    "$ref": "#/components/schemas/UserData"
+   },
+   "year": {
+    "type": [
+     "number",
+     "null"
+    ]
+   }
+  },
+  "required": [
+   "added_at",
+   "available",
+   "child_count",
+   "community_rating",
+   "end_date",
+   "external_ids",
+   "genres",
+   "id",
+   "images",
+   "index_end",
+   "index_number",
+   "kind",
+   "library_id",
+   "match_state",
+   "official_rating",
+   "original_title",
+   "overview",
+   "parent_id",
+   "parent_index_number",
+   "people",
+   "premiere_date",
+   "runtime_ms",
+   "series_id",
+   "series_title",
+   "status",
+   "studios",
+   "tagline",
+   "title",
+   "unplayed_count",
+   "user_data",
+   "year"
+  ],
+  "type": "object"
+ },
+ "ItemKind": {
+  "enum": [
+   "movie",
+   "series",
+   "season",
+   "episode",
+   "collection"
+  ],
+  "type": "string"
+ },
+ "ItemPage": {
+  "$ref": "#/components/schemas/PageItem",
+  "description": "Pagine concrete (il documento OpenAPI non ha tipi generici)."
+ },
+ "Job": {
+  "properties": {
+   "attempts": {
+    "type": "number"
+   },
+   "created_at": {
+    "type": "number"
+   },
+   "error": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "finished_at": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "id": {
+    "type": "number"
+   },
+   "kind": {
+    "type": "string"
+   },
+   "payload": {
+    "additionalProperties": {},
+    "type": "object"
+   },
+   "priority": {
+    "type": "number"
+   },
+   "run_after": {
+    "type": "number"
+   },
+   "started_at": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "state": {
+    "type": "string"
+   },
+   "subject": {
+    "properties": {
+     "detail": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "item_id": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "title": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "title",
+     "detail",
+     "item_id"
+    ],
+    "type": "object"
+   }
+  },
+  "required": [
+   "id",
+   "kind",
+   "payload",
+   "priority",
+   "state",
+   "attempts",
+   "run_after",
+   "created_at",
+   "started_at",
+   "finished_at",
+   "error"
+  ],
+  "type": "object"
+ },
+ "Library": {
+  "properties": {
+   "country": {
+    "type": "string"
+   },
+   "extract_keyframes": {
+    "type": "boolean"
+   },
+   "file_count": {
+    "type": "number"
+   },
+   "id": {
+    "type": "string"
+   },
+   "item_count": {
+    "type": "number"
+   },
+   "kind": {
+    "enum": [
+     "movies",
+     "shows"
+    ],
+    "type": "string"
+   },
+   "language": {
+    "type": "string"
+   },
+   "last_scan_at": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "last_scan_message": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "last_scan_status": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "missing_held": {
+    "type": "number"
+   },
+   "name": {
+    "type": "string"
+   },
+   "paths": {
+    "items": {
+     "type": "string"
+    },
+    "type": "array"
+   },
+   "probe_concurrency": {
+    "type": "number"
+   },
+   "probe_pause_on_play": {
+    "type": "boolean"
+   },
+   "probe_pending": {
+    "type": "number"
+   },
+   "probe_per_minute": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "probe_window_end": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "probe_window_start": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "scan_interval_minutes": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "scan_profile": {
+    "enum": [
+     "local",
+     "remote"
+    ],
+    "type": "string"
+   },
+   "trickplay": {
+    "type": "boolean"
+   },
+   "trickplay_done": {
+    "type": "number"
+   }
+  },
+  "required": [
+   "id",
+   "name",
+   "kind",
+   "item_count"
+  ],
+  "type": "object"
+ },
+ "LibraryPage": {
+  "$ref": "#/components/schemas/PageLibrary"
+ },
+ "LoginRequest": {
+  "properties": {
+   "client": {
+    "type": "string"
+   },
+   "client_version": {
+    "type": "string"
+   },
+   "device_id": {
+    "type": "string"
+   },
+   "device_name": {
+    "type": "string"
+   },
+   "password": {
+    "type": "string"
+   },
+   "username": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "username",
+   "password"
+  ],
+  "type": "object"
+ },
+ "LoginResponse": {
+  "properties": {
+   "token": {
+    "type": "string"
+   },
+   "user": {
+    "$ref": "#/components/schemas/UserRef"
+   }
+  },
+  "required": [
+   "token",
+   "user"
+  ],
+  "type": "object"
+ },
+ "Me": {
+  "properties": {
+   "avatar": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "device_name": {
+    "type": "string"
+   },
+   "id": {
+    "type": "string"
+   },
+   "is_admin": {
+    "type": "boolean"
+   },
+   "permissions": {
+    "properties": {
+     "access_schedule": {
+      "items": {
+       "$ref": "#/components/schemas/ScheduleSlot"
+      },
+      "type": "array"
+     },
+     "all_libraries": {
+      "type": "boolean"
+     },
+     "allow_download": {
+      "type": "boolean"
+     },
+     "allow_remote": {
+      "type": "boolean"
+     },
+     "allow_remux": {
+      "type": "boolean"
+     },
+     "allow_transcode": {
+      "type": "boolean"
+     },
+     "block_unrated": {
+      "type": "boolean"
+     },
+     "expired": {
+      "type": "boolean"
+     },
+     "expires_at": {
+      "type": [
+       "number",
+       "null"
+      ]
+     },
+     "library_ids": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "manage_devices": {
+      "type": "boolean"
+     },
+     "max_bitrate": {
+      "type": [
+       "number",
+       "null"
+      ]
+     },
+     "max_streams": {
+      "type": [
+       "number",
+       "null"
+      ]
+     },
+     "within_schedule": {
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "all_libraries",
+     "library_ids",
+     "allow_remux",
+     "allow_transcode",
+     "max_bitrate",
+     "max_streams",
+     "allow_remote",
+     "manage_devices",
+     "expires_at",
+     "expired",
+     "allow_download",
+     "block_unrated",
+     "access_schedule",
+     "within_schedule"
+    ],
+    "type": "object"
+   },
+   "preferences": {
+    "$ref": "#/components/schemas/UserPrefs"
+   },
+   "username": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "avatar",
+   "device_name",
+   "id",
+   "is_admin",
+   "permissions",
+   "preferences",
+   "username"
+  ],
+  "type": "object"
+ },
+ "MediaFile": {
+  "properties": {
+   "audio": {
+    "items": {
+     "$ref": "#/components/schemas/AudioStream"
+    },
+    "type": "array"
+   },
+   "bitrate": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "container": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "duration_ms": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "id": {
+    "type": "string"
+   },
+   "name": {
+    "type": "string"
+   },
+   "probe_error": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "probe_state": {
+    "type": "string"
+   },
+   "size": {
+    "type": "number"
+   },
+   "state": {
+    "type": "string"
+   },
+   "subtitles": {
+    "items": {
+     "$ref": "#/components/schemas/SubtitleStream"
+    },
+    "type": "array"
+   },
+   "version_label": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "video": {
+    "items": {
+     "$ref": "#/components/schemas/VideoStream"
+    },
+    "type": "array"
+   }
+  },
+  "required": [
+   "id",
+   "name",
+   "version_label",
+   "container",
+   "size",
+   "duration_ms",
+   "bitrate",
+   "state",
+   "probe_state",
+   "probe_error",
+   "video",
+   "audio",
+   "subtitles"
+  ],
+  "type": "object"
+ },
+ "Method": {
+  "enum": [
+   "direct_play",
+   "remux",
+   "transcode"
+  ],
+  "type": "string"
+ },
+ "MissingEpisode": {
+  "description": "Episodio già uscito (secondo TMDB) che non è in libreria.",
+  "properties": {
+   "air_date": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "episode": {
+    "type": "number"
+   },
+   "overview": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "season": {
+    "type": "number"
+   },
+   "title": {
+    "type": [
+     "string",
+     "null"
+    ]
+   }
+  },
+  "required": [
+   "season",
+   "episode",
+   "title",
+   "overview",
+   "air_date"
+  ],
+  "type": "object"
+ },
+ "MissingEpisodeList": {
+  "properties": {
+   "items": {
+    "items": {
+     "$ref": "#/components/schemas/MissingEpisode"
+    },
+    "type": "array"
+   }
+  },
+  "required": [
+   "items"
+  ],
+  "type": "object"
+ },
+ "Ok": {
+  "properties": {
+   "ok": {
+    "type": "boolean"
+   }
+  },
+  "required": [
+   "ok"
+  ],
+  "type": "object"
+ },
+ "Overview": {
+  "properties": {
+   "alerts": {
+    "items": {
+     "properties": {
+      "code": {
+       "type": "string"
+      },
+      "level": {
+       "enum": [
+        "danger",
+        "warning",
+        "info"
+       ],
+       "type": "string"
+      },
+      "message": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "level",
+      "code",
+      "message"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   },
+   "bandwidth_bps": {
+    "type": "number"
+   },
+   "counts": {
+    "properties": {
+     "direct_play": {
+      "type": "number"
+     },
+     "remux": {
+      "type": "number"
+     },
+     "transcode": {
+      "type": "number"
+     }
+    },
+    "required": [
+     "direct_play",
+     "remux",
+     "transcode"
+    ],
+    "type": "object"
+   },
+   "jobs": {
+    "properties": {
+     "failed": {
+      "type": "number"
+     },
+     "queued": {
+      "type": "number"
+     },
+     "running": {
+      "type": "number"
+     }
+    },
+    "required": [
+     "queued",
+     "running",
+     "failed"
+    ],
+    "type": "object"
+   },
+   "library": {
+    "properties": {
+     "episodes": {
+      "type": "number"
+     },
+     "files": {
+      "type": "number"
+     },
+     "movies": {
+      "type": "number"
+     },
+     "review": {
+      "type": "number"
+     },
+     "series": {
+      "type": "number"
+     }
+    },
+    "required": [
+     "movies",
+     "series",
+     "episodes",
+     "files",
+     "review"
+    ],
+    "type": "object"
+   },
+   "sessions": {
+    "items": {
+     "$ref": "#/components/schemas/SessionView"
+    },
+    "type": "array"
+   },
+   "system": {
+    "properties": {
+     "cpus": {
+      "type": "number"
+     },
+     "load_1m": {
+      "type": [
+       "number",
+       "null"
+      ]
+     },
+     "memory_rss_bytes": {
+      "type": [
+       "number",
+       "null"
+      ]
+     },
+     "uptime_ms": {
+      "type": "number"
+     }
+    },
+    "required": [
+     "memory_rss_bytes",
+     "load_1m",
+     "cpus",
+     "uptime_ms"
+    ],
+    "type": "object"
+   },
+   "transcode_slots": {
+    "properties": {
+     "hw_max": {
+      "type": "number"
+     },
+     "hw_used": {
+      "type": "number"
+     },
+     "sw_max": {
+      "type": "number"
+     },
+     "sw_used": {
+      "type": "number"
+     }
+    },
+    "required": [
+     "hw_used",
+     "hw_max",
+     "sw_used",
+     "sw_max"
+    ],
+    "type": "object"
+   }
+  },
+  "required": [
+   "sessions",
+   "bandwidth_bps",
+   "counts",
+   "transcode_slots",
+   "jobs",
+   "library",
+   "system",
+   "alerts"
+  ],
+  "type": "object"
+ },
+ "PageItem": {
+  "properties": {
+   "items": {
+    "items": {
+     "$ref": "#/components/schemas/Item"
+    },
+    "type": "array"
+   },
+   "next_cursor": {
+    "type": [
+     "string",
+     "null"
+    ]
+   }
+  },
+  "required": [
+   "items"
+  ],
+  "type": "object"
+ },
+ "PageLibrary": {
+  "properties": {
+   "items": {
+    "items": {
+     "$ref": "#/components/schemas/Library"
+    },
+    "type": "array"
+   },
+   "next_cursor": {
+    "type": [
+     "string",
+     "null"
+    ]
+   }
+  },
+  "required": [
+   "items"
+  ],
+  "type": "object"
+ },
+ "PageUserAdmin": {
+  "properties": {
+   "items": {
+    "items": {
+     "$ref": "#/components/schemas/UserAdmin"
+    },
+    "type": "array"
+   },
+   "next_cursor": {
+    "type": [
+     "string",
+     "null"
+    ]
+   }
+  },
+  "required": [
+   "items"
+  ],
+  "type": "object"
+ },
+ "PasswordChangeRequest": {
+  "properties": {
+   "current": {
+    "type": "string"
+   },
+   "new": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "current",
+   "new"
+  ],
+  "type": "object"
+ },
+ "Person": {
+  "properties": {
+   "character": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "id": {
+    "type": "string"
+   },
+   "image": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "name": {
+    "type": "string"
+   },
+   "role": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "id",
+   "name",
+   "role",
+   "character",
+   "image"
+  ],
+  "type": "object"
+ },
+ "PersonDetail": {
+  "properties": {
+   "id": {
+    "type": "string"
+   },
+   "image": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "items": {
+    "items": {
+     "properties": {
+      "added_at": {
+       "type": "number"
+      },
+      "available": {
+       "type": "boolean"
+      },
+      "child_count": {
+       "type": [
+        "number",
+        "null"
+       ]
+      },
+      "community_rating": {
+       "type": [
+        "number",
+        "null"
+       ]
+      },
+      "end_date": {
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "id": {
+       "type": "string"
+      },
+      "images": {
+       "properties": {
+        "backdrop": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "logo": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "poster": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "poster_color": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "still": {
+         "type": [
+          "string",
+          "null"
+         ]
+        }
+       },
+       "required": [
+        "poster",
+        "poster_color",
+        "backdrop",
+        "still"
+       ],
+       "type": "object"
+      },
+      "index_end": {
+       "type": [
+        "number",
+        "null"
+       ]
+      },
+      "index_number": {
+       "type": [
+        "number",
+        "null"
+       ]
+      },
+      "kind": {
+       "$ref": "#/components/schemas/ItemKind"
+      },
+      "library_id": {
+       "type": "string"
+      },
+      "match_state": {
+       "type": "string"
+      },
+      "official_rating": {
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "original_title": {
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "overview": {
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "parent_id": {
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "parent_index_number": {
+       "type": [
+        "number",
+        "null"
+       ]
+      },
+      "premiere_date": {
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "roles": {
+       "items": {
+        "properties": {
+         "character": {
+          "type": [
+           "string",
+           "null"
+          ]
+         },
+         "role": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "role",
+         "character"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "runtime_ms": {
+       "type": [
+        "number",
+        "null"
+       ]
+      },
+      "series_id": {
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "series_title": {
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "status": {
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "title": {
+       "type": "string"
+      },
+      "unplayed_count": {
+       "type": [
+        "number",
+        "null"
+       ]
+      },
+      "user_data": {
+       "$ref": "#/components/schemas/UserData"
+      },
+      "year": {
+       "type": [
+        "number",
+        "null"
+       ]
+      }
+     },
+     "required": [
+      "added_at",
+      "available",
+      "child_count",
+      "community_rating",
+      "end_date",
+      "id",
+      "images",
+      "index_end",
+      "index_number",
+      "kind",
+      "library_id",
+      "match_state",
+      "official_rating",
+      "original_title",
+      "overview",
+      "parent_id",
+      "parent_index_number",
+      "premiere_date",
+      "roles",
+      "runtime_ms",
+      "series_id",
+      "series_title",
+      "status",
+      "title",
+      "unplayed_count",
+      "user_data",
+      "year"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   },
+   "name": {
+    "type": "string"
+   },
+   "tmdb_id": {
+    "type": [
+     "number",
+     "null"
+    ]
+   }
+  },
+  "required": [
+   "id",
+   "name",
+   "image",
+   "tmdb_id",
+   "items"
+  ],
+  "type": "object"
+ },
+ "PlaybackInfo": {
+  "properties": {
+   "audio_index": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "audio_tracks": {
+    "items": {
+     "properties": {
+      "channels": {
+       "type": "number"
+      },
+      "codec": {
+       "type": "string"
+      },
+      "default": {
+       "type": "boolean"
+      },
+      "index": {
+       "type": "number"
+      },
+      "language": {
+       "type": [
+        "string",
+        "null"
+       ]
+      }
+     },
+     "required": [
+      "index",
+      "codec",
+      "channels",
+      "language",
+      "default"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   },
+   "chain": {
+    "type": "string"
+   },
+   "container": {
+    "type": "string"
+   },
+   "duration_ms": {
+    "type": "number"
+   },
+   "file_id": {
+    "type": "string"
+   },
+   "hls_url": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "max_bitrate": {
+    "description": "Limite di bitrate applicato dal server; null = originale.",
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "method": {
+    "$ref": "#/components/schemas/Method"
+   },
+   "reasons": {
+    "items": {
+     "type": "string"
+    },
+    "type": "array"
+   },
+   "session_id": {
+    "type": "string"
+   },
+   "start_ms": {
+    "type": "number"
+   },
+   "stream_token": {
+    "type": "string"
+   },
+   "stream_url": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "subtitle": {
+    "properties": {
+     "delivery": {
+      "type": "string"
+     },
+     "index": {
+      "type": "number"
+     }
+    },
+    "required": [
+     "delivery"
+    ],
+    "type": "object"
+   },
+   "subtitle_default": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "subtitles": {
+    "items": {
+     "properties": {
+      "codec": {
+       "type": "string"
+      },
+      "default": {
+       "type": "boolean"
+      },
+      "external": {
+       "type": "boolean"
+      },
+      "forced": {
+       "type": "boolean"
+      },
+      "image": {
+       "type": "boolean"
+      },
+      "index": {
+       "type": "number"
+      },
+      "language": {
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "title": {
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "url": {
+       "type": [
+        "string",
+        "null"
+       ]
+      }
+     },
+     "required": [
+      "index",
+      "codec",
+      "language",
+      "title",
+      "external",
+      "forced",
+      "default",
+      "image",
+      "url"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   },
+   "trickplay": {
+    "anyOf": [
+     {
+      "$ref": "#/components/schemas/Trickplay"
+     },
+     {
+      "type": "null"
+     }
+    ]
+   }
+  },
+  "required": [
+   "session_id",
+   "stream_token",
+   "method",
+   "reasons",
+   "chain",
+   "stream_url",
+   "hls_url",
+   "file_id",
+   "duration_ms",
+   "start_ms",
+   "audio_index",
+   "audio_tracks",
+   "subtitles",
+   "subtitle",
+   "subtitle_default",
+   "trickplay",
+   "max_bitrate",
+   "container"
+  ],
+  "type": "object"
+ },
+ "PlaybackInfoRequest": {
+  "properties": {
+   "audio_index": {
+    "type": "number"
+   },
+   "explicit_quality": {
+    "description": "Qualità scelta a mano nel player: la qualità predefinita delle preferenze non si applica.",
+    "type": "boolean"
+   },
+   "file_id": {
+    "description": "Versione del file; omessa = la migliore.",
+    "type": "string"
+   },
+   "force_transcode": {
+    "type": "boolean"
+   },
+   "item_id": {
+    "type": "string"
+   },
+   "max_bitrate": {
+    "type": "number"
+   },
+   "profile": {
+    "$ref": "#/components/schemas/DeviceProfile",
+    "description": "Ciò che il dispositivo sa riprodurre: il server decide direct play, remux o transcodifica."
+   },
+   "start_ms": {
+    "type": "number"
+   },
+   "subtitle_index": {
+    "type": "number"
+   },
+   "ui_language": {
+    "description": "Lingua dell'interfaccia (\"it\"): per i sottotitoli quando l'utente non ne ha scelta una.",
+    "type": "string"
+   }
+  },
+  "required": [
+   "item_id",
+   "profile"
+  ],
+  "type": "object"
+ },
+ "PlaylistAddRequest": {
+  "properties": {
+   "item_ids": {
+    "items": {
+     "type": "string"
+    },
+    "type": "array"
+   }
+  },
+  "required": [
+   "item_ids"
+  ],
+  "type": "object"
+ },
+ "PlaylistCreateRequest": {
+  "properties": {
+   "item_ids": {
+    "items": {
+     "type": "string"
+    },
+    "type": "array"
+   },
+   "name": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "name"
+  ],
+  "type": "object"
+ },
+ "PlaylistCreateResponse": {
+  "properties": {
+   "added": {
+    "type": "number"
+   },
+   "id": {
+    "type": "string"
+   },
+   "name": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "id",
+   "name",
+   "added"
+  ],
+  "type": "object"
+ },
+ "PlaylistDetail": {
+  "properties": {
+   "created_at": {
+    "type": "number"
+   },
+   "id": {
+    "type": "string"
+   },
+   "items": {
+    "items": {
+     "properties": {
+      "added_at": {
+       "type": "number"
+      },
+      "available": {
+       "type": "boolean"
+      },
+      "child_count": {
+       "type": [
+        "number",
+        "null"
+       ]
+      },
+      "community_rating": {
+       "type": [
+        "number",
+        "null"
+       ]
+      },
+      "end_date": {
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "entry_id": {
+       "type": "string"
+      },
+      "id": {
+       "type": "string"
+      },
+      "images": {
+       "properties": {
+        "backdrop": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "logo": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "poster": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "poster_color": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "still": {
+         "type": [
+          "string",
+          "null"
+         ]
+        }
+       },
+       "required": [
+        "poster",
+        "poster_color",
+        "backdrop",
+        "still"
+       ],
+       "type": "object"
+      },
+      "index_end": {
+       "type": [
+        "number",
+        "null"
+       ]
+      },
+      "index_number": {
+       "type": [
+        "number",
+        "null"
+       ]
+      },
+      "kind": {
+       "$ref": "#/components/schemas/ItemKind"
+      },
+      "library_id": {
+       "type": "string"
+      },
+      "match_state": {
+       "type": "string"
+      },
+      "official_rating": {
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "original_title": {
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "overview": {
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "parent_id": {
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "parent_index_number": {
+       "type": [
+        "number",
+        "null"
+       ]
+      },
+      "premiere_date": {
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "runtime_ms": {
+       "type": [
+        "number",
+        "null"
+       ]
+      },
+      "series_id": {
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "series_title": {
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "status": {
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "title": {
+       "type": "string"
+      },
+      "unplayed_count": {
+       "type": [
+        "number",
+        "null"
+       ]
+      },
+      "user_data": {
+       "$ref": "#/components/schemas/UserData"
+      },
+      "year": {
+       "type": [
+        "number",
+        "null"
+       ]
+      }
+     },
+     "required": [
+      "added_at",
+      "available",
+      "child_count",
+      "community_rating",
+      "end_date",
+      "entry_id",
+      "id",
+      "images",
+      "index_end",
+      "index_number",
+      "kind",
+      "library_id",
+      "match_state",
+      "official_rating",
+      "original_title",
+      "overview",
+      "parent_id",
+      "parent_index_number",
+      "premiere_date",
+      "runtime_ms",
+      "series_id",
+      "series_title",
+      "status",
+      "title",
+      "unplayed_count",
+      "user_data",
+      "year"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   },
+   "mine": {
+    "type": "boolean"
+   },
+   "name": {
+    "type": "string"
+   },
+   "owner": {
+    "type": "string"
+   },
+   "runtime_ms": {
+    "type": "number"
+   },
+   "shared": {
+    "type": "boolean"
+   }
+  },
+  "required": [
+   "id",
+   "name",
+   "created_at",
+   "runtime_ms",
+   "items"
+  ],
+  "type": "object"
+ },
+ "PlaylistList": {
+  "properties": {
+   "items": {
+    "items": {
+     "$ref": "#/components/schemas/PlaylistSummary"
+    },
+    "type": "array"
+   }
+  },
+  "required": [
+   "items"
+  ],
+  "type": "object"
+ },
+ "PlaylistMoveRequest": {
+  "properties": {
+   "entry_id": {
+    "type": "string"
+   },
+   "index": {
+    "type": "number"
+   }
+  },
+  "required": [
+   "entry_id",
+   "index"
+  ],
+  "type": "object"
+ },
+ "PlaylistSummary": {
+  "properties": {
+   "count": {
+    "type": "number"
+   },
+   "created_at": {
+    "type": "number"
+   },
+   "id": {
+    "type": "string"
+   },
+   "mine": {
+    "type": "boolean"
+   },
+   "name": {
+    "type": "string"
+   },
+   "owner": {
+    "type": "string"
+   },
+   "poster": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "runtime_ms": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "shared": {
+    "type": "boolean"
+   }
+  },
+  "required": [
+   "id",
+   "name",
+   "created_at",
+   "count",
+   "runtime_ms",
+   "poster"
+  ],
+  "type": "object"
+ },
+ "PlaylistUpdateRequest": {
+  "properties": {
+   "name": {
+    "type": "string"
+   },
+   "shared": {
+    "type": "boolean"
+   }
+  },
+  "type": "object"
+ },
+ "ProgressRequest": {
+  "properties": {
+   "paused": {
+    "type": "boolean"
+   },
+   "position_ms": {
+    "type": "number"
+   }
+  },
+  "required": [
+   "position_ms"
+  ],
+  "type": "object"
+ },
+ "QuickConnectAuthorizeRequest": {
+  "properties": {
+   "code": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "code"
+  ],
+  "type": "object"
+ },
+ "QuickConnectInitiateRequest": {
+  "properties": {
+   "client": {
+    "type": "string"
+   },
+   "client_version": {
+    "type": "string"
+   },
+   "device_id": {
+    "type": "string"
+   },
+   "device_name": {
+    "type": "string"
+   }
+  },
+  "type": "object"
+ },
+ "QuickConnectInitiateResponse": {
+  "properties": {
+   "code": {
+    "type": "string"
+   },
+   "expires_at": {
+    "type": "number"
+   },
+   "secret": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "code",
+   "secret",
+   "expires_at"
+  ],
+  "type": "object"
+ },
+ "QuickConnectRedeemRequest": {
+  "properties": {
+   "secret": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "secret"
+  ],
+  "type": "object"
+ },
+ "QuickConnectStatus": {
+  "properties": {
+   "expires_at": {
+    "type": "number"
+   },
+   "state": {
+    "enum": [
+     "pending",
+     "authorized"
+    ],
+    "type": "string"
+   }
+  },
+  "required": [
+   "state",
+   "expires_at"
+  ],
+  "type": "object"
+ },
+ "ReviewItem": {
+  "properties": {
+   "candidates": {
+    "items": {
+     "$ref": "#/components/schemas/Candidate"
+    },
+    "type": "array"
+   },
+   "id": {
+    "type": "string"
+   },
+   "kind": {
+    "type": "string"
+   },
+   "library": {
+    "type": "string"
+   },
+   "match_score": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "match_state": {
+    "type": "string"
+   },
+   "path": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "title": {
+    "type": "string"
+   },
+   "year": {
+    "type": [
+     "number",
+     "null"
+    ]
+   }
+  },
+  "required": [
+   "id",
+   "kind",
+   "title",
+   "year",
+   "match_state",
+   "match_score",
+   "library",
+   "path",
+   "candidates"
+  ],
+  "type": "object"
+ },
+ "ReviewList": {
+  "properties": {
+   "items": {
+    "items": {
+     "$ref": "#/components/schemas/ReviewItem"
+    },
+    "type": "array"
+   }
+  },
+  "required": [
+   "items"
+  ],
+  "type": "object"
+ },
+ "ScheduleSlot": {
+  "properties": {
+   "days": {
+    "items": {
+     "type": "number"
+    },
+    "type": "array"
+   },
+   "end": {
+    "type": "number"
+   },
+   "start": {
+    "type": "number"
+   }
+  },
+  "required": [
+   "days",
+   "start",
+   "end"
+  ],
+  "type": "object"
+ },
+ "SessionDetails": {
+  "properties": {
+   "audio": {
+    "anyOf": [
+     {
+      "properties": {
+       "bitrate": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "channels": {
+        "type": "number"
+       },
+       "codec": {
+        "type": "string"
+       },
+       "index": {
+        "type": "number"
+       },
+       "language": {
+        "type": [
+         "string",
+         "null"
+        ]
+       }
+      },
+      "required": [
+       "index",
+       "codec",
+       "channels",
+       "language",
+       "bitrate"
+      ],
+      "type": "object"
+     },
+     {
+      "type": "null"
+     }
+    ]
+   },
+   "audio_tracks": {
+    "type": "number"
+   },
+   "file": {
+    "properties": {
+     "bitrate": {
+      "type": [
+       "number",
+       "null"
+      ]
+     },
+     "container": {
+      "type": "string"
+     },
+     "name": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "size": {
+      "type": "number"
+     }
+    },
+    "required": [
+     "name",
+     "size",
+     "container",
+     "bitrate"
+    ],
+    "type": "object"
+   },
+   "out": {
+    "properties": {
+     "audio": {
+      "anyOf": [
+       {
+        "properties": {
+         "action": {
+          "const": "copy",
+          "type": "string"
+         }
+        },
+        "required": [
+         "action"
+        ],
+        "type": "object"
+       },
+       {
+        "properties": {
+         "action": {
+          "const": "none",
+          "type": "string"
+         }
+        },
+        "required": [
+         "action"
+        ],
+        "type": "object"
+       },
+       {
+        "properties": {
+         "action": {
+          "const": "transcode",
+          "type": "string"
+         },
+         "bitrate": {
+          "type": "number"
+         },
+         "channels": {
+          "type": "number"
+         },
+         "codec": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "action",
+         "codec",
+         "channels",
+         "bitrate"
+        ],
+        "type": "object"
+       }
+      ]
+     },
+     "container": {
+      "enum": [
+       "file",
+       "hls_fmp4",
+       "hls_ts"
+      ],
+      "type": "string"
+     },
+     "subtitle": {
+      "enum": [
+       "none",
+       "external",
+       "embedded",
+       "burn_in"
+      ],
+      "type": "string"
+     },
+     "video": {
+      "anyOf": [
+       {
+        "properties": {
+         "action": {
+          "const": "copy",
+          "type": "string"
+         }
+        },
+        "required": [
+         "action"
+        ],
+        "type": "object"
+       },
+       {
+        "properties": {
+         "action": {
+          "const": "transcode",
+          "type": "string"
+         },
+         "bitrate": {
+          "type": "number"
+         },
+         "burn_subtitle": {
+          "type": "boolean"
+         },
+         "codec": {
+          "type": "string"
+         },
+         "max_height": {
+          "type": "number"
+         },
+         "max_width": {
+          "type": "number"
+         },
+         "tonemap": {
+          "type": "boolean"
+         }
+        },
+        "required": [
+         "action",
+         "codec",
+         "max_width",
+         "max_height",
+         "bitrate",
+         "tonemap",
+         "burn_subtitle"
+        ],
+        "type": "object"
+       }
+      ]
+     }
+    },
+    "required": [
+     "video",
+     "audio",
+     "subtitle",
+     "container"
+    ],
+    "type": "object"
+   },
+   "subtitle": {
+    "anyOf": [
+     {
+      "properties": {
+       "codec": {
+        "type": "string"
+       },
+       "external": {
+        "type": "boolean"
+       },
+       "forced": {
+        "type": "boolean"
+       },
+       "index": {
+        "type": "number"
+       },
+       "language": {
+        "type": [
+         "string",
+         "null"
+        ]
+       }
+      },
+      "required": [
+       "index",
+       "codec",
+       "language",
+       "forced",
+       "external"
+      ],
+      "type": "object"
+     },
+     {
+      "type": "null"
+     }
+    ]
+   },
+   "subtitle_tracks": {
+    "type": "number"
+   },
+   "video": {
+    "anyOf": [
+     {
+      "properties": {
+       "bit_depth": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "bitrate": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "codec": {
+        "type": "string"
+       },
+       "hdr": {
+        "type": [
+         "string",
+         "null"
+        ]
+       },
+       "height": {
+        "type": "number"
+       },
+       "profile": {
+        "type": [
+         "string",
+         "null"
+        ]
+       },
+       "width": {
+        "type": "number"
+       }
+      },
+      "required": [
+       "codec",
+       "profile",
+       "width",
+       "height",
+       "bit_depth",
+       "hdr",
+       "bitrate"
+      ],
+      "type": "object"
+     },
+     {
+      "type": "null"
+     }
+    ]
+   }
+  },
+  "required": [
+   "file",
+   "video",
+   "audio",
+   "audio_tracks",
+   "subtitle",
+   "subtitle_tracks",
+   "out"
+  ],
+  "type": "object"
+ },
+ "SessionView": {
+  "properties": {
+   "backend": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "bandwidth_bps": {
+    "type": "number"
+   },
+   "bitrate": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "buffered_until_ms": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "bytes_sent": {
+    "type": "number"
+   },
+   "chain": {
+    "type": "string"
+   },
+   "client": {
+    "type": "string"
+   },
+   "details": {
+    "$ref": "#/components/schemas/SessionDetails"
+   },
+   "device_name": {
+    "type": "string"
+   },
+   "duration_ms": {
+    "type": "number"
+   },
+   "id": {
+    "type": "string"
+   },
+   "ip": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "item_id": {
+    "type": "string"
+   },
+   "last_seen": {
+    "type": "number"
+   },
+   "method": {
+    "$ref": "#/components/schemas/Method"
+   },
+   "paused": {
+    "type": "boolean"
+   },
+   "paused_since": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "position_at": {
+    "type": "number"
+   },
+   "position_ms": {
+    "type": "number"
+   },
+   "poster_url": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "reasons": {
+    "items": {
+     "type": "string"
+    },
+    "type": "array"
+   },
+   "remote": {
+    "type": "boolean"
+   },
+   "server_now": {
+    "type": "number"
+   },
+   "started_at": {
+    "type": "number"
+   },
+   "subtitle": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "throttled": {
+    "type": "boolean"
+   },
+   "title": {
+    "type": "string"
+   },
+   "user": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "id",
+   "user",
+   "item_id",
+   "title",
+   "subtitle",
+   "poster_url",
+   "device_name",
+   "client",
+   "method",
+   "reasons",
+   "chain",
+   "bitrate",
+   "position_ms",
+   "duration_ms",
+   "paused",
+   "throttled",
+   "started_at",
+   "server_now",
+   "position_at",
+   "paused_since",
+   "last_seen",
+   "ip",
+   "remote",
+   "details",
+   "buffered_until_ms",
+   "backend",
+   "bandwidth_bps",
+   "bytes_sent"
+  ],
+  "type": "object"
+ },
+ "SubtitleMode": {
+  "enum": [
+   "default",
+   "always",
+   "only_forced",
+   "none",
+   "smart"
+  ],
+  "type": "string"
+ },
+ "SubtitleStream": {
+  "properties": {
+   "codec": {
+    "type": "string"
+   },
+   "default": {
+    "type": "boolean"
+   },
+   "external": {
+    "type": "boolean"
+   },
+   "forced": {
+    "type": "boolean"
+   },
+   "image": {
+    "type": "boolean"
+   },
+   "index": {
+    "type": "number"
+   },
+   "language": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "title": {
+    "type": [
+     "string",
+     "null"
+    ]
+   }
+  },
+  "required": [
+   "index",
+   "codec",
+   "language",
+   "title",
+   "default",
+   "forced",
+   "external",
+   "image"
+  ],
+  "type": "object"
+ },
+ "SystemInfo": {
+  "properties": {
+   "custom_css": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "id": {
+    "type": "string"
+   },
+   "login_message": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "name": {
+    "type": "string"
+   },
+   "product": {
+    "type": "string"
+   },
+   "quick_connect": {
+    "type": "boolean"
+   },
+   "setup_required": {
+    "type": "boolean"
+   },
+   "version": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "name",
+   "id",
+   "version",
+   "product",
+   "setup_required"
+  ],
+  "type": "object"
+ },
+ "TracksRequest": {
+  "properties": {
+   "audio_index": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "subtitle_index": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "subtitle_off": {
+    "type": "boolean"
+   }
+  },
+  "type": "object"
+ },
+ "Trickplay": {
+  "description": "Miniature della barra di avanzamento: griglie `cols`×`rows`, una ogni `interval_ms`; `{n}` nell'URL = numero della griglia.",
+  "properties": {
+   "cols": {
+    "type": "number"
+   },
+   "count": {
+    "type": "number"
+   },
+   "height": {
+    "type": "number"
+   },
+   "interval_ms": {
+    "type": "number"
+   },
+   "rows": {
+    "type": "number"
+   },
+   "url": {
+    "type": "string"
+   },
+   "width": {
+    "type": "number"
+   }
+  },
+  "required": [
+   "interval_ms",
+   "width",
+   "height",
+   "cols",
+   "rows",
+   "count",
+   "url"
+  ],
+  "type": "object"
+ },
+ "UserAdmin": {
+  "properties": {
+   "access_schedule": {
+    "items": {
+     "$ref": "#/components/schemas/ScheduleSlot"
+    },
+    "type": "array"
+   },
+   "active_streams": {
+    "type": "number"
+   },
+   "all_libraries": {
+    "type": "boolean"
+   },
+   "allow_download": {
+    "type": "boolean"
+   },
+   "allow_remote": {
+    "type": "boolean"
+   },
+   "allow_remux": {
+    "type": "boolean"
+   },
+   "allow_transcode": {
+    "type": "boolean"
+   },
+   "avatar": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "block_unrated": {
+    "type": "boolean"
+   },
+   "created_at": {
+    "type": "number"
+   },
+   "devices": {
+    "type": "number"
+   },
+   "disabled": {
+    "type": "boolean"
+   },
+   "expired": {
+    "type": "boolean"
+   },
+   "expires_at": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "id": {
+    "type": "string"
+   },
+   "is_admin": {
+    "type": "boolean"
+   },
+   "last_login_at": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "library_ids": {
+    "items": {
+     "type": "string"
+    },
+    "type": "array"
+   },
+   "manage_devices": {
+    "type": "boolean"
+   },
+   "max_bitrate": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "max_rating": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "max_streams": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "username": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "id",
+   "username",
+   "is_admin",
+   "disabled",
+   "all_libraries",
+   "library_ids",
+   "allow_remux",
+   "allow_transcode",
+   "max_bitrate",
+   "max_streams",
+   "max_rating",
+   "allow_remote",
+   "manage_devices",
+   "created_at",
+   "last_login_at",
+   "devices",
+   "active_streams",
+   "expires_at",
+   "expired",
+   "allow_download",
+   "block_unrated",
+   "access_schedule",
+   "avatar"
+  ],
+  "type": "object"
+ },
+ "UserAdminPage": {
+  "$ref": "#/components/schemas/PageUserAdmin"
+ },
+ "UserData": {
+  "properties": {
+   "favorite": {
+    "type": "boolean"
+   },
+   "last_played_at": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "play_count": {
+    "type": "number"
+   },
+   "played": {
+    "type": "boolean"
+   },
+   "position_ms": {
+    "type": "number"
+   }
+  },
+  "required": [
+   "position_ms",
+   "played",
+   "play_count",
+   "favorite",
+   "last_played_at"
+  ],
+  "type": "object"
+ },
+ "UserPrefs": {
+  "properties": {
+   "audio_language": {
+    "type": "string"
+   },
+   "autoplay_countdown_seconds": {
+    "type": "number"
+   },
+   "autoplay_next": {
+    "type": "boolean"
+   },
+   "hide_played_in_recent": {
+    "type": "boolean"
+   },
+   "home_hidden_libraries": {
+    "items": {
+     "type": "string"
+    },
+    "type": "array"
+   },
+   "home_sections": {
+    "items": {
+     "type": "string"
+    },
+    "type": "array"
+   },
+   "max_bitrate_local": {
+    "type": "number"
+   },
+   "max_bitrate_remote": {
+    "type": "number"
+   },
+   "remember_tracks": {
+    "type": "boolean"
+   },
+   "skip_back_seconds": {
+    "type": "number"
+   },
+   "skip_forward_seconds": {
+    "type": "number"
+   },
+   "subtitle_background": {
+    "type": "boolean"
+   },
+   "subtitle_language": {
+    "type": "string"
+   },
+   "subtitle_mode": {
+    "$ref": "#/components/schemas/SubtitleMode"
+   },
+   "subtitle_size": {
+    "enum": [
+     "s",
+     "m",
+     "l",
+     "xl"
+    ],
+    "type": "string"
+   },
+   "theme": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "audio_language",
+   "subtitle_language",
+   "subtitle_mode",
+   "autoplay_next",
+   "autoplay_countdown_seconds",
+   "skip_back_seconds",
+   "skip_forward_seconds",
+   "subtitle_size",
+   "subtitle_background",
+   "home_sections",
+   "home_hidden_libraries",
+   "hide_played_in_recent",
+   "theme",
+   "remember_tracks",
+   "max_bitrate_local",
+   "max_bitrate_remote"
+  ],
+  "type": "object"
+ },
+ "UserRef": {
+  "properties": {
+   "id": {
+    "type": "string"
+   },
+   "is_admin": {
+    "type": "boolean"
+   },
+   "username": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "id",
+   "username",
+   "is_admin"
+  ],
+  "type": "object"
+ },
+ "VideoStream": {
+  "properties": {
+   "bit_depth": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "bitrate": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "codec": {
+    "type": "string"
+   },
+   "frame_rate": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "hdr": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "height": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "index": {
+    "type": "number"
+   },
+   "level": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "profile": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "width": {
+    "type": [
+     "number",
+     "null"
+    ]
+   }
+  },
+  "required": [
+   "index",
+   "codec",
+   "profile",
+   "level",
+   "bit_depth",
+   "width",
+   "height",
+   "frame_rate",
+   "hdr",
+   "bitrate"
+  ],
+  "type": "object"
+ }
+}

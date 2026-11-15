@@ -11,6 +11,7 @@ pub mod items;
 pub mod jellyfin;
 pub mod jellyfin_profile;
 pub mod libraries;
+pub mod openapi_map;
 pub mod playback;
 pub mod playlists;
 pub mod quickconnect;
@@ -88,7 +89,31 @@ impl Default for Api {
     }
 }
 
+/// Nome dell'operazione per i client generati: `GET /api/v1/items/{id}/children` → `getItemsByIdChildren`.
+fn operation_id(method: &str, path: &str) -> String {
+    let mut out = method.to_string();
+    for seg in path.trim_start_matches("/api/v1/").split('/').filter(|s| !s.is_empty()) {
+        let word = match seg.strip_prefix('{').and_then(|s| s.strip_suffix('}')) {
+            Some(p) => format!("by-{p}"),
+            None => seg.to_string(),
+        };
+        for part in word.split(['-', '_', '.']).filter(|p| !p.is_empty()) {
+            let mut c = part.chars();
+            if let Some(f) = c.next() {
+                out.push(f.to_ascii_uppercase());
+                out.push_str(c.as_str());
+            }
+        }
+    }
+    out
+}
+
 fn openapi(docs: &[RouteDoc]) -> Value {
+    let mut schemas = openapi_map::schemas();
+    schemas.insert(
+        "Error".into(),
+        json!({ "type": "object", "properties": { "error": { "type": "string" }, "message": { "type": "string" } }, "required": ["error", "message"] }),
+    );
     let mut paths = serde_json::Map::new();
     for d in docs {
         let params: Vec<Value> = d
@@ -116,6 +141,8 @@ fn openapi(docs: &[RouteDoc]) -> Value {
             }
             Access::Stream => op["security"] = json!([{ "streamToken": [] }]),
         }
+        op["operationId"] = json!(operation_id(d.method, d.path));
+        openapi_map::annotate(d.method, d.path, &mut op);
         let entry = paths.entry(d.path.to_string()).or_insert_with(|| json!({}));
         entry[d.method] = op;
     }
@@ -133,9 +160,7 @@ fn openapi(docs: &[RouteDoc]) -> Value {
                 "token": { "type": "http", "scheme": "bearer", "description": "Token restituito da POST /api/v1/auth/login" },
                 "streamToken": { "type": "apiKey", "in": "query", "name": "t", "description": "Token breve della sessione di riproduzione" }
             },
-            "schemas": {
-                "Error": { "type": "object", "properties": { "error": { "type": "string" }, "message": { "type": "string" } }, "required": ["error", "message"] }
-            }
+            "schemas": schemas
         },
         "paths": paths
     })
@@ -251,4 +276,33 @@ fn add_cors(h: &mut axum::http::HeaderMap, origin: &str) {
 /// Paginazione con cursore: nessun endpoint restituisce l'intera libreria.
 pub fn clamp_limit(limit: Option<i64>, default: i64) -> i64 {
     limit.unwrap_or(default).clamp(1, 200)
+}
+
+#[cfg(test)]
+mod openapi_tests {
+    #[test]
+    fn operation_ids() {
+        assert_eq!(super::operation_id("get", "/api/v1/items/{id}/children"), "getItemsByIdChildren");
+        assert_eq!(super::operation_id("post", "/api/v1/playback/info"), "postPlaybackInfo");
+        assert_eq!(super::operation_id("get", "/api/v1/system/custom.css"), "getSystemCustomCss");
+    }
+
+    /// Ogni route della tabella degli schemi esiste davvero (niente voci rimaste dopo un cambio di percorso).
+    #[test]
+    fn mapped_routes_exist() {
+        let api = super::Api::new();
+        let api = super::system::routes(api);
+        let api = super::setup::routes(api);
+        let api = super::auth::routes(api);
+        let api = super::users::routes(api);
+        let api = super::libraries::routes(api);
+        let api = super::items::routes(api);
+        let api = super::playback::routes(api);
+        let api = super::playlists::routes(api);
+        let api = super::quickconnect::routes(api);
+        let api = super::admin::routes(api);
+        for (m, p, ..) in super::openapi_map::BODIES {
+            assert!(api.docs.iter().any(|d| d.method == *m && d.path == *p), "route inesistente: {m} {p}");
+        }
+    }
 }

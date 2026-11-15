@@ -418,7 +418,11 @@ restano 321 "da verificare" e 328 non riconosciuti (da vedere a mano dall'utente
    `BootConfig::check_writable` all'avvio prova scrittura e apertura e dice il file e il `chown` da fare.
    [x] Documentazione: README con reverse proxy (Caddy, nginx), aggiornamento, ep:/NFO episodi, funzioni nuove.
    **Decisione dell'utente (15/11/2026): solo Docker. Niente binari per Windows/macOS/Linux per ora.**
-7. Fase 6: client Kotlin/Swift dall'OpenAPI, app Android/TV e Apple.
+7. Fase 6: [x] documento OpenAPI con gli schemi dei dati, generati dai tipi TypeScript della web UI
+   (`scripts/openapi-schemas.sh` → `api/openapi_schemas.json`, tabella route→schemi in `api/openapi_map.rs`, test che
+   route e riferimenti esistano), `operationId` dal percorso; `scripts/generate-clients.sh` valida il documento e
+   genera i client Kotlin e Swift (openapi-generator 7.12, in `clients/`, non versionato). Restano le app Android/TV
+   e Apple. Quando cambiano i tipi della web UI: rilanciare `scripts/openapi-schemas.sh`.
 8. Priorità C di `docs/confronto-jellyfin.md` e decisioni aperte del piano (licenza, sistemi supportati, PostgreSQL).
 
 ## Debito tecnico noto (da fare dopo)

@@ -12,3 +12,4 @@ WebApp/dist/
 *.log
 WebApp/*.tsbuildinfo
 /docker-compose.override.yml
+clients/
