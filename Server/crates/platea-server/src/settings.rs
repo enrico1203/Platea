@@ -32,6 +32,9 @@ pub struct GeneralSettings {
     /// Ora (locale) della manutenzione notturna del database: statistiche, pulizia, spazio libero.
     #[schemars(title = "Ora della manutenzione del database", range(min = 0, max = 23))]
     pub maintenance_hour: u32,
+    /// Accesso con un codice di 6 cifre confermato da un dispositivo già collegato (televisori, app).
+    #[schemars(title = "Quick Connect")]
+    pub quick_connect: bool,
 }
 
 impl Default for GeneralSettings {
@@ -43,6 +46,7 @@ impl Default for GeneralSettings {
             backup_interval_hours: 24,
             backup_keep: 7,
             maintenance_hour: 4,
+            quick_connect: true,
         }
     }
 }

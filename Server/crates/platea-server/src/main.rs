@@ -23,6 +23,7 @@ mod mp4;
 mod net;
 mod prefs;
 mod probe;
+mod quickconnect;
 mod ratings;
 mod scanner;
 mod sessions;
@@ -133,6 +134,7 @@ async fn run(boot: boot::BootConfig) -> anyhow::Result<()> {
         http,
         token_cache: Default::default(),
         login_limiter: Default::default(),
+        quick_connect: Default::default(),
         jobs: jobs::JobQueue::new(),
         ffmpeg,
         sessions: Default::default(),

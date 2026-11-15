@@ -23,6 +23,8 @@ pub struct AppState {
     pub http: reqwest::Client,
     pub token_cache: TokenCache,
     pub login_limiter: LoginLimiter,
+    /// Richieste di Quick Connect in attesa (solo in memoria).
+    pub quick_connect: crate::quickconnect::QuickConnect,
     pub jobs: JobQueue,
     pub ffmpeg: FfmpegLocator,
     pub transcoder: Arc<TranscodeManager>,

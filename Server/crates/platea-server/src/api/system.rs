@@ -26,6 +26,7 @@ async fn info(State(state): State<Shared>) -> Json<Value> {
         "product": "Platea",
         "api": "v1",
         "setup_required": setup_required,
+        "quick_connect": s.general.quick_connect,
     }))
 }
 

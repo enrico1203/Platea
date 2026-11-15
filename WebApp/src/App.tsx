@@ -14,6 +14,12 @@ import Library from "./pages/Library";
 import Search from "./pages/Search";
 import ItemPage from "./pages/Item";
 import Account from "./pages/Account";
+import { LinkDevice } from "./components/QuickConnect";
+
+/** Indirizzo breve da mostrare sui televisori: <server>/link apre direttamente la conferma del codice. */
+function LinkPage() {
+  return <div className="stack-lg" style={{ maxWidth: 760 }}><section className="pl-panel panel-pad"><LinkDevice autoFocus /></section></div>;
+}
 import About from "./pages/About";
 
 // Player e dashboard admin in pacchetti separati: la dashboard si carica solo per gli amministratori.
@@ -65,6 +71,7 @@ function Routed() {
           <Route path="playlist/:id" element={<PlaylistPage />} />
           <Route path="item/:id" element={<ItemPage />} />
           <Route path="account" element={<Account />} />
+          <Route path="link" element={<LinkPage />} />
           <Route path="about" element={<About />} />
           <Route path="admin" element={<Guard admin><AdminOverview /></Guard>} />
           <Route path="admin/libraries" element={<Guard admin><AdminLibraries /></Guard>} />

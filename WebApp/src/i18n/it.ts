@@ -45,6 +45,19 @@ const it = {
     password: "Password",
     login: "Accedi",
   },
+  quickConnect: {
+    loginWithCode: "Accedi con un codice",
+    title: "Accedi con un codice",
+    instructions: "Su un dispositivo dove hai già fatto l'accesso apri Account › Collega un dispositivo (oppure l'indirizzo /link) e inserisci questo codice. Vale 10 minuti.",
+    expired: "Il codice è scaduto.",
+    newCode: "Nuovo codice",
+    usePassword: "Usa la password",
+    linkTitle: "Collega un dispositivo",
+    linkHint: "Inserisci il codice di 6 cifre mostrato dal televisore o dall'app: quel dispositivo entrerà con il tuo account.",
+    code: "Codice",
+    authorize: "Collega",
+    linked: "Collegato: {device}",
+  },
   connect: {
     title: "Collega un server",
     unreachable: "Non riesco a raggiungere il server Platea a questo indirizzo.",
@@ -624,6 +637,8 @@ const it = {
       amf: "AMD AMF",
     },
     general: {
+      quick_connect: "Quick Connect",
+      quick_connect_hint: "Accesso con un codice di 6 cifre confermato da un dispositivo già collegato: comodo sui televisori. Spento, i codici vengono rifiutati.",
       server_name: "Nome del server",
       public_url: "URL pubblico",
       min_password_length: "Lunghezza minima password",

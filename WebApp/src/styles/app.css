@@ -444,3 +444,6 @@ a.person:focus-visible .person__img { outline: 2px solid var(--focus); outline-o
 .player__preview { position: absolute; bottom: 28px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: var(--space-1); pointer-events: none; }
 .player__preview-img { width: 100%; border-radius: var(--radius-md); border: 1px solid rgba(255,255,255,.35); background-color: #0c0e11; background-repeat: no-repeat; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
 .player__preview-time { font: 500 13px/18px var(--font-mono); font-variant-numeric: tabular-nums; color: #f3f5f7; text-shadow: 0 1px 3px rgba(0,0,0,.8); }
+
+/* Codice di Quick Connect: grande, leggibile da lontano. */
+.qc-code { font: 600 44px/52px var(--font-mono); letter-spacing: .08em; text-align: center; padding: var(--space-4) 0; color: var(--ink); font-variant-numeric: tabular-nums; }

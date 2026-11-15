@@ -72,7 +72,7 @@ La colonna **Priorità** indica l'ordine di lavoro: **A** subito, **B** dopo, **
 | Transcodifica hardware con ripiego | ✅ | ✅ | — |
 | HLS fMP4, HEVC copiato | ✅ | ✅ | — |
 | Capitoli (navigazione) | ✅ | ✅ (tacche sulla barra e pannello) | — |
-| Miniature sulla barra di avanzamento (trickplay) | ✅ | ❌ | B |
+| Miniature sulla barra di avanzamento (trickplay) | ✅ | ✅ (per libreria, spente sulle remote) | — |
 | Salto della sigla e dei titoli di coda | 🟡 (plugin, segmenti 10.10) | ❌ | C |
 | Sottotitoli esterni e interni, conversione in WebVTT | ✅ | ✅ | — |
 | Ricerca e download di sottotitoli (OpenSubtitles) | 🟡 (plugin) | ❌ | C |
@@ -90,7 +90,7 @@ La colonna **Priorità** indica l'ordine di lavoro: **A** subito, **B** dopo, **
 | NFO locali | ✅ | ✅ (+ .plexmatch) | — |
 | Modifica dei metadati, identifica | ✅ | ✅ | — |
 | Scelta o caricamento delle immagini | ✅ | 🟡 (caricamento sì; scelta tra le alternative di TMDB no) | C |
-| Accesso con codice da un altro dispositivo (Quick Connect) | ✅ | ❌ | B (serve alle app TV) |
+| Accesso con codice da un altro dispositivo (Quick Connect) | ✅ | ✅ (anche API Jellyfin) | — |
 | Messaggio o avviso sulla pagina di accesso, CSS personalizzato | ✅ | ❌ | C |
 | Webhook e notifiche esterne | 🟡 (plugin) | ❌ | C |
 | TV in diretta, DVR, musica, libri, foto | ✅ | ➖ (fase 7) | — |

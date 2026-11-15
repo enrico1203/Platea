@@ -44,6 +44,19 @@ const en = {
     password: "Password",
     login: "Sign in",
   },
+  quickConnect: {
+    loginWithCode: "Sign in with a code",
+    title: "Sign in with a code",
+    instructions: "On a device where you're already signed in, open Account › Link a device (or the /link address) and enter this code. It's valid for 10 minutes.",
+    expired: "The code has expired.",
+    newCode: "New code",
+    usePassword: "Use password",
+    linkTitle: "Link a device",
+    linkHint: "Enter the 6-digit code shown by the TV or app: that device will sign in with your account.",
+    code: "Code",
+    authorize: "Link",
+    linked: "Linked: {device}",
+  },
   connect: {
     title: "Connect a server",
     unreachable: "Can't reach a Platea server at this address.",
@@ -623,6 +636,8 @@ const en = {
       amf: "AMD AMF",
     },
     general: {
+      quick_connect: "Quick Connect",
+      quick_connect_hint: "Sign in with a 6-digit code confirmed from a device that's already signed in: handy on TVs. When off, codes are refused.",
       server_name: "Server name",
       public_url: "Public URL",
       min_password_length: "Minimum password length",

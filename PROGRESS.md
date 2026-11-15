@@ -310,7 +310,12 @@ restano 321 "da verificare" e 328 non riconosciuti (da vedere a mano dall'utente
    `extract_keyframes` e `trickplay` a falso (prima il dialogo mandava i suoi valori e accendeva i keyframe); nel dialogo
    scegliere Remoto spegne le letture complete e, per una libreria nuova, mette 360 min e 1 analisi alla volta.
    Le librerie dell'utente (tutte remote): keyframe e miniature spenti.
-3. Quick Connect: accesso con un codice da un altro dispositivo (serve alle app TV).
+3. [x] Quick Connect (`quickconnect.rs`, `api/quickconnect.rs`): codici di 6 cifre validi 10 min, solo in memoria,
+   segreto monouso, al massimo 5 richieste aperte per indirizzo e 256 in tutto, codici sbagliati rallentati come i login.
+   API: initiate/status/redeem pubbliche, authorize con login. Strato Jellyfin: /QuickConnect/Enabled|Initiate|Connect|
+   Authorize e /Users/AuthenticateWithQuickConnect. Web: "Accedi con un codice" nel login, "Collega un dispositivo" in
+   Account e su `/link`. Impostazione `general.quick_connect` (attiva). Provato su server separato: flusso nativo e
+   Jellyfin via curl; nel browser il dispositivo entra da solo dopo la conferma, campo del codice a 16 px, zero errori.
 4. `.plexmatch` righe `ep:` e NFO dei singoli episodi.
 5. Fase 3: QSV/VA-API/NVENC/AMD, tone mapping in GPU, uscita HEVC/AV1 su hardware reale (qui non c'è GPU).
 6. Fase 5 (rilascio): documentazione completa, aggiornamento tra versioni, revisione di sicurezza.
@@ -323,6 +328,8 @@ restano 321 "da verificare" e 328 non riconosciuti (da vedere a mano dall'utente
 - Vedi il punto 4 dei Prossimi passi.
 
 ## Registro
+
+- 2026-11-15 — Quick Connect (web, API nativa e Jellyfin).
 
 - 2026-11-15 — Miniature sulla barra di avanzamento; librerie remote con tutte le letture complete spente.
 

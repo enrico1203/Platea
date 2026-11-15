@@ -37,6 +37,11 @@ pub fn router() -> Router<Shared> {
         .route("/System/Ping", get(ping).post(ping))
         .route("/Users/Public", get(users_public))
         .route("/Users/AuthenticateByName", post(authenticate))
+        .route("/Users/AuthenticateWithQuickConnect", post(authenticate_quick_connect))
+        .route("/QuickConnect/Enabled", get(qc_enabled))
+        .route("/QuickConnect/Initiate", post(qc_initiate).get(qc_initiate))
+        .route("/QuickConnect/Connect", get(qc_connect))
+        .route("/QuickConnect/Authorize", post(qc_authorize))
         .route("/Sessions/Logout", post(logout))
         .route("/Users/Me", get(me))
         .route("/Users/{user}", get(user_by_id))
@@ -206,6 +211,12 @@ static CANONICAL: Lazy<HashMap<String, &'static str>> = Lazy::new(|| {
         "Ping",
         "Users",
         "AuthenticateByName",
+        "AuthenticateWithQuickConnect",
+        "QuickConnect",
+        "Enabled",
+        "Initiate",
+        "Connect",
+        "Authorize",
         "Sessions",
         "Logout",
         "Me",
@@ -415,23 +426,117 @@ async fn authenticate(
         client_version: f.get("version").cloned(),
     };
     let ok = do_login(&state, &req, ip).await?;
+    auth_result(
+        &state,
+        ok.user_id,
+        &ok.username,
+        &ok.token,
+        req.client.as_deref(),
+        req.device_name.as_deref(),
+        req.device_id.as_deref(),
+        req.client_version.as_deref(),
+    )
+    .await
+}
+
+/// Risposta di autenticazione (AuthenticationResult), uguale per password e Quick Connect.
+#[allow(clippy::too_many_arguments)]
+async fn auth_result(
+    state: &Shared,
+    user_id: i64,
+    username: &str,
+    token: &str,
+    client: Option<&str>,
+    device_name: Option<&str>,
+    device_id: Option<&str>,
+    version: Option<&str>,
+) -> ApiResult<Json<Value>> {
     Ok(Json(json!({
-        "User": user_dto(&state, ok.user_id).await?,
+        "User": user_dto(state, user_id).await?,
         "SessionInfo": {
             "Id": crate::util::random_hex(16),
-            "UserId": guid(&state, NS_USER, ok.user_id),
-            "UserName": ok.username,
-            "Client": req.client,
-            "DeviceName": req.device_name,
-            "DeviceId": req.device_id,
-            "ApplicationVersion": req.client_version,
+            "UserId": guid(state, NS_USER, user_id),
+            "UserName": username,
+            "Client": client,
+            "DeviceName": device_name,
+            "DeviceId": device_id,
+            "ApplicationVersion": version,
             "ServerId": state.server_id,
             "SupportsRemoteControl": false,
             "PlayableMediaTypes": ["Video"],
         },
-        "AccessToken": ok.token,
+        "AccessToken": token,
         "ServerId": state.server_id,
     })))
+}
+
+// Quick Connect come in Jellyfin: Initiate → Connect (stato) → Authorize dall'altro dispositivo → AuthenticateWithQuickConnect.
+
+fn qc_dto(p: &crate::quickconnect::Pending, secret: &str) -> Value {
+    json!({
+        "Authenticated": p.user_id.is_some(),
+        "Secret": secret,
+        "Code": p.code,
+        "DeviceId": p.device_id,
+        "DeviceName": p.device_name,
+        "AppName": p.client,
+        "AppVersion": p.client_version,
+        "DateAdded": iso(p.created_at),
+    })
+}
+
+/// Parametri di query senza distinzione tra maiuscole e minuscole (`secret` o `Secret`).
+fn query_ci(q: &HashMap<String, String>, key: &str) -> Option<String> {
+    q.iter().find(|(k, _)| k.eq_ignore_ascii_case(key)).map(|(_, v)| v.clone())
+}
+
+async fn qc_enabled(State(state): State<Shared>) -> Json<bool> {
+    Json(state.settings.get().general.quick_connect)
+}
+
+async fn qc_initiate(State(state): State<Shared>, ConnectInfo(peer): ConnectInfo<SocketAddr>, headers: HeaderMap) -> ApiResult<Json<Value>> {
+    let f = auth_fields(&headers);
+    let ip = crate::net::client_ip(Some(peer), &headers, &state.settings.get().network.trusted_proxies);
+    let req = crate::api::quickconnect::InitiateReq {
+        device_id: f.get("deviceid").cloned(),
+        device_name: f.get("device").cloned(),
+        client: f.get("client").cloned(),
+        client_version: f.get("version").cloned(),
+    };
+    let (_, secret, _, _) = crate::api::quickconnect::start(&state, &req, ip)?;
+    let p = state.quick_connect.status(&secret).ok_or_else(|| ApiError::not_found("Quick Connect"))?;
+    Ok(Json(qc_dto(&p, &secret)))
+}
+
+async fn qc_connect(State(state): State<Shared>, Query(q): Query<HashMap<String, String>>) -> ApiResult<Json<Value>> {
+    crate::api::quickconnect::enabled(&state)?;
+    let secret = query_ci(&q, "secret").unwrap_or_default();
+    let p = state.quick_connect.status(&secret).ok_or_else(|| ApiError::not_found("Quick Connect"))?;
+    Ok(Json(qc_dto(&p, &secret)))
+}
+
+async fn qc_authorize(State(state): State<Shared>, user: AuthUser, Query(q): Query<HashMap<String, String>>) -> ApiResult<Json<bool>> {
+    let code = query_ci(&q, "code").unwrap_or_default();
+    crate::api::quickconnect::confirm(&state, &user, &code).await?;
+    Ok(Json(true))
+}
+
+#[derive(Deserialize)]
+struct QcAuthBody {
+    #[serde(alias = "secret")]
+    #[serde(rename = "Secret")]
+    secret: String,
+}
+
+async fn authenticate_quick_connect(
+    State(state): State<Shared>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(body): Json<QcAuthBody>,
+) -> ApiResult<Json<Value>> {
+    let ip = crate::net::client_ip(Some(peer), &headers, &state.settings.get().network.trusted_proxies);
+    let (user_id, username, _, token, p) = crate::api::quickconnect::finish(&state, &body.secret, ip).await?;
+    auth_result(&state, user_id, &username, &token, Some(&p.client), Some(&p.device_name), Some(&p.device_id), Some(&p.client_version)).await
 }
 
 async fn logout(State(state): State<Shared>, user: AuthUser) -> ApiResult<StatusCode> {

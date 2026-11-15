@@ -4,16 +4,28 @@ import { Mark } from "../components/Logo";
 import { Alert, TextField } from "../components/ui";
 import { ApiError } from "../api/client";
 import { useSession } from "../session";
+import { QuickConnectLogin } from "../components/QuickConnect";
 import { useT } from "../i18n";
 
 export default function Login() {
   const t = useT();
-  const { login, info } = useSession();
+  const { login, info, acceptToken } = useSession();
+  const [qc, setQc] = useState(false);
   const nav = useNavigate();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  if (qc) {
+    return (
+      <div className="center">
+        <div className="auth-card">
+          <div className="row"><Mark size={40} /><div><div className="t-h2">{info?.name ?? "Platea"}</div><div className="t-small subtle">Open source media server</div></div></div>
+          <QuickConnectLogin onToken={async (tok) => { await acceptToken(tok); nav("/", { replace: true }); }} onCancel={() => setQc(false)} />
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="center">
       <form
@@ -37,6 +49,7 @@ export default function Login() {
         <TextField label={t("auth.username")} autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} autoFocus required />
         <TextField label={t("auth.password")} type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
         <button className="pl-btn pl-btn--primary pl-btn--lg" disabled={busy || !username || !password}>{t("auth.login")}</button>
+        {info?.quick_connect && <button type="button" className="pl-btn pl-btn--ghost" onClick={() => setQc(true)}>{t("quickConnect.loginWithCode")}</button>}
       </form>
     </div>
   );

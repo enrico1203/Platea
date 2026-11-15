@@ -1,4 +1,4 @@
-export interface SystemInfo { name: string; id: string; version: string; product: string; setup_required: boolean }
+export interface SystemInfo { name: string; id: string; version: string; product: string; setup_required: boolean; quick_connect?: boolean }
 export interface UserRef { id: string; username: string; is_admin: boolean }
 export interface Me extends UserRef {
   device_name: string;

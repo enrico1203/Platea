@@ -5,6 +5,7 @@ import { api, ApiError, getToken, serverUrl } from "../api/client";
 import type { Device, UserPrefs } from "../api/types";
 import { Alert, Badge, SelectField, Switch, TextField, toast } from "../components/ui";
 import { Avatar, useLibraries } from "../components/Layout";
+import { LinkDevice } from "../components/QuickConnect";
 import { useSession } from "../session";
 import { useI18n } from "../i18n";
 import { LOCALES, type LocaleCode } from "../i18n/locales";
@@ -13,7 +14,7 @@ import { DEFAULT_PREFS, LANGUAGES, languageName, savePrefs } from "../lib/prefs"
 
 export default function Account() {
   const { t, locale, setLocale, relative, date, tag } = useI18n();
-  const { me, logout, reload } = useSession();
+  const { me, logout, reload, info } = useSession();
   const qc = useQueryClient();
   const { data: libs } = useLibraries();
   const [theme, setThemeState] = useState<Theme>(getTheme());
@@ -148,6 +149,8 @@ export default function Account() {
           <div><button className="pl-btn pl-btn--secondary" disabled={!current || !next}>{t("account.changePassword")}</button></div>
         </form>
       </section>
+
+      {info?.quick_connect && <section className="pl-panel panel-pad" id="link"><LinkDevice /></section>}
 
       <section className="pl-panel">
         <div className="panel-head row row--between">
