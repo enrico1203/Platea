@@ -444,6 +444,23 @@ export default function ItemPage() {
           </section>
         )}
 
+        {item.extras && item.extras.length > 0 && (
+          <section className="stack">
+            <h2 className="t-h3">{t("item.extras")}</h2>
+            <div className="extras">
+              {item.extras.map((x) => (
+                <button key={x.file_id} type="button" className="extra-card" onClick={() => nav(`/play/${item.id}?file=${x.file_id}`)}>
+                  <span className="extra-card__icon"><Play size={18} fill="currentColor" /></span>
+                  <span style={{ minWidth: 0 }}>
+                    <span className="t-label" style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{x.title}</span>
+                    <span className="t-small subtle">{[x.kind ? t(`item.extraKind.${x.kind}` as "item.extraKind.extra") : null, x.duration_ms ? duration(x.duration_ms) : null].filter(Boolean).join(" · ")}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
         {seasons && seasons.length > 0 && (
           <section>
             <div className="tabs" role="tablist">

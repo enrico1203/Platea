@@ -172,6 +172,78 @@ pub fn is_extra(rel_path: &str) -> bool {
     EXTRA_SUFFIXES.iter().any(|s| stem.ends_with(s)) || stem == "sample" || stem == "trailer"
 }
 
+/// Un contenuto extra riconosciuto: tipo, titolo da mostrare e cartella del titolo a cui appartiene.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExtraInfo {
+    /// `trailer`, `featurette`, `behindthescenes`, `deleted`, `interview`, `scene`, `short`, `clip`, `extra`.
+    pub kind: &'static str,
+    pub title: String,
+    /// Cartella (relativa) del film o della serie: quella che contiene la cartella degli extra o il file stesso.
+    pub owner_dir: String,
+}
+
+fn kind_from_dir(d: &str) -> Option<&'static str> {
+    Some(match d {
+        "trailers" | "trailer" => "trailer",
+        "featurettes" => "featurette",
+        "behind the scenes" => "behindthescenes",
+        "deleted scenes" => "deleted",
+        "interviews" => "interview",
+        "scenes" => "scene",
+        "shorts" => "short",
+        "clips" => "clip",
+        "extras" | "extra" | "other" | "contenuti speciali" => "extra",
+        "samples" | "sample" => "sample",
+        _ => return None,
+    })
+}
+
+/// Tipo e posizione di un contenuto extra. `None` se non è un extra o se è un campione (`sample`), che si ignora.
+pub fn extra_info(rel_path: &str) -> Option<ExtraInfo> {
+    let parts: Vec<&str> = rel_path.split('/').collect();
+    let file = parts.last().copied().unwrap_or("");
+    let stem = file_stem(file);
+    let lower = stem.to_ascii_lowercase();
+    // Cartella degli extra: il titolo è nella cartella che la contiene.
+    for (i, dir) in parts[..parts.len().saturating_sub(1)].iter().enumerate() {
+        if let Some(kind) = kind_from_dir(&dir.to_ascii_lowercase()) {
+            if kind == "sample" {
+                return None;
+            }
+            return Some(ExtraInfo { kind, title: stem.replace(['_', '.'], " ").trim().to_string(), owner_dir: parts[..i].join("/") });
+        }
+    }
+    // Suffisso nel nome ("Matrix-trailer.mkv"): il titolo è nella stessa cartella.
+    let owner_dir = parts[..parts.len().saturating_sub(1)].join("/");
+    let by_suffix: &[(&str, &str)] = &[
+        ("-trailer", "trailer"),
+        ("-featurette", "featurette"),
+        ("-behindthescenes", "behindthescenes"),
+        ("-deleted", "deleted"),
+        ("-interview", "interview"),
+        ("-scene", "scene"),
+        ("-short", "short"),
+        ("-clip", "clip"),
+        ("-other", "extra"),
+        ("-extra", "extra"),
+    ];
+    for (suffix, kind) in by_suffix {
+        if lower.ends_with(suffix) {
+            let base = stem[..stem.len() - suffix.len()].trim();
+            let title = match *kind {
+                "trailer" => "Trailer".to_string(),
+                _ if base.is_empty() => kind.to_string(),
+                _ => base.to_string(),
+            };
+            return Some(ExtraInfo { kind, title, owner_dir });
+        }
+    }
+    if lower == "trailer" {
+        return Some(ExtraInfo { kind: "trailer", title: "Trailer".into(), owner_dir });
+    }
+    None
+}
+
 fn file_stem(file: &str) -> &str {
     match file.rsplit_once('.') {
         Some((stem, ext)) if !stem.is_empty() && ext.len() <= 5 && !ext.contains(' ') => stem,

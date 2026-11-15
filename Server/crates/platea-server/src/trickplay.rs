@@ -51,7 +51,7 @@ pub async fn enqueue_library(state: &Shared, library_id: i64) -> anyhow::Result<
     let ids: Vec<i64> = sqlx::query_scalar(
         "SELECT m.id FROM media_files m JOIN library_paths lp ON lp.id = m.library_path_id
          LEFT JOIN trickplay t ON t.file_id = m.id
-         WHERE lp.library_id = ? AND m.state = 'present' AND m.probe_state = 'done'
+         WHERE lp.library_id = ? AND m.state = 'present' AND m.probe_state = 'done' AND m.item_id IS NOT NULL
            AND (t.file_id IS NULL OR t.interval_ms != ? OR t.width != ?)",
     )
     .bind(library_id)

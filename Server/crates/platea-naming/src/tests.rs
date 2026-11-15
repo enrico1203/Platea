@@ -114,3 +114,17 @@ fn subtitles() {
     assert_eq!(subtitle_language("Film (2020).eng.srt"), (Some("eng".into()), false, false));
     assert!(is_subtitle_file("x.srt"));
 }
+
+#[test]
+fn extras_kind_and_owner() {
+    let e = extra_info("Matrix (1999)/Featurettes/Making of.mkv").unwrap();
+    assert_eq!((e.kind, e.title.as_str(), e.owner_dir.as_str()), ("featurette", "Making of", "Matrix (1999)"));
+    let e = extra_info("Matrix (1999)/Matrix-trailer.mp4").unwrap();
+    assert_eq!((e.kind, e.owner_dir.as_str()), ("trailer", "Matrix (1999)"));
+    let e = extra_info("Film/Matrix (1999)/Behind The Scenes/Bullet_time.mkv").unwrap();
+    assert_eq!((e.kind, e.title.as_str(), e.owner_dir.as_str()), ("behindthescenes", "Bullet time", "Film/Matrix (1999)"));
+    let e = extra_info("Breaking Bad (2008)/Extras/Intervista.mkv").unwrap();
+    assert_eq!((e.kind, e.owner_dir.as_str()), ("extra", "Breaking Bad (2008)"));
+    assert!(extra_info("Matrix (1999)/Sample/sample.mkv").is_none());
+    assert!(extra_info("Matrix (1999)/Matrix (1999).mkv").is_none());
+}

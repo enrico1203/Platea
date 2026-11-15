@@ -295,7 +295,8 @@ pub async fn start(state: Shared, user: AuthUser, req: InfoReq) -> ApiResult<Val
     let files: Vec<i64> = if let Some(f) = &req.file_id {
         let fid = state.ids.decode(f).ok_or_else(|| ApiError::not_found("File"))?;
         let ok: Option<i64> =
-            sqlx::query_scalar("SELECT id FROM media_files WHERE id = ? AND item_id = ?").bind(fid).bind(item_id).fetch_optional(&state.db.read).await?;
+            // Una versione del titolo o uno dei suoi extra.
+            sqlx::query_scalar("SELECT id FROM media_files WHERE id = ?1 AND (item_id = ?2 OR extra_of = ?2)").bind(fid).bind(item_id).fetch_optional(&state.db.read).await?;
         vec![ok.ok_or_else(|| ApiError::not_found("File"))?]
     } else {
         sqlx::query_scalar("SELECT id FROM media_files WHERE item_id = ? AND state = 'present' ORDER BY size DESC")
@@ -504,7 +505,7 @@ pub async fn start(state: Shared, user: AuthUser, req: InfoReq) -> ApiResult<Val
         details: crate::sessions::details(&file, &decision, hls.as_ref().map(|h| h.is_fmp4())),
         position_ms: start,
     };
-    let sess = Arc::new(PlaySession::new(
+    let mut sess = PlaySession::new(
         session_id.clone(),
         token.clone(),
         &user,
@@ -520,7 +521,9 @@ pub async fn start(state: Shared, user: AuthUser, req: InfoReq) -> ApiResult<Val
         history_id,
         hls,
         extra,
-    ));
+    );
+    sess.extra = sqlx::query_scalar::<_, Option<i64>>("SELECT extra_of FROM media_files WHERE id = ?").bind(file.id).fetch_one(&state.db.read).await?.is_some();
+    let sess = Arc::new(sess);
     state.sessions.insert(sess.clone());
     crate::webhooks::playback_started(&state, &sess);
     state.events.admin("sessions.changed", json!({ "started": session_id }));
@@ -621,7 +624,9 @@ async fn progress(State(state): State<Shared>, user: AuthUser, Path(id): Path<St
     let s = own_session(&state, &user, &id)?;
     let pos = req.position_ms.clamp(0, s.duration_ms.max(req.position_ms));
     s.report(Some(pos), req.paused);
-    state.sessions.record_progress(s.user_id, s.item_id, pos, s.duration_ms);
+    if !s.extra {
+        state.sessions.record_progress(s.user_id, s.item_id, pos, s.duration_ms);
+    }
     Ok(Json(json!({ "ok": true })))
 }
 

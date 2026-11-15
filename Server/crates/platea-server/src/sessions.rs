@@ -45,6 +45,8 @@ pub struct PlaySession {
     /// Indirizzo del client e se è fuori dalle reti locali.
     pub ip: Option<String>,
     pub remote: bool,
+    /// Contenuto extra (trailer, dietro le quinte): l'avanzamento non tocca lo stato di visione del titolo.
+    pub extra: bool,
     /// Sorgente e uscita (file, tracce, cosa fa il server), calcolate all'avvio.
     pub details: serde_json::Value,
     /// Byte inviati al client (file o segmenti), per la banda.
@@ -92,6 +94,7 @@ impl PlaySession {
     ) -> Self {
         let now = now_ms();
         PlaySession {
+            extra: false,
             id,
             token,
             user_id: user.user_id,
@@ -372,7 +375,7 @@ pub async fn stop_session(state: &Shared, id: &str) -> Option<Arc<PlaySession>> 
         h.stop().await;
     }
     let pos = s.position_ms.load(Ordering::Relaxed);
-    if pos > 0 {
+    if pos > 0 && !s.extra {
         state.sessions.record_progress(s.user_id, s.item_id, pos, s.duration_ms);
     }
     let watched = (now_ms() - s.started_at).max(0);

@@ -478,3 +478,9 @@ a.person:focus-visible .person__img { outline: 2px solid var(--focus); outline-o
 .subtitles-langs .pl-field { min-width: 110px; }
 .removable { position: relative; }
 .removable__x { position: absolute; top: 6px; right: 6px; background: rgba(12,14,17,.8); color: #f3f5f7; }
+
+/* Contenuti extra di un titolo. */
+.extras { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+.extra-card { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-1); color: inherit; text-align: left; cursor: pointer; min-width: 0; }
+.extra-card:hover, .extra-card:focus-visible { border-color: var(--blue); }
+.extra-card__icon { display: grid; place-items: center; width: 40px; height: 40px; flex: none; border-radius: var(--radius-full); background: var(--surface-2); }

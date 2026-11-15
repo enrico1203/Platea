@@ -467,6 +467,23 @@ async fn detail(State(state): State<Shared>, user: AuthUser, Path(id): Path<Stri
         .await?;
     let o = v.as_object_mut().unwrap();
     o.insert("tagline".into(), json!(tagline));
+    // Extra del film o della serie (trailer locali, dietro le quinte…): si riproducono con `file_id`.
+    let extras: Vec<(i64, String, Option<String>, Option<i64>)> = sqlx::query_as(
+        "SELECT id, relative_path, extra_type, duration_ms FROM media_files WHERE extra_of = ? AND state = 'present' ORDER BY extra_type, relative_path",
+    )
+    .bind(iid)
+    .fetch_all(&state.db.read)
+    .await?;
+    o.insert(
+        "extras".into(),
+        json!(extras
+            .into_iter()
+            .map(|(fid, rel, kind, dur)| {
+                let title = platea_naming::extra_info(&rel).map(|x| x.title).unwrap_or_else(|| rel.rsplit('/').next().unwrap_or(&rel).to_string());
+                json!({ "file_id": state.ids.encode(fid), "title": title, "kind": kind, "duration_ms": dur })
+            })
+            .collect::<Vec<_>>()),
+    );
     // Collezione creata a mano: l'amministratore può rinominarla, cancellarla e toglierne i titoli.
     o.insert("manual_collection".into(), json!(manual));
     o.insert("trailers".into(), trailers.and_then(|t| serde_json::from_str::<Value>(&t).ok()).unwrap_or_else(|| json!([])));

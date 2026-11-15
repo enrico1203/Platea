@@ -430,10 +430,18 @@ async fn apply_listing(state: &Shared, library_id: i64, kind: &str, path_id: i64
     let mut new_entries: Vec<Entry> = Vec::new();
     let mut changed: Vec<(i64, Entry)> = Vec::new();
     let mut returned: Vec<i64> = Vec::new();
+    // Extra nuovi (trailer locali, dietro le quinte…): si collegano al titolo della loro cartella dopo i file principali.
+    let mut new_extras: Vec<(Entry, naming::ExtraInfo)> = Vec::new();
     for e in &listing.videos {
-        if naming::is_extra(&e.rel) {
-            continue;
-        }
+        let extra = if naming::is_extra(&e.rel) {
+            match naming::extra_info(&e.rel) {
+                Some(x) => Some(x),
+                // Campioni ("sample"): ignorati.
+                None => continue,
+            }
+        } else {
+            None
+        };
         match by_path.get(&e.rel) {
             Some(f) if f.size == e.size && f.mtime == e.mtime => {
                 if f.state == "missing" {
@@ -441,7 +449,10 @@ async fn apply_listing(state: &Shared, library_id: i64, kind: &str, path_id: i64
                 }
             }
             Some(f) => changed.push((f.id, e.clone())),
-            None => new_entries.push(e.clone()),
+            None => match extra {
+                Some(x) => new_extras.push((e.clone(), x)),
+                None => new_entries.push(e.clone()),
+            },
         }
     }
 
@@ -512,6 +523,44 @@ async fn apply_listing(state: &Shared, library_id: i64, kind: &str, path_id: i64
             .last_insert_rowid();
             touched_items.insert(item_id);
             probe_ids.push(id);
+            stats.added += 1;
+        }
+        tx.commit().await?;
+    }
+
+    // Extra: file senza elemento proprio, collegati al film o alla serie della cartella che li contiene.
+    if !new_extras.is_empty() {
+        let mut tx = state.db.write.begin().await?;
+        for (e, x) in new_extras {
+            // Cartella degli extra nella radice della libreria: la libreria è quella di un solo titolo.
+            let prefix = if x.owner_dir.is_empty() { String::new() } else { format!("{}/", x.owner_dir) };
+            let owner: Option<(String, i64, Option<i64>)> = sqlx::query_as(
+                "SELECT i.kind, i.id, i.series_id FROM media_files f JOIN items i ON i.id = f.item_id
+                 WHERE f.library_path_id = ? AND f.extra_of IS NULL AND substr(f.relative_path, 1, ?) = ? LIMIT 1",
+            )
+            .bind(path_id)
+            .bind(prefix.chars().count() as i64)
+            .bind(&prefix)
+            .fetch_optional(&mut *tx)
+            .await?;
+            // Nessun titolo ancora riconosciuto in quella cartella: si riprova alla prossima scansione.
+            let Some((owner_kind, id, series)) = owner else { continue };
+            let owner_id = if matches!(owner_kind.as_str(), "episode" | "season") { series.unwrap_or(id) } else { id };
+            let fid = sqlx::query(
+                "INSERT INTO media_files (item_id, library_path_id, relative_path, size, mtime, state, probe_state, added_at, extra_of, extra_type)
+                 VALUES (NULL, ?, ?, ?, ?, 'present', 'pending', ?, ?, ?)",
+            )
+            .bind(path_id)
+            .bind(&e.rel)
+            .bind(e.size)
+            .bind(e.mtime)
+            .bind(now)
+            .bind(owner_id)
+            .bind(x.kind)
+            .execute(&mut *tx)
+            .await?
+            .last_insert_rowid();
+            probe_ids.push(fid);
             stats.added += 1;
         }
         tx.commit().await?;

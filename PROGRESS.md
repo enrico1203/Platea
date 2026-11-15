@@ -396,6 +396,13 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 4p. App Android indicate nel README come compatibili da provare (l'utente le proverà): Findroid (telefoni) e Jellyfin
    per Android TV (nativa, a differenza dell'app per telefoni). Se danno errore: log ("percorso non gestito",
    "richiesta Jellyfin senza token riconosciuto"), eventualmente `PLATEA_LOG=info,tower_http=debug` per un po'.
+4q. [x] Contenuti extra (migrazione 0019 `media_files.extra_of`, `extra_type`): file con `item_id` NULL collegati al
+   film o alla serie della cartella (`naming::extra_info`: cartelle Extras, Trailers, Featurettes, Behind The Scenes,
+   Deleted Scenes, Interviews, Scenes, Shorts, Clips, Other, Contenuti speciali; suffissi -trailer, -featurette…;
+   i "sample" ignorati; libreria con un solo titolo nella radice gestita). Tutte le query per `item_id` li escludono
+   da sole. Riproduzione con `file_id` (anche per gli extra), sessione `extra`: l'avanzamento non tocca il titolo.
+   Sezione "Contenuti extra" nel dettaglio. Strato Jellyfin: SpecialFeatures/LocalTrailers ancora vuoti.
+   Provato su server di prova: extra di film e serie, sample ignorato, film non segnato come iniziato.
 5. Fase 3: QSV/VA-API/NVENC/AMD, tone mapping in GPU, uscita HEVC/AV1 su hardware reale (qui non c'è GPU).
 5b. [x] Apertura del progetto (15/11/2026, richiesta dell'utente): repository pubblica; README con licenza
    AGPL-3.0, progetti collegati con link e licenze verificate (Jellyfin GPL-2.0, Swiftfin MPL-2.0, Findroid GPL-3.0,
