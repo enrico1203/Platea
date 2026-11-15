@@ -218,28 +218,32 @@ impl TokenCache {
     }
 }
 
+/// Campi dell'intestazione `MediaBrowser Client=…, Device=…, DeviceId=…, Version=…, Token=…` (anche `Emby …`).
+/// I valori possono essere tra virgolette o no (Swiftfin 1.7 li manda senza), codificati in URL, in qualsiasi ordine.
+pub fn mediabrowser_fields(raw: &str) -> std::collections::HashMap<String, String> {
+    let body = raw.trim();
+    let body = body.strip_prefix("MediaBrowser").or_else(|| body.strip_prefix("Emby")).unwrap_or(body).trim();
+    let mut out = std::collections::HashMap::new();
+    for part in body.split(',') {
+        if let Some((k, v)) = part.trim().split_once('=') {
+            let v = v.trim().trim_matches('"');
+            let v = urlencoding::decode(v).map(|x| x.into_owned()).unwrap_or_else(|_| v.to_string());
+            out.insert(k.trim().to_ascii_lowercase(), v);
+        }
+    }
+    out
+}
+
 pub fn extract_token(parts: &Parts) -> Option<String> {
-    let auth = parts.headers.get(axum::http::header::AUTHORIZATION).or_else(|| parts.headers.get("x-emby-authorization"));
-    if let Some(v) = auth.and_then(|v| v.to_str().ok()) {
+    for h in [axum::http::header::AUTHORIZATION.as_str(), "x-emby-authorization"] {
+        let Some(v) = parts.headers.get(h).and_then(|v| v.to_str().ok()) else { continue };
         let v = v.trim();
         if let Some(t) = v.strip_prefix("Bearer ").or_else(|| v.strip_prefix("bearer ")) {
             return Some(t.trim().to_string());
         }
-        // Stile Jellyfin/Emby: MediaBrowser Token="..."
-        if let Some(pos) = v.find("Token=\"") {
-            let rest = &v[pos + 7..];
-            if let Some(end) = rest.find('"') {
-                return Some(rest[..end].to_string());
-            }
-        }
-    }
-    // X-Emby-Authorization senza token ma con Authorization separata.
-    if let Some(v) = parts.headers.get("x-emby-authorization").and_then(|v| v.to_str().ok()) {
-        if let Some(pos) = v.find("Token=\"") {
-            let rest = &v[pos + 7..];
-            if let Some(end) = rest.find('"') {
-                return Some(rest[..end].to_string());
-            }
+        // Stile Jellyfin/Emby: MediaBrowser …, Token=… (con o senza virgolette).
+        if let Some(t) = mediabrowser_fields(v).remove("token").filter(|t| !t.is_empty()) {
+            return Some(t);
         }
     }
     for h in ["x-platea-token", "x-emby-token", "x-mediabrowser-token"] {
@@ -248,6 +252,21 @@ pub fn extract_token(parts: &Parts) -> Option<String> {
         }
     }
     None
+}
+
+/// Maschera i valori dopo `Token=` (per i log).
+fn mask_tokens(v: &str) -> String {
+    let mut out = String::new();
+    let mut rest = v;
+    while let Some(i) = rest.to_ascii_lowercase().find("token=") {
+        out.push_str(&rest[..i + 6]);
+        let tail = &rest[i + 6..];
+        let end = tail.find(',').unwrap_or(tail.len());
+        out.push_str(&format!("<{} caratteri>", tail[..end].len()));
+        rest = &tail[end..];
+    }
+    out.push_str(rest);
+    out
 }
 
 pub fn query_param(parts: &Parts, name: &str) -> Option<String> {
@@ -348,6 +367,7 @@ pub async fn resolve_token(state: &Shared, token: &str, ip: Option<IpAddr>) -> A
         .fetch_optional(&state.db.read)
         .await?;
     let Some((token_id, user_id, device_id, device_name, client)) = row else {
+        tracing::info!(len = token.len(), "token sconosciuto");
         return Err(ApiError::Unauthorized);
     };
     let Some((username, is_admin, perms)) = load_permissions(state, user_id).await? else {
@@ -382,11 +402,20 @@ impl FromRequestParts<Shared> for AuthUser {
     type Rejection = ApiError;
 
     async fn from_request_parts(parts: &mut Parts, state: &Shared) -> Result<Self, Self::Rejection> {
-        let token = extract_token(parts)
-            .or_else(|| query_param(parts, "api_key"))
-            .or_else(|| query_param(parts, "apikey"))
-            .or_else(|| query_param(parts, "token"))
-            .ok_or(ApiError::Unauthorized)?;
+        let token =
+            extract_token(parts).or_else(|| query_param(parts, "api_key")).or_else(|| query_param(parts, "apikey")).or_else(|| query_param(parts, "token"));
+        let Some(token) = token else {
+            // Diagnosi delle app: quali intestazioni arrivano (i valori dei token sono mascherati).
+            if !parts.uri.path().starts_with("/api/v1/") {
+                let names: Vec<&str> = parts.headers.keys().map(|k| k.as_str()).collect();
+                let auth: Vec<String> = ["authorization", "x-emby-authorization"]
+                    .iter()
+                    .filter_map(|h| parts.headers.get(*h).and_then(|v| v.to_str().ok()).map(|v| format!("{h}: {}", mask_tokens(v))))
+                    .collect();
+                tracing::info!(path = %parts.uri.path(), headers = ?names, auth = ?auth, "richiesta Jellyfin senza token riconosciuto");
+            }
+            return Err(ApiError::Unauthorized);
+        };
         let ip = peer_ip(state, parts);
         resolve_token(state, &token, ip).await
     }
@@ -546,5 +575,20 @@ mod schedule_tests {
         assert!(schedule_allows(&n, 6, 60));
         assert!(!schedule_allows(&n, 6, 180));
         assert!(!schedule_allows(&n, 4, 23 * 60));
+    }
+}
+
+#[cfg(test)]
+mod mediabrowser_tests {
+    use super::*;
+
+    #[test]
+    fn quoted_and_unquoted() {
+        let a = mediabrowser_fields(r#"MediaBrowser Client="Infuse-Direct", Device="iPhone", DeviceId="X1", Version="8.0", Token="abc""#);
+        assert_eq!((a["client"].as_str(), a["token"].as_str()), ("Infuse-Direct", "abc"));
+        // Swiftfin 1.7: senza virgolette, ordine qualsiasi, spazi codificati.
+        let b = mediabrowser_fields("MediaBrowser Token=def123, Client=Swiftfin%20iOS, Version=1.7, Device=iPhone, DeviceId=iOS_2A72");
+        assert_eq!((b["client"].as_str(), b["token"].as_str(), b["deviceid"].as_str()), ("Swiftfin iOS", "def123", "iOS_2A72"));
+        assert!(!mediabrowser_fields("Bearer xyz").contains_key("token"));
     }
 }

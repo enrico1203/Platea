@@ -381,6 +381,11 @@ restano 321 "da verificare" e 328 non riconosciuti (da vedere a mano dall'utente
    MediaSegments, Localization/*, UserItems/{id}/UserData (GET/POST), POST Users/{id}/Configuration|Policy,
    DisplayPreferences (POST). Secondo tentativo (log): Swiftfin chiede anche /socket (WebSocket Jellyfin: ora
    ForceKeepAlive/KeepAlive), /UserImage (avatar 10.9+) e /Branding/Splashscreen (PNG vuoto): aggiunti.
+   **Causa vera del 401:** Swiftfin 1.7 manda `Authorization: MediaBrowser Token=…, Client=…` SENZA virgolette e in
+   ordine variabile; il server cercava solo `Token="`. Ora `auth::mediabrowser_fields` legge valori con/senza
+   virgolette, codificati, in qualsiasi ordine (test). Jellyfin è passato da 10.11 a 12.x: dichiarata 12.1.0
+   (Swiftfin chiede ≥ 12.1.0, tre numeri). Log mascherato dei token rifiutati (`richiesta Jellyfin senza token
+   riconosciuto`) lasciato a livello info per diagnosi future.
    Log dettagliato acceso in .env (`PLATEA_LOG=info,tower_http=debug,platea::api::jellyfin=debug`): rimettere `info`. **Da confermare
    dall'utente su iPhone**; i percorsi sconosciuti finiscono nel log ("percorso non gestito").
 4o. [x] Transcodifica per le app Jellyfin: PlaybackInfo legge il `DeviceProfile` (`api/jellyfin_profile.rs`:

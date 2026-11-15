@@ -27,7 +27,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 /// Versione di Jellyfin dichiarata: Infuse legge nome e versione al collegamento.
-const JELLYFIN_VERSION: &str = "10.11.0";
+/// Jellyfin è passato da 10.11 a 12.x (settembre 2026); Swiftfin chiede almeno 12.1.0, in tre numeri.
+const JELLYFIN_VERSION: &str = "12.1.0";
 const TICKS_PER_MS: i64 = 10_000;
 
 pub fn router() -> Router<Shared> {
@@ -371,14 +372,7 @@ async fn users_public() -> Json<Value> {
 /// `MediaBrowser Client="Infuse", Device="iPhone", DeviceId="…", Version="8.0"`
 fn auth_fields(headers: &HeaderMap) -> HashMap<String, String> {
     let raw = headers.get("x-emby-authorization").or_else(|| headers.get(header::AUTHORIZATION)).and_then(|v| v.to_str().ok()).unwrap_or("");
-    let mut out = HashMap::new();
-    let body = raw.trim().trim_start_matches("MediaBrowser").trim_start_matches("Emby").trim();
-    for part in body.split(',') {
-        if let Some((k, v)) = part.trim().split_once('=') {
-            out.insert(k.trim().to_lowercase(), v.trim().trim_matches('"').to_string());
-        }
-    }
-    out
+    crate::auth::mediabrowser_fields(raw)
 }
 
 #[derive(Deserialize)]
