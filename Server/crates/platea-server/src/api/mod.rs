@@ -152,7 +152,7 @@ fn openapi(docs: &[RouteDoc]) -> Value {
             "title": "Platea API",
             "version": crate::state::VERSION,
             "description": "API pubblica di Platea, open source media server. Tutti i client (web UI, app, script) usano questa API.",
-            "license": { "name": "Apache-2.0", "identifier": "Apache-2.0" }
+            "license": { "name": "AGPL-3.0-only", "identifier": "AGPL-3.0-only" }
         },
         "servers": [{ "url": "/" }],
         "components": {

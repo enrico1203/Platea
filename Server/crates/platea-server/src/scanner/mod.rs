@@ -998,10 +998,10 @@ pub mod rclone {
         let sc = crate::settings::ScannerSettings {
             rclone_mounts: vec!["/media/film/ = http://h:8573".into(), "senza-indirizzo".into(), "/x=ftp://no".into()],
             rclone_rc_url: "http://h:6470".into(),
-            rclone_mount_path: "/media/jotta2".into(),
+            rclone_mount_path: "/media/cloud".into(),
             ..Default::default()
         };
-        assert_eq!(mounts(&sc), vec![("/media/film".to_string(), "http://h:8573".to_string()), ("/media/jotta2".to_string(), "http://h:6470".to_string())]);
+        assert_eq!(mounts(&sc), vec![("/media/film".to_string(), "http://h:8573".to_string()), ("/media/cloud".to_string(), "http://h:6470".to_string())]);
     }
 
     #[cfg(test)]

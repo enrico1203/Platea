@@ -18,7 +18,10 @@ export default function About() {
       <section className="pl-panel panel-pad stack">
         <h2 className="t-h3">{t("about.dataSources")}</h2>
         <p className="muted" style={{ margin: 0 }}>{t("about.tmdb")}</p>
-        <a href="https://www.themoviedb.org" target="_blank" rel="noreferrer" className="t-label">The Movie Database (TMDB)</a>
+        {/* Logo approvato da TMDB, non modificato, meno in evidenza del marchio di Platea (requisito dei termini dell'API). */}
+        <a href="https://www.themoviedb.org" target="_blank" rel="noreferrer" aria-label="The Movie Database (TMDB)" style={{ alignSelf: "flex-start" }}>
+          <img src="/attribution/tmdb.svg" alt="The Movie Database (TMDB)" style={{ height: 14, width: "auto", display: "block" }} />
+        </a>
         <p className="t-small subtle" style={{ margin: 0 }}>{t("about.tmdbDisclaimer")}</p>
       </section>
       <section className="pl-panel panel-pad stack">

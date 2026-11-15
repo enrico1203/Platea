@@ -6,7 +6,7 @@ Platea serve il file originale quando il client lo regge, fa remux o transcodifi
 
 - **Remux leggero anche per HEVC.** Un browser che decodifica HEVC (Safari, Chrome ed Edge con supporto hardware) riceve il video copiato in segmenti fMP4: il server converte solo l'audio.
 - **Direct play prima di tutto.** Il client dichiara cosa sa riprodurre; il server sceglie direct play, poi remux, poi transcodifica, e registra il motivo (`VideoCodecNotSupported`, `ContainerNotSupported`, ...).
-- **Scansioni leggere.** Una scansione legge solo l'elenco delle cartelle, diverse in parallelo: zero file aperti se nulla è cambiato. 8.500 film su un mount rclone in meno di 40 secondi. Sui dischi locali un film copiato compare da solo dopo pochi secondi.
+- **Scansioni leggere.** Una scansione legge solo l'elenco delle cartelle, diverse in parallelo: zero file aperti se nulla è cambiato. Migliaia di film su un mount rclone si elencano in meno di un minuto. Sui dischi locali un film copiato compare da solo dopo pochi secondi.
 - **Il mount che cade non cancella nulla.** Radice vuota o illeggibile: la scansione si ferma. Cartella che va in errore: i suoi file restano. Tanti file spariti insieme (mount a metà): nessuna rimozione finché non confermi. I file che cancelli davvero, pochi alla volta, spariscono da soli.
 - **NFO e .plexmatch.** Legge gli NFO di Kodi, Jellyfin e Radarr e i `.plexmatch` di Plex: identificativi esatti e, anche senza chiave TMDB, trama, cast, generi e locandine. Le cartelle dei media non vengono mai scritte: immagini e metadati stanno nel database e nella cache.
 - **Nessuna licenza, nessun limite.** Utenti, dispositivi, stream e funzioni illimitati, transcodifica hardware inclusa.
@@ -49,7 +49,7 @@ Apri `http://<host>:8080`, inserisci il codice di primo avvio stampato nei log e
 | `./data` | Database e segreto dell'installazione | No: va nel backup |
 | `./cache` | Immagini ridimensionate, sottotitoli estratti | Sì |
 | `./transcode` | Segmenti delle sessioni attive | Sì |
-| Cartelle dei media → `/media/…` | La libreria, in sola lettura: una riga per ognuna nei `volumes` del servizio `server` (es. `/mnt/jottamio:/media/jottamio:ro,rslave`) | — |
+| Cartelle dei media → `/media/…` | La libreria, in sola lettura: una riga per ognuna nei `volumes` del servizio `server` (es. `/mnt/cloud:/media/cloud:ro,rslave`) | — |
 
 **Utente dei container.** Server e web UI non girano come root: il server usa l'utente `platea` (uid e gid 1000), nginx l'utente `nginx`. Le cartelle `data`, `cache` e `transcode` devono appartenere all'uid 1000; aggiornando da una versione precedente: `docker compose down && sudo chown -R 1000:1000 data cache transcode && docker compose up -d`. Se non sono scrivibili, il server si ferma con questo messaggio nei log.
 
@@ -196,8 +196,30 @@ docker run --rm -v "$PWD/WebApp:/app" -w /app node:22-alpine npx tsc -b --noEmit
 docker compose up -d --build              # tutto lo stack
 ```
 
-L'API è descritta da un documento OpenAPI generato dalla stessa tabella che registra le route: `GET /api/v1/openapi.json`. Autenticazione con `Authorization: Bearer <token>` ottenuto da `POST /api/v1/auth/login`.
+L'API è descritta da un documento OpenAPI generato dalla stessa tabella che registra le route: `GET /api/v1/openapi.json`, con gli schemi dei dati presi dai tipi TypeScript della web UI (`scripts/openapi-schemas.sh`). Autenticazione con `Authorization: Bearer <token>` ottenuto da `POST /api/v1/auth/login`. `scripts/generate-clients.sh` genera da quel documento i client Kotlin e Swift per le app.
+
+## Come contribuire
+
+Segnalazioni, idee e pull request sono benvenute: vedi [CONTRIBUTING.md](CONTRIBUTING.md). Per le vulnerabilità di sicurezza non aprire una issue pubblica: segui [SECURITY.md](SECURITY.md).
 
 ## Licenza
 
-AGPL-3.0. FFmpeg (jellyfin-ffmpeg) è un programma separato avviato dal server, con la propria licenza. Metadati e immagini da [The Movie Database](https://www.themoviedb.org): questo prodotto usa l'API di TMDB ma non è approvato né certificato da TMDB.
+Platea è software libero, distribuito con la licenza [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only): puoi usarlo, studiarlo, modificarlo e ridistribuirlo; se lo modifichi e lo offri ad altri via rete, devi rendere disponibile anche il codice delle tue modifiche.
+
+## Progetti collegati e ringraziamenti
+
+Platea non sarebbe possibile senza questi progetti. I nomi citati appartengono ai rispettivi titolari e sono usati solo per indicare la compatibilità: Platea è un progetto indipendente, non affiliato né approvato da nessuno di loro, e non ne usa i loghi.
+
+| Progetto | Che cosa c'entra con Platea | Licenza |
+| --- | --- | --- |
+| [Jellyfin](https://jellyfin.org) | Il media server libero a cui Platea si ispira. Platea non ne contiene il codice: implementa da sé una parte della sua API pubblica, per far funzionare le app esistenti. "Jellyfin" è un nome riservato al progetto Jellyfin e ai suoi client ufficiali | [GPL-2.0](https://github.com/jellyfin/jellyfin/blob/master/LICENSE) |
+| [jellyfin-ffmpeg](https://github.com/jellyfin/jellyfin-ffmpeg) | La build di FFmpeg incluse nell'immagine Docker del server, avviata come programma separato per analisi e transcodifica | FFmpeg: [LGPL-2.1+, con parti GPL](https://github.com/jellyfin/jellyfin-ffmpeg/blob/jellyfin/LICENSE.md); i sorgenti della versione inclusa sono nel loro repository |
+| [Swiftfin](https://github.com/jellyfin/Swiftfin) | App Jellyfin per iPhone, iPad e Apple TV, compatibile con Platea | [MPL-2.0](https://github.com/jellyfin/Swiftfin/blob/main/LICENSE.md) |
+| [Infuse](https://firecore.com/infuse) | Player di Firecore per iPhone, iPad, Apple TV e Mac, compatibile con Platea come server Jellyfin | Proprietaria (Firecore, LLC) |
+| [Findroid](https://github.com/jarnedemeulemeester/findroid) | App Jellyfin per Android | [GPL-3.0](https://github.com/jarnedemeulemeester/findroid/blob/main/LICENSE) |
+| [Jellyfin per Android TV](https://github.com/jellyfin/jellyfin-androidtv) | App Jellyfin per Android TV e Fire TV | [GPL-2.0](https://github.com/jellyfin/jellyfin-androidtv/blob/master/LICENSE) |
+| [The Movie Database (TMDB)](https://www.themoviedb.org) | Metadati e immagini. Questo prodotto usa l'API di TMDB ma non è approvato né certificato da TMDB (l'attribuzione con il logo è nella pagina Informazioni della web UI) | [Termini dell'API](https://www.themoviedb.org/api-terms-of-use) |
+| [rclone](https://rclone.org) | Montare gli storage cloud letti da Platea, con il controllo remoto usato dalla scansione | [MIT](https://github.com/rclone/rclone/blob/master/COPYING) |
+| [Kodi](https://kodi.tv), [Plex](https://www.plex.tv) | Formati dei file `.nfo` e `.plexmatch`, letti per i metadati locali | — |
+
+Il server usa librerie Rust come [tokio](https://tokio.rs), [axum](https://github.com/tokio-rs/axum), [sqlx](https://github.com/launchbadge/sqlx) e [SQLite](https://sqlite.org); la web UI [React](https://react.dev), [Vite](https://vite.dev), [TanStack Query](https://tanstack.com/query), [hls.js](https://github.com/video-dev/hls.js) e [Lucide](https://lucide.dev). Le loro licenze (MIT, Apache-2.0 e simili) sono nei rispettivi pacchetti. Grazie a tutte le persone che li mantengono.

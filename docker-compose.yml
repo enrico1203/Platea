@@ -26,7 +26,7 @@ services:
       # rclone fatto dopo l'avvio. Una riga per ogni cartella: cartella dell'host → percorso nel container.
       # Sotto /media il selettore delle cartelle in Amministrazione → Librerie le trova subito.
       # Le cartelle della propria installazione vanno meglio in docker-compose.override.yml (non versionato).
-      # - /mnt/jottamio:/media/jottamio:ro,rslave
+      # - /mnt/cloud:/media/cloud:ro,rslave
       # - /mnt/nas/Serie:/media/serie:ro,rslave
     # Transcodifiche brevi e frequenti: i segmenti possono stare in RAM.
     # tmpfs:
