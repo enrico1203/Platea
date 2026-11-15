@@ -14,6 +14,10 @@ Platea serve il file originale quando il client lo regge, fa remux o transcodifi
 - **Limite per età.** Per ogni utente una classificazione massima: le sigle di ogni paese (T, VM14, PG-13, TV-MA…) diventano età, e i titoli oltre il limite spariscono ovunque, Infuse compreso.
 - **Ogni utente a modo suo.** Lingua dell'audio e dei sottotitoli, episodio successivo automatico, home su misura, immagine del profilo; per l'amministratore download consentito o no, fasce orarie, profili per bambini.
 - **Account con scadenza.** Dopo la data scelta l'utente continua a sfogliare la libreria ma non riproduce né scarica.
+- **Miniature sulla barra di avanzamento**, attivabili per libreria (spente di default e sempre spente alla creazione di una libreria remota, perché richiedono di leggere ogni file per intero): griglie JPEG in `cache/trickplay`, solo keyframe decodificati, un file alla volta, in pausa durante le riproduzioni.
+- **Quick Connect.** Sul televisore o in un'app si sceglie "Accedi con un codice": si conferma il codice di 6 cifre da un dispositivo già collegato (Account › Collega un dispositivo, oppure `/link`). Funziona anche con le app Jellyfin che lo supportano. Si spegne in Impostazioni › Generali.
+- **Qualità predefinita.** Ogni utente sceglie una qualità per la rete di casa e una per fuori casa; nel player si cambia per il singolo video.
+- **Generi e studi.** Dal dettaglio di un titolo si apre la pagina di un genere o di uno studio (HBO, Pixar…) con i titoli di tutte le librerie.
 - **Tutto dalla dashboard.** Nessun file di configurazione da modificare dopo il primo avvio.
 
 ## Avvio rapido
@@ -47,7 +51,7 @@ Apri `http://<host>:8080`, inserisci il codice di primo avvio stampato nei log e
 
 **Password dimenticata.** Da terminale, con il server in funzione: `docker compose exec server platea reset-password <utente>` stampa una password nuova (o `… reset-password <utente> <password>` per sceglierla). L'account torna attivo e tutti i suoi dispositivi vengono scollegati.
 
-Per aggiornare: `git pull && docker compose up -d --build`. Le migrazioni del database partono da sole, dopo una copia di sicurezza.
+Per aggiornare: `git pull && docker compose up -d --build`. Le migrazioni del database partono da sole, dopo una copia di sicurezza (`data/platea.db.bak-…`, si tengono le ultime 2). Provato aggiornando dalla prima versione pubblicata a quella attuale in un colpo solo: account, token, stato di visione e preferiti restano. Le versioni più vecchie giravano come root: se dopo l'aggiornamento il server si ferma con «i dati non sono accessibili all'utente del server», esegui il `chown` indicato sopra.
 
 **Backup.** Ogni 24 ore il server copia il database in `./data/backups` (le ultime 7; intervallo e numero in Impostazioni → Generali). Da **Amministrazione → Sistema** si crea una copia al volo, la si scarica, o si ripristina il database da una copia o da un file: il server si riavvia da solo e il database precedente resta in `./data` come `platea.db.before-restore-…`.
 
@@ -65,8 +69,6 @@ Poi in **Amministrazione → Transcodifica → Prova ora**: il server codifica e
 Monta lo storage sull'host e aggiungi il punto di mount ai `volumes` del servizio `server` (l'opzione `rslave` fa vedere al container anche un mount fatto dopo l'avvio). Crea la libreria con il profilo **Remoto**: scansione ogni 6 ore, un'analisi alla volta, cartelle elencate in parallelo.
 
 - **Remux senza scaricare il film.** Per gli MKV l'indice dei keyframe viene dai Cues del file, per gli MP4/MOV dal box `moov` (poche centinaia di KB), non dalla lettura di tutti i pacchetti: un salto a metà film parte in meno di un secondo.
-- **Miniature sulla barra di avanzamento**, attivabili per libreria (spente di default e sempre spente alla creazione di una libreria remota, perché richiedono di leggere ogni file per intero): griglie JPEG in `cache/trickplay`, solo keyframe decodificati, un file alla volta, in pausa durante le riproduzioni.
-- **Quick Connect.** Sul televisore o in un'app si sceglie "Accedi con un codice": si conferma il codice di 6 cifre da un dispositivo già collegato (Account › Collega un dispositivo, oppure `/link`). Funziona anche con le app Jellyfin che lo supportano. Si spegne in Impostazioni › Generali.
 - **Controllo remoto di rclone.** Se il mount ha `--rc` (per esempio `--rc --rc-addr :5572`), in **Impostazioni → Scansione** imposta l'URL (`http://host.docker.internal:5572`, aggiungendo al servizio `server` `extra_hosts: ["host.docker.internal:host-gateway"]`) e il percorso in cui il server vede la radice del mount (es. `/media`). Prima di ogni scansione il server chiede a rclone di aggiornare l'elenco delle cartelle in un colpo solo (`vfs/refresh`).
 - **Protezione dal mount assente.** Vedi sopra: se il mount salta durante una scansione pianificata non si perde niente; se hai cancellato tu molti file insieme, conferma da **Amministrazione → Librerie**.
 
@@ -89,6 +91,48 @@ Il compose ha un servizio `cloudflared`, spento finché non lo attivi: nessuna p
 
 Il server legge l'indirizzo vero del client da `X-Forwarded-For` (il tunnel arriva da una rete Docker, già tra i proxy fidati): chi entra dal tunnel è un accesso remoto, quindi valgono il permesso di accesso da remoto e il bitrate massimo da remoto. Due limiti di Cloudflare: le richieste oltre 100 MB non passano (il ripristino del database da file si fa dalla rete locale) e le condizioni del piano gratuito non sono pensate per molto traffico video. Cloudflare Access (il login di Cloudflare) si può mettere davanti alla web UI, non davanti all'hostname di Infuse: Infuse non sa superarlo.
 
+### Reverse proxy
+
+La web UI (porta 8080) inoltra già `/api` al server: basta mettere il proxy davanti a lei. Per le app Jellyfin (Infuse) serve un nome a parte verso la porta 8096. Il proxy deve: passare il WebSocket (`/api/v1/events`), non bufferizzare (i video passano in streaming, le richieste Range restano tali), avere timeout lunghi, e mandare `X-Forwarded-For`. L'indirizzo del proxy va in **Impostazioni → Rete → Proxy fidati** se non è già nelle reti private predefinite.
+
+Caddy:
+
+```caddy
+platea.example.com {
+    reverse_proxy 127.0.0.1:8080 {
+        flush_interval -1
+    }
+}
+infuse.example.com {
+    reverse_proxy 127.0.0.1:8096 {
+        flush_interval -1
+    }
+}
+```
+
+nginx:
+
+```nginx
+server {
+    server_name platea.example.com;
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_read_timeout 3600s;
+        client_max_body_size 0;    # ripristino del database da file
+    }
+}
+```
+
+Poi **Impostazioni → Generali → URL pubblico** con l'indirizzo per le app Jellyfin.
+
 ### Nomi dei file
 
 Le stesse convenzioni di Jellyfin ed Emby: `Film/Titolo (Anno)/Titolo (Anno).mkv`, `Serie/Nome/Season 01/Nome S01E02.mkv`, episodi multipli `S01E01-E02`, episodi per data, numerazione assoluta per gli anime, identificativi espliciti `[tmdbid-603]`, `[imdbid-tt0133093]`, `[tvdbid-…]`. Sottotitoli esterni accanto al video: `Titolo (Anno).it.srt`, `.it.forced.srt`.
@@ -97,6 +141,8 @@ Metadati locali, letti una volta e mai scritti:
 
 - `Titolo (Anno).nfo` o `movie.nfo` accanto al film, `tvshow.nfo` nella cartella della serie (formato Kodi). Con una chiave TMDB danno l'identificativo esatto; senza, i loro campi diventano i metadati.
 - `.plexmatch` nella cartella del film o della serie (formato Plex: `title:`, `year:`, `tmdbid:`, `imdbid:`, `tvdbid:`, `guid: tmdb://…`). È la scelta esplicita dell'utente e vince sugli NFO.
+- Nella cartella di una serie, righe `ep:` del `.plexmatch` per i file con nomi qualsiasi: `ep: S01E01: /Stagione 1/Il pilota.mkv`, `ep: S01E02-E03: …`, `ep: 2x04: …`, `ep: 12: …` (numerazione assoluta), `ep: 2023-05-01: …` (per data). Il percorso è relativo alla cartella della serie.
+- `<episodio>.nfo` accanto al video di un episodio (`<episodedetails>`, anche più blocchi per i file con più episodi): titolo, trama, data e voto vincono su quelli di TMDB. Lo scanner nota l'NFO dall'elenco della cartella, senza aprire nulla.
 
 ## App compatibili
 

@@ -87,11 +87,12 @@ fn main() -> anyhow::Result<()> {
 
 async fn run(boot: boot::BootConfig) -> anyhow::Result<()> {
     let t0 = std::time::Instant::now();
-    if let Err(e) = boot.ensure_dirs() {
+    // Cartelle o file creati da una versione che girava come root: messaggio chiaro invece di un errore generico.
+    if let Err(e) = boot.ensure_dirs().and_then(|_| boot.check_writable()) {
         if e.kind() == std::io::ErrorKind::PermissionDenied {
-            // Cartelle create da una versione che girava come root: messaggio chiaro invece di un errore generico.
             anyhow::bail!(
-                "le cartelle dei dati non sono scrivibili dall'utente del server (uid {}). Sull'host: sudo chown -R 1000:1000 data cache transcode",
+                "{e}: i dati non sono accessibili all'utente del server (uid {}). Succede aggiornando da una versione che girava come root. \
+                 Sull'host, nella cartella di Platea: sudo chown -R 1000:1000 data cache transcode",
                 unsafe { libc::getuid() }
             );
         }

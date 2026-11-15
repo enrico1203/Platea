@@ -51,6 +51,26 @@ impl BootConfig {
         Ok(())
     }
 
+    /// Prova di scrittura nelle cartelle e di apertura dei file del database e del segreto: un problema di permessi
+    /// si scopre qui, con il percorso esatto, invece che a metà avvio.
+    pub fn check_writable(&self) -> std::io::Result<()> {
+        let annotate = |p: &std::path::Path, e: std::io::Error| std::io::Error::new(e.kind(), format!("{}: {e}", p.display()));
+        for d in [&self.data_dir, &self.cache_dir, &self.transcode_dir] {
+            let probe = d.join(".platea-write-test");
+            std::fs::write(&probe, b"ok").map_err(|e| annotate(&probe, e))?;
+            let _ = std::fs::remove_file(&probe);
+        }
+        let db = self.db_path();
+        let wal = PathBuf::from(format!("{}-wal", db.display()));
+        let shm = PathBuf::from(format!("{}-shm", db.display()));
+        for f in [db, wal, shm, self.data_dir.join("secret.key")] {
+            if f.exists() {
+                std::fs::OpenOptions::new().read(true).write(true).open(&f).map_err(|e| annotate(&f, e))?;
+            }
+        }
+        Ok(())
+    }
+
     /// Segreto dell'installazione: generato al primo avvio, salvato in `data/`.
     pub fn load_secret(&self) -> std::io::Result<Vec<u8>> {
         let path = self.data_dir.join("secret.key");

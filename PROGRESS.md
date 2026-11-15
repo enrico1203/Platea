@@ -342,7 +342,12 @@ restano 321 "da verificare" e 328 non riconosciuti (da vedere a mano dall'utente
    `server_state.jobs_paused_until`), server e web di prova separati. Attenzione: l'immagine ha già `platea` come
    entrypoint, quindi `docker run … platea-server:latest reset-password …` (senza ripetere `platea`).
 5. Fase 3: QSV/VA-API/NVENC/AMD, tone mapping in GPU, uscita HEVC/AV1 su hardware reale (qui non c'è GPU).
-6. Fase 5 (rilascio): documentazione completa, aggiornamento tra versioni, revisione di sicurezza.
+6. Fase 5 (rilascio): revisione di sicurezza da fare.
+   [x] Aggiornamento provato: DB creato dalla prima versione compilabile (`4000486`, solo migrazione 0001, girava
+   come root) aperto dalla versione attuale: 14 migrazioni con copia di sicurezza, integrity_check ok, token, utenti,
+   visto/preferito intatti, funzioni nuove ok. Trovato: i file creati da root non sono apribili dall'uid 1000 → ora
+   `BootConfig::check_writable` all'avvio prova scrittura e apertura e dice il file e il `chown` da fare.
+   [x] Documentazione: README con reverse proxy (Caddy, nginx), aggiornamento, ep:/NFO episodi, funzioni nuove.
    **Decisione dell'utente (15/11/2026): solo Docker. Niente binari per Windows/macOS/Linux per ora.**
 7. Fase 6: client Kotlin/Swift dall'OpenAPI, app Android/TV e Apple.
 8. Priorità C di `docs/confronto-jellyfin.md` e decisioni aperte del piano (licenza, sistemi supportati, PostgreSQL).
