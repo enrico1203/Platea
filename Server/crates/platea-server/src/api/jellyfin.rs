@@ -10,7 +10,7 @@ use crate::auth::AuthUser;
 use crate::error::{ApiError, ApiResult};
 use crate::sessions::{stop_session, PlaySession, SessionManager};
 use crate::state::{Shared, VERSION};
-use crate::util::now_ms;
+use crate::util::{iso, now_ms};
 use axum::body::Body;
 use axum::extract::{ConnectInfo, Path, Query, State};
 use axum::http::{header, HeaderMap, Method, StatusCode, Uri};
@@ -178,26 +178,6 @@ fn item_id(state: &Shared, s: &str) -> ApiResult<i64> {
 
 fn ticks(ms: Option<i64>) -> Option<i64> {
     ms.map(|m| m * TICKS_PER_MS)
-}
-
-fn iso(ms: i64) -> String {
-    // Data ISO 8601 in UTC senza dipendenze esterne.
-    let secs = ms.div_euclid(1000);
-    let days = secs.div_euclid(86_400);
-    let rem = secs.rem_euclid(86_400);
-    let (h, m, s) = (rem / 3600, (rem % 3600) / 60, rem % 60);
-    // Algoritmo civile di Howard Hinnant.
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097);
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let mo = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = if mo <= 2 { y + 1 } else { y };
-    format!("{y:04}-{mo:02}-{d:02}T{h:02}:{m:02}:{s:02}.0000000Z")
 }
 
 // ---------------------------------------------------------------------------------------------

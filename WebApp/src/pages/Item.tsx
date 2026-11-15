@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Play, Check, Heart, SearchCheck, RefreshCw, Pencil, ListPlus, Download, Upload, Clapperboard } from "lucide-react";
 import { AddToPlaylist } from "./Playlists";
 import { api, ApiError, getToken, imageUrl, mediaUrl, serverUrl } from "../api/client";
-import type { Candidate, Item as ItemT, ItemDetail, MediaFile, Page } from "../api/types";
+import type { Candidate, Item as ItemT, ItemDetail, MediaFile, MissingEpisode, Page } from "../api/types";
 import { PosterCard } from "../components/PosterCard";
 import { Alert, Badge, Dialog, TextField, toast } from "../components/ui";
 import { useSession } from "../session";
@@ -155,6 +155,16 @@ export default function ItemPage() {
   const { data: seasons } = useQuery({ queryKey: ["items", "children", seriesId], queryFn: () => api<Page<ItemT>>(`/api/v1/items/${seriesId}/children`).then((r) => r.items), enabled: !!seriesId });
   const currentSeason = season ?? (item?.kind === "season" ? item.id : seasons?.find((s) => (s.unplayed_count ?? 0) > 0 && (s.index_number ?? 0) > 0)?.id ?? seasons?.[0]?.id ?? null);
   const { data: episodes } = useQuery({ queryKey: ["items", "children", currentSeason], queryFn: () => api<Page<ItemT>>(`/api/v1/items/${currentSeason}/children`).then((r) => r.items), enabled: !!currentSeason });
+  // Episodi già usciti che non sono in libreria (da TMDB), mostrati al loro posto nella stagione.
+  const { data: missing } = useQuery({
+    queryKey: ["items", "missing", currentSeason],
+    queryFn: () => api<{ items: MissingEpisode[] }>(`/api/v1/items/${currentSeason}/missing`).then((r) => r.items),
+    enabled: !!currentSeason,
+  });
+  const episodeRows: ({ kind: "ep"; e: ItemT } | { kind: "missing"; m: MissingEpisode })[] = [
+    ...(episodes ?? []).map((e) => ({ kind: "ep" as const, e })),
+    ...(missing ?? []).map((m) => ({ kind: "missing" as const, m })),
+  ].sort((a, b) => (a.kind === "ep" ? a.e.index_number ?? 0 : a.m.episode) - (b.kind === "ep" ? b.e.index_number ?? 0 : b.m.episode));
   const similarFor = item && (item.kind === "movie" || item.kind === "series") ? item.id : null;
   const { data: similar } = useQuery({ queryKey: ["items", "similar", similarFor], queryFn: () => api<Page<ItemT>>(`/api/v1/items/${similarFor}/similar`).then((r) => r.items), enabled: !!similarFor });
   const { data: members } = useQuery({ queryKey: ["items", "children", id, "members"], queryFn: () => api<Page<ItemT>>(`/api/v1/items/${id}/children`).then((r) => r.items), enabled: item?.kind === "collection" });
@@ -276,7 +286,17 @@ export default function ItemPage() {
               ))}
             </div>
             <div className="episodes">
-              {episodes?.map((e) => (
+              {episodeRows.map((row) => row.kind === "missing" ? (
+                <div key={`m${row.m.episode}`} className="episode episode--missing">
+                  <div className="episode__still" />
+                  <div style={{ minWidth: 0 }}>
+                    <div className="t-label">{row.m.episode}. {row.m.title ?? t("item.episodeN", { n: row.m.episode })} <Badge>{t("item.missing")}</Badge></div>
+                    <div className="t-small subtle">{row.m.air_date ? date(row.m.air_date) : ""}</div>
+                    {row.m.overview && <div className="t-small muted" style={{ marginTop: 4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{row.m.overview}</div>}
+                  </div>
+                  <span />
+                </div>
+              ) : ((e) => (
                 <div key={e.id} className="episode" onClick={() => nav(`/item/${e.id}`)} role="link" tabIndex={0} onKeyDown={(k) => k.key === "Enter" && nav(`/item/${e.id}`)}>
                   <div className="episode__still">
                     {(e.images.still) && <img src={imageUrl(e.images.still, 300)} alt="" loading="lazy" />}
@@ -290,7 +310,7 @@ export default function ItemPage() {
                   </div>
                   <button className="icon-btn" onClick={(ev) => { ev.stopPropagation(); nav(`/play/${e.id}`); }} aria-label={t("player.play")}><Play /></button>
                 </div>
-              ))}
+              ))(row.e))}
             </div>
           </section>
         )}

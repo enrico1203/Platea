@@ -62,7 +62,7 @@ La colonna **Priorità** indica l'ordine di lavoro: **A** subito, **B** dopo, **
 | Versioni multiple dello stesso film | ✅ | ✅ | — |
 | Trailer | ✅ | ✅ (YouTube da TMDB e dagli NFO; anche `RemoteTrailers` per Infuse) | — |
 | Extra (dietro le quinte) | ✅ | ❌ (ignorati dallo scanner) | C |
-| Episodi mancanti nelle stagioni | ✅ | ❌ | C |
+| Episodi mancanti nelle stagioni | ✅ | ✅ (già usciti secondo TMDB, nelle stagioni presenti) | — |
 
 ## Riproduzione
 

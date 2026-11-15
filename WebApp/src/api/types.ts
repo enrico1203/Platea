@@ -29,6 +29,8 @@ export interface Library {
   probe_concurrency?: number; probe_per_minute?: number | null; probe_window_start?: number | null; probe_window_end?: number | null; probe_pause_on_play?: boolean; extract_keyframes?: boolean; trickplay?: boolean; trickplay_done?: number;
   last_scan_at?: number | null; last_scan_status?: string | null; last_scan_message?: string | null; missing_held?: number; file_count?: number; probe_pending?: number;
 }
+/** Episodio già uscito (secondo TMDB) che non è in libreria. */
+export interface MissingEpisode { season: number; episode: number; title: string | null; overview: string | null; air_date: string | null }
 export interface Home { resume: Item[]; next_up: Item[]; recent: { library_id: string; library_name: string; kind: string; items: Item[] }[] }
 export type Method = "direct_play" | "remux" | "transcode";
 export interface PlaybackInfo {

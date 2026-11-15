@@ -346,6 +346,10 @@ restano 321 "da verificare" e 328 non riconosciuti (da vedere a mano dall'utente
    "Trailer" nel dettaglio con video youtube-nocookie; `RemoteTrailers` nello strato Jellyfin. I titoli già associati
    li ricevono al prossimo aggiornamento dei metadati. Provato sulla copia: Dune (1984) → 3 trailer.
    Corretto: `Dialog` ora si apre in un portal su `body` (dentro il dettaglio veniva tagliata e coperta).
+4f. [x] Episodi mancanti (migrazione 0017 `missing_episodes`): calcolati in `apply_seasons` dagli episodi TMDB con
+   data passata non coperti da file (anche multi-episodio), speciali esclusi; API `/items/{id}/missing` (serie o
+   stagione); nella lista della stagione al loro posto, in grigio con "Mancante". Si aggiornano a ogni rinnovo della
+   serie (anche quando arriva un episodio nuovo). Provato sulla copia: 9-1-1 S9 → episodi 5 e 6.
 5. Fase 3: QSV/VA-API/NVENC/AMD, tone mapping in GPU, uscita HEVC/AV1 su hardware reale (qui non c'è GPU).
 6. Fase 5 (rilascio). [x] Revisione di sicurezza interna (15/11/2026), corretti:
    - download delle immagini: la risposta era letta tutta prima del controllo di dimensione (una risposta senza fine

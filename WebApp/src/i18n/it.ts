@@ -178,6 +178,8 @@ const it = {
     collectionMovies: "Film della collezione",
     studios: "Studio:",
     trailer: "Trailer",
+    missing: "Mancante",
+    episodeN: "Episodio {n}",
     partOf: "Fa parte di",
     seasons: { one: "{count} stagione", other: "{count} stagioni" },
     episodes: { one: "{count} episodio", other: "{count} episodi" },

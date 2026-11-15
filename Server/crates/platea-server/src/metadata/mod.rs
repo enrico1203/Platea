@@ -851,6 +851,33 @@ async fn apply_seasons(state: &Shared, series_id: i64, tmdb_id: i64, key: &str, 
                 imgs.push(id);
             }
         }
+        // Episodi mancanti: andati in onda (data passata) ma non in libreria. Un file con più episodi li copre tutti.
+        sqlx::query("DELETE FROM missing_episodes WHERE series_id = ? AND season = ?").bind(series_id).bind(number).execute(&mut *tx).await?;
+        if number > 0 {
+            let ranges: Vec<(i64, Option<i64>)> =
+                sqlx::query_as("SELECT index_number, index_end FROM items WHERE parent_id = ? AND kind = 'episode' AND index_number IS NOT NULL")
+                    .bind(season_id)
+                    .fetch_all(&mut *tx)
+                    .await?;
+            let have = |n: i64| ranges.iter().any(|(a, b)| n >= *a && n <= b.unwrap_or(*a));
+            let today = crate::util::today_utc();
+            for e in &tmdb_eps {
+                let Some(n) = e["episode_number"].as_i64() else { continue };
+                let aired = e["air_date"].as_str().filter(|d| d.len() == 10 && *d <= today.as_str());
+                if have(n) || aired.is_none() {
+                    continue;
+                }
+                sqlx::query("INSERT OR REPLACE INTO missing_episodes (series_id, season, episode, title, overview, air_date) VALUES (?, ?, ?, ?, ?, ?)")
+                    .bind(series_id)
+                    .bind(number)
+                    .bind(n)
+                    .bind(e["name"].as_str().filter(|x| !x.is_empty()))
+                    .bind(e["overview"].as_str().filter(|x| !x.is_empty()))
+                    .bind(aired)
+                    .execute(&mut *tx)
+                    .await?;
+            }
+        }
         tx.commit().await?;
         for id in imgs {
             jobs::enqueue(state, JobKind::DownloadImage { image_id: id }, priority::IMAGES, Some(library_id)).await?;

@@ -29,6 +29,7 @@ pub fn routes(api: Api) -> Api {
         .get("/api/v1/home", "Libreria", Access::User, "Continua a guardare, prossimi episodi, aggiunti di recente", home)
         .get("/api/v1/search", "Libreria", Access::User, "Ricerca per titolo", search)
         .get("/api/v1/genres", "Libreria", Access::User, "Generi presenti in una libreria", genres)
+        .get("/api/v1/items/{id}/missing", "Libreria", Access::User, "Episodi già usciti che mancano in libreria (serie o stagione)", missing)
         .post("/api/v1/items/{id}/played", "Stato di visione", Access::User, "Segna come visto (anche intere serie e stagioni)", mark_played)
         .delete("/api/v1/items/{id}/played", "Stato di visione", Access::User, "Segna come non visto", mark_unplayed)
         .post("/api/v1/items/{id}/favorite", "Stato di visione", Access::User, "Aggiunge ai preferiti", fav_add)
@@ -1019,6 +1020,26 @@ async fn image(State(state): State<Shared>, Path(id): Path<String>, Query(q): Qu
         .header(header::ETAG, etag)
         .body(Body::from(bytes))
         .unwrap())
+}
+
+/// Episodi mancanti di una serie, o di una sola stagione se `id` è una stagione.
+async fn missing(State(state): State<Shared>, user: AuthUser, Path(id): Path<String>) -> ApiResult<Json<Value>> {
+    let iid = decode(&state, &id)?;
+    let row = load_item(&state, &user, iid).await?;
+    let (series, season) = match row.kind.as_str() {
+        "series" => (iid, None),
+        "season" => (row.series_id.unwrap_or(iid), row.index_number),
+        _ => return Ok(Json(json!({ "items": [] }))),
+    };
+    let rows: Vec<(i64, i64, Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT season, episode, title, overview, air_date FROM missing_episodes WHERE series_id = ?1 AND (?2 IS NULL OR season = ?2) ORDER BY season, episode",
+    )
+    .bind(series)
+    .bind(season)
+    .fetch_all(&state.db.read)
+    .await?;
+    let items: Vec<Value> = rows.into_iter().map(|(s, e, t, o, d)| json!({ "season": s, "episode": e, "title": t, "overview": o, "air_date": d })).collect();
+    Ok(Json(json!({ "items": items })))
 }
 
 #[cfg(test)]

@@ -177,6 +177,8 @@ const en = {
     collectionMovies: "Movies in this collection",
     studios: "Studio:",
     trailer: "Trailer",
+    missing: "Missing",
+    episodeN: "Episode {n}",
     partOf: "Part of",
     seasons: { one: "{count} season", other: "{count} seasons" },
     episodes: { one: "{count} episode", other: "{count} episodes" },
