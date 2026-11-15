@@ -292,7 +292,7 @@ Script del benchmark: `scripts/bench_library.py` (genera la libreria sintetica).
 
 ## Prossimi passi
 
-Aggiornati il 15/11/2026. Chiave TMDB messa dall'utente nelle Impostazioni: 10.883 film e 5.790 serie associati;
+Aggiornati il 15/11/2026. Chiave TMDB inserita dall'utente durante l'onboarding: 10.883 film e 5.790 serie associati;
 restano 321 "da verificare" e 328 non riconosciuti (da vedere a mano dall'utente).
 
 1. [x] Keyframe degli MP4/MOV dal box `moov` (`mp4.rs`: stss + stts + ctts + elst), anche remoti: identici a ffprobe
@@ -313,7 +313,8 @@ restano 321 "da verificare" e 328 non riconosciuti (da vedere a mano dall'utente
 3. Quick Connect: accesso con un codice da un altro dispositivo (serve alle app TV).
 4. `.plexmatch` righe `ep:` e NFO dei singoli episodi.
 5. Fase 3: QSV/VA-API/NVENC/AMD, tone mapping in GPU, uscita HEVC/AV1 su hardware reale (qui non c'è GPU).
-6. Fase 5 (rilascio): documentazione completa, binari multipiattaforma, aggiornamento tra versioni, revisione di sicurezza.
+6. Fase 5 (rilascio): documentazione completa, aggiornamento tra versioni, revisione di sicurezza.
+   **Decisione dell'utente (15/11/2026): solo Docker. Niente binari per Windows/macOS/Linux per ora.**
 7. Fase 6: client Kotlin/Swift dall'OpenAPI, app Android/TV e Apple.
 8. Priorità C di `docs/confronto-jellyfin.md` e decisioni aperte del piano (licenza, sistemi supportati, PostgreSQL).
 
