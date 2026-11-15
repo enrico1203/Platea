@@ -9,6 +9,7 @@ pub mod download;
 pub mod events;
 pub mod items;
 pub mod jellyfin;
+pub mod jellyfin_profile;
 pub mod libraries;
 pub mod playback;
 pub mod playlists;

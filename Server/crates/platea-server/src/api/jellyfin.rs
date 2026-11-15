@@ -1649,12 +1649,89 @@ async fn serve_image(state: &Shared, item: &str, kind: &str, w: Option<u32>, _he
 // ---------------------------------------------------------------------------------------------
 // Riproduzione: solo direct play. Infuse decodifica da sé quasi tutti i formati.
 
-async fn playback_info(State(state): State<Shared>, user: AuthUser, Path(item): Path<String>) -> ApiResult<Json<Value>> {
+/// PlaybackInfo: con il `DeviceProfile` dell'app si decide come in Platea. Se basta il direct play, il file com'è
+/// (come prima); altrimenti si apre una sessione HLS di Platea (remux o transcodifica) e la si passa come
+/// `TranscodingUrl`. Infuse apre tutto da sé: per lui sempre direct play.
+async fn playback_info(
+    State(state): State<Shared>,
+    user: AuthUser,
+    Path(item): Path<String>,
+    headers: HeaderMap,
+    uri: Uri,
+    body: axum::body::Bytes,
+) -> ApiResult<Json<Value>> {
     user.require_playback()?;
     let id = item_id(&state, &item)?;
-    crate::api::items::load_item(&state, &user, id).await?;
+    let row = crate::api::items::load_item(&state, &user, id).await?;
     let sources = media_sources(&state, id).await?;
-    Ok(Json(json!({ "MediaSources": sources, "PlaySessionId": crate::util::random_hex(16) })))
+    let b: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
+    let mut q: HashMap<String, String> = HashMap::new();
+    if let Some(qs) = uri.query() {
+        for pair in qs.split('&') {
+            let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
+            q.insert(k.to_lowercase(), urlencoding::decode(v).map(|s| s.into_owned()).unwrap_or_default());
+        }
+    }
+    let num = |k: &str, body_key: &str| b[body_key].as_i64().or_else(|| q.get(k).and_then(|v| v.parse().ok()));
+    let client = auth_fields(&headers).get("client").cloned().unwrap_or_default();
+    let infuse = client.to_ascii_lowercase().contains("infuse");
+    let wants_transcoding = b["EnableTranscoding"].as_bool().unwrap_or(true);
+    let direct = || Json(json!({ "MediaSources": sources.clone(), "PlaySessionId": crate::util::random_hex(16) }));
+    let Some(profile_json) = b.get("DeviceProfile").filter(|p| p.is_object()) else { return Ok(direct()) };
+    if infuse || !wants_transcoding || !matches!(row.kind.as_str(), "movie" | "episode") {
+        return Ok(direct());
+    }
+    let max_bitrate = num("maxstreamingbitrate", "MaxStreamingBitrate").filter(|b| *b > 0).map(|b| b as u64);
+    let profile = super::jellyfin_profile::convert(profile_json, max_bitrate);
+    let source = b["MediaSourceId"].as_str().map(String::from).or_else(|| q.get("mediasourceid").cloned());
+    let fid = choose_file(&state, id, source.as_deref()).await?;
+    let info = crate::api::playback::load_file(&state, fid).await?;
+    let audio = num("audiostreamindex", "AudioStreamIndex").map(|i| i as u32);
+    let subtitle = num("subtitlestreamindex", "SubtitleStreamIndex").filter(|i| *i >= 0).map(|i| i as u32);
+    let preq = platea_playback::PlaybackRequest {
+        audio_index: audio,
+        subtitle_index: subtitle,
+        allow_remux: user.perms.allow_remux,
+        allow_transcode: user.perms.allow_transcode && state.ffmpeg.get().available,
+        user_max_bitrate: max_bitrate,
+        server_video_encoders: crate::api::playback::allowed_encoders(&state),
+        force_transcode: false,
+    };
+    match platea_playback::decide(&info.media, &profile, &preq) {
+        Ok(d) if d.method == platea_playback::Method::DirectPlay => return Ok(direct()),
+        Err(_) => return Ok(direct()),
+        Ok(_) => {}
+    }
+    // Serve una conversione: la stessa sessione HLS della web UI.
+    let start_ms = num("starttimeticks", "StartTimeTicks").map(|t| t / TICKS_PER_MS);
+    let req = crate::api::playback::InfoReq {
+        item_id: state.ids.encode(id),
+        file_id: Some(state.ids.encode(fid)),
+        profile,
+        audio_index: audio,
+        subtitle_index: subtitle,
+        start_ms,
+        max_bitrate,
+        force_transcode: false,
+        ui_language: None,
+        explicit_quality: true,
+    };
+    let r = crate::api::playback::start(state.clone(), user.clone(), req).await?;
+    let Some(hls) = r["hls_url"].as_str() else { return Ok(direct()) };
+    let session = r["session_id"].as_str().unwrap_or_default().to_string();
+    let mut src = sources.iter().find(|s| s["Id"].as_str() == Some(state.ids.encode(fid).as_str())).cloned().unwrap_or_else(|| sources[0].clone());
+    let fmp4 = r["chain"].as_str().is_some_and(|c| c.contains("fMP4"));
+    if let Some(o) = src.as_object_mut() {
+        o.insert("SupportsDirectPlay".into(), json!(false));
+        o.insert("SupportsDirectStream".into(), json!(false));
+        o.insert("SupportsTranscoding".into(), json!(true));
+        o.insert("TranscodingUrl".into(), json!(hls));
+        o.insert("TranscodingSubProtocol".into(), json!("hls"));
+        o.insert("TranscodingContainer".into(), json!(if fmp4 { "mp4" } else { "ts" }));
+        o.remove("DirectStreamUrl");
+    }
+    tracing::info!(client = %client, method = r["method"].as_str().unwrap_or(""), "app Jellyfin: riproduzione convertita in HLS");
+    Ok(Json(json!({ "MediaSources": [src], "PlaySessionId": session })))
 }
 
 async fn open_cached(state: &Shared, file_id: i64) -> ApiResult<(Arc<std::fs::File>, crate::api::playback::FileInfo)> {
@@ -1758,6 +1835,8 @@ async fn serve_subtitle(state: &Shared, user: &AuthUser, item: &str, source: &st
 #[serde(default, rename_all = "PascalCase")]
 struct PlayReport {
     item_id: Option<String>,
+    /// Sessione HLS aperta da PlaybackInfo (transcodifica): i rapporti vanno a lei.
+    play_session_id: Option<String>,
     media_source_id: Option<String>,
     position_ticks: Option<i64>,
     is_paused: Option<bool>,
@@ -1851,7 +1930,11 @@ async fn report(state: &Shared, user: &AuthUser, r: &PlayReport) -> ApiResult<Op
     }) else {
         return Ok(None);
     };
-    let s = ensure_session(state, user, item, r.media_source_id.as_deref()).await?;
+    let hls_session = r.play_session_id.as_deref().and_then(|p| state.sessions.get(p)).filter(|s| s.user_id == user.user_id);
+    let s = match hls_session {
+        Some(s) => s,
+        None => ensure_session(state, user, item, r.media_source_id.as_deref()).await?,
+    };
     let pos = r.position_ticks.map(|t| (t / TICKS_PER_MS).max(0));
     if let Some(pos) = pos {
         state.sessions.record_progress(user.user_id, item, pos, s.duration_ms);

@@ -268,6 +268,11 @@ fn decision_error(e: DecisionError) -> ApiError {
 }
 
 async fn info(State(state): State<Shared>, user: AuthUser, Json(req): Json<InfoReq>) -> ApiResult<Json<Value>> {
+    Ok(Json(start(state, user, req).await?))
+}
+
+/// Decisione e apertura della sessione: usata dalla web UI e dallo strato compatibile Jellyfin (transcodifica).
+pub async fn start(state: Shared, user: AuthUser, req: InfoReq) -> ApiResult<Value> {
     user.require_playback()?;
     let item_id = state.ids.decode(&req.item_id).ok_or_else(|| ApiError::not_found("Elemento"))?;
     let item = super::items::load_item(&state, &user, item_id).await?;
@@ -557,7 +562,7 @@ async fn info(State(state): State<Shared>, user: AuthUser, Json(req): Json<InfoR
             "url": format!("/api/v1/trickplay/{session_id}/{{n}}.jpg{q}"),
         })
     });
-    Ok(Json(json!({
+    Ok(json!({
         "session_id": session_id,
         "stream_token": token,
         "method": decision.method.as_str(),
@@ -583,11 +588,11 @@ async fn info(State(state): State<Shared>, user: AuthUser, Json(req): Json<InfoR
         // Limite di bitrate applicato (permessi, rete, qualità predefinita o scelta nel player); null = originale.
         "max_bitrate": user_max,
         "container": file.media.container,
-    })))
+    }))
 }
 
 /// Encoder video consentiti dalle impostazioni e disponibili sulla macchina.
-fn allowed_encoders(state: &Shared) -> Vec<String> {
+pub fn allowed_encoders(state: &Shared) -> Vec<String> {
     let s = state.settings.get();
     state
         .transcoder

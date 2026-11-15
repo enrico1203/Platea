@@ -21,6 +21,7 @@ Platea serve il file originale quando il client lo regge, fa remux o transcodifi
 - **Trailer.** Dai metadati di TMDB e dagli NFO di Kodi, nel dettaglio del titolo e in Infuse.
 - **Notifiche.** Webhook verso Discord, ntfy, Home Assistant o uno script: riproduzioni, titoli nuovi, accessi, mount che non risponde (Impostazioni › Notifiche).
 - **Sottotitoli in più.** L'amministratore carica un SRT/VTT/ASS o lo cerca su OpenSubtitles (con l'hash del file, per la versione giusta): finisce nella cache di Platea, non nella cartella del film.
+- **App Jellyfin.** Oltre a Infuse, le app Jellyfin (Swiftfin, Jellyfin per Android e TV) si collegano al server; quando un'app non apre un formato, Platea fa remux o transcodifica in HLS come per la web UI.
 - **Tutto dalla dashboard.** Nessun file di configurazione da modificare dopo il primo avvio.
 
 ## Avvio rapido

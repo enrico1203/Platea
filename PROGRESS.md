@@ -381,6 +381,11 @@ restano 321 "da verificare" e 328 non riconosciuti (da vedere a mano dall'utente
    MediaSegments, Localization/*, UserItems/{id}/UserData (GET/POST), POST Users/{id}/Configuration|Policy,
    DisplayPreferences (POST). Il tentativo dell'utente era prima di un riavvio: log persi. **Da confermare
    dall'utente su iPhone**; i percorsi sconosciuti finiscono nel log ("percorso non gestito").
+4o. [x] Transcodifica per le app Jellyfin: PlaybackInfo legge il `DeviceProfile` (`api/jellyfin_profile.rs`:
+   DirectPlay/Codec/Transcoding/SubtitleProfiles, MaxStreamingBitrate) e decide come Platea; se non è direct play apre
+   la sessione HLS di Platea (`playback::start`, ora riusabile) e la restituisce come `TranscodingUrl`; i rapporti con
+   `PlaySessionId` vanno a quella sessione. Infuse resta sempre in direct play. Provato: profilo solo MP4 → remux HLS,
+   segmenti scaricati, progresso e stop agganciati; profilo con MKV e Infuse → direct play.
 5. Fase 3: QSV/VA-API/NVENC/AMD, tone mapping in GPU, uscita HEVC/AV1 su hardware reale (qui non c'è GPU).
 6. Fase 5 (rilascio). [x] Revisione di sicurezza interna (15/11/2026), corretti:
    - download delle immagini: la risposta era letta tutta prima del controllo di dimensione (una risposta senza fine
