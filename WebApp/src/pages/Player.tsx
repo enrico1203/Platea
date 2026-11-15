@@ -55,6 +55,9 @@ export default function Player() {
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
   // Ripiego sulla transcodifica: impostato da start(), usato dai gestori di errore di hls.js e del video.
   const fallbackRef = useRef<(() => void) | null>(null);
+  // Ultima posizione davvero riprodotta: dopo un errore Safari riporta in currentTime valori senza senso
+  // (es. 4008 s a un secondo dall'avvio), e il ripiego ripartirebbe da lì.
+  const playedRef = useRef<number | null>(null);
   const [playing, setPlaying] = useState(false);
   const [time, setTime] = useState(0);
   const [buffered, setBuffered] = useState(0);
@@ -181,9 +184,10 @@ export default function Player() {
       sessionRef.current = p.session_id;
       setInfo(p);
       // Un solo ripiego automatico per avvio: dalla posizione corrente, con le stesse tracce.
+      playedRef.current = null;
       fallbackRef.current = opts.force || p.method === "transcode" ? null : () => {
         triedFallback.current = true;
-        start({ startMs: (videoRef.current?.currentTime ?? opts.startMs / 1000) * 1000, audioIndex: p.audio_index, subtitleIndex: opts.subtitleIndex, force: true });
+        start({ startMs: playedRef.current != null ? playedRef.current * 1000 : opts.startMs, audioIndex: p.audio_index, subtitleIndex: opts.subtitleIndex, force: true });
       };
       // Primo avvio: sottotitolo scelto dal server secondo le preferenze dell'utente.
       if (opts.subtitleIndex === undefined && opts.audioIndex === undefined && p.subtitle_default != null) setSubIndex(p.subtitle_default);
@@ -535,7 +539,11 @@ export default function Player() {
         crossOrigin={serverUrl() ? "anonymous" : undefined}
         onPlay={() => { setPlaying(true); poke(); }}
         onPause={() => { setPlaying(false); setVisible(true); }}
-        onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
+        onTimeUpdate={(e) => {
+          const v = e.currentTarget;
+          setTime(v.currentTime);
+          if (!v.error && !v.paused && v.readyState >= 3) playedRef.current = v.currentTime;
+        }}
         onProgress={(e) => { const b = e.currentTarget.buffered; if (b.length) setBuffered(b.end(b.length - 1)); }}
         onEnded={onEnded}
         onError={onVideoError}

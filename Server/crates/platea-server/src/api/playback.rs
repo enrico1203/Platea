@@ -22,6 +22,10 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
+/// Limite della transcodifica senza GPU.
+const SOFTWARE_MAX_WIDTH: u32 = 1920;
+const SOFTWARE_MAX_HEIGHT: u32 = 1080;
+
 pub fn routes(api: Api) -> Api {
     api.post("/api/v1/playback/info", "Riproduzione", Access::User, "Decisione di riproduzione e apertura della sessione", info)
         .post("/api/v1/playback/{session}/progress", "Riproduzione", Access::User, "Posizione corrente (ogni 10 s)", progress)
@@ -222,7 +226,15 @@ pub fn chain_text(media: &MediaInfo, d: &pb::Decision, backend: &str) -> String 
         }
         pb::Method::Transcode => {
             let (out, h) = match &d.video {
-                VideoAction::Transcode { codec, max_height, .. } => (codec_label(codec), *max_height),
+                // Altezza reale d'uscita, non il limite: 3840×1606 entro 1920×1080 esce a 802p.
+                VideoAction::Transcode { codec, max_width, max_height, .. } => {
+                    let h = media
+                        .video
+                        .as_ref()
+                        .map(|v| crate::transcode::command::output_size(v.width, v.height, *max_width, *max_height).1)
+                        .unwrap_or(*max_height);
+                    (codec_label(codec), h)
+                }
                 _ => ("?".into(), 0),
             };
             let mut s = format!("{} → {out} {h}p · {backend}", src_v.unwrap_or_default());
@@ -394,6 +406,13 @@ async fn info(State(state): State<Shared>, user: AuthUser, Json(req): Json<InfoR
             _ => hw,
         };
         backend_label = hw.backend.label().to_string();
+        // In software un 4K non regge il tempo reale: al massimo 1080p (proporzioni in `output_size`).
+        if hw.backend == crate::transcode::command::Backend::Software {
+            if let VideoAction::Transcode { max_width, max_height, .. } = &mut decision.video {
+                *max_width = (*max_width).min(SOFTWARE_MAX_WIDTH);
+                *max_height = (*max_height).min(SOFTWARE_MAX_HEIGHT);
+            }
+        }
         let ts = s.transcode.clone();
         let spec = JobSpec {
             input: file.abs.clone(),
