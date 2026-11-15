@@ -94,6 +94,12 @@ pub fn router() -> Router<Shared> {
         .route("/DisplayPreferences/{id}", get(display_prefs).post(ok_empty))
         // Endpoint usati dalle app Jellyfin recenti (Swiftfin, Jellyfin Android/TV, Findroid).
         .route("/System/Configuration", get(system_configuration))
+        .route("/socket", get(jf_socket))
+        .route("/UserImage", get(user_image).head(user_image))
+        .route("/Users/{user}/Images/{kind}", get(user_image_path).head(user_image_path))
+        .route("/Branding/Splashscreen", get(splashscreen))
+        .route("/Branding/Css", get(branding_css))
+        .route("/Branding/Css.css", get(branding_css))
         .route("/Items/Root", get(items_root))
         .route("/Users/{user}/Items/Root", get(items_root_u))
         .route("/Items/{item}/Similar", get(similar))
@@ -277,6 +283,9 @@ static CANONICAL: Lazy<HashMap<String, &'static str>> = Lazy::new(|| {
         "ParentalRatings",
         "UserData",
         "Policy",
+        "UserImage",
+        "Splashscreen",
+        "Css",
     ];
     words.iter().map(|w| (w.to_lowercase(), *w)).collect()
 });
@@ -2191,4 +2200,88 @@ async fn user_data_update_u(
     Json(u): Json<UserDataUpdate>,
 ) -> ApiResult<Json<Value>> {
     apply_user_data(&state, &user, &item, &u).await
+}
+
+/// WebSocket di Jellyfin (`/socket?api_key=…&deviceId=…`): le app lo aprono dopo il login. Platea non manda comandi
+/// alle app Jellyfin, ma tiene viva la connessione come Jellyfin (ForceKeepAlive / KeepAlive).
+async fn jf_socket(
+    State(state): State<Shared>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    uri: Uri,
+    upgrade: axum::extract::ws::WebSocketUpgrade,
+) -> ApiResult<Response> {
+    let mut token = auth_fields(&headers).get("token").cloned();
+    for h in ["x-emby-token", "x-mediabrowser-token"] {
+        if token.is_none() {
+            token = headers.get(h).and_then(|v| v.to_str().ok()).map(String::from);
+        }
+    }
+    if token.is_none() {
+        token = uri.query().and_then(|q| {
+            q.split('&').find_map(|p| {
+                let (k, v) = p.split_once('=')?;
+                (k.eq_ignore_ascii_case("api_key") || k.eq_ignore_ascii_case("apikey")).then(|| v.to_string())
+            })
+        });
+    }
+    let token = token.ok_or(ApiError::Unauthorized)?;
+    crate::auth::resolve_token(&state, &token, Some(peer.ip())).await?;
+    Ok(upgrade.on_upgrade(|mut socket| async move {
+        use axum::extract::ws::Message;
+        let keep = json!({ "MessageType": "ForceKeepAlive", "Data": 60, "MessageId": crate::util::random_hex(16) }).to_string();
+        if socket.send(Message::Text(keep.into())).await.is_err() {
+            return;
+        }
+        let mut ping = tokio::time::interval(Duration::from_secs(30));
+        loop {
+            tokio::select! {
+                msg = socket.recv() => match msg {
+                    Some(Ok(Message::Text(t))) => {
+                        let v: Value = serde_json::from_str(&t).unwrap_or(Value::Null);
+                        if v["MessageType"].as_str() == Some("KeepAlive") {
+                            let r = json!({ "MessageType": "KeepAlive", "MessageId": crate::util::random_hex(16) }).to_string();
+                            if socket.send(Message::Text(r.into())).await.is_err() { break; }
+                        }
+                    }
+                    Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
+                    _ => {}
+                },
+                _ = ping.tick() => {
+                    if socket.send(Message::Ping(Vec::new().into())).await.is_err() { break; }
+                }
+            }
+        }
+    }))
+}
+
+/// Immagine del profilo di un utente (`/UserImage?userId=…`, Jellyfin 10.9+). Senza immagine: 404, come Jellyfin.
+async fn user_image(State(state): State<Shared>, Query(q): Query<HashMap<String, String>>) -> ApiResult<Response> {
+    let id = query_ci(&q, "userid").unwrap_or_default();
+    serve_user_image(&state, &id).await
+}
+
+async fn user_image_path(State(state): State<Shared>, Path((user, _kind)): Path<(String, String)>) -> ApiResult<Response> {
+    serve_user_image(&state, &user).await
+}
+
+async fn serve_user_image(state: &Shared, id: &str) -> ApiResult<Response> {
+    let enc = if id.len() == 32 { &id[16..] } else { id };
+    let uid = state.ids.decode(enc).ok_or_else(|| ApiError::not_found("Immagine"))?;
+    let bytes = tokio::fs::read(crate::api::auth::avatar_path(state, uid)).await.map_err(|_| ApiError::not_found("Immagine"))?;
+    Ok(Response::builder().header(header::CONTENT_TYPE, "image/png").header(header::CACHE_CONTROL, "public, max-age=3600").body(Body::from(bytes)).unwrap())
+}
+
+/// Sfondo della schermata di accesso: Platea non ne ha uno, si manda un PNG trasparente di 1×1.
+async fn splashscreen() -> Response {
+    const PNG: &[u8] = &[
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08,
+        0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00, 0x05, 0x00,
+        0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+    ];
+    Response::builder().header(header::CONTENT_TYPE, "image/png").body(Body::from(PNG)).unwrap()
+}
+
+async fn branding_css() -> Response {
+    Response::builder().header(header::CONTENT_TYPE, "text/css").body(Body::from("")).unwrap()
 }

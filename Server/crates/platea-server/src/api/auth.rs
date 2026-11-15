@@ -223,7 +223,7 @@ async fn put_prefs(State(state): State<Shared>, user: AuthUser, Json(p): Json<cr
     Ok(Json(json!(p)))
 }
 
-fn avatar_path(state: &Shared, user_id: i64) -> std::path::PathBuf {
+pub fn avatar_path(state: &Shared, user_id: i64) -> std::path::PathBuf {
     state.boot.data_dir.join("avatars").join(format!("{user_id}.png"))
 }
 

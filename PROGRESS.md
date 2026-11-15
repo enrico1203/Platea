@@ -379,7 +379,9 @@ restano 321 "da verificare" e 328 non riconosciuti (da vedere a mano dall'utente
    app recenti usano endpoint che mancavano. Aggiunti: /System/Configuration, /Items/Root, Similar (vero, come la web
    UI), LocalTrailers, SpecialFeatures, Ancestors, ThemeMedia, Suggestions, Movies/Recommendations, Playlists, Devices,
    MediaSegments, Localization/*, UserItems/{id}/UserData (GET/POST), POST Users/{id}/Configuration|Policy,
-   DisplayPreferences (POST). Il tentativo dell'utente era prima di un riavvio: log persi. **Da confermare
+   DisplayPreferences (POST). Secondo tentativo (log): Swiftfin chiede anche /socket (WebSocket Jellyfin: ora
+   ForceKeepAlive/KeepAlive), /UserImage (avatar 10.9+) e /Branding/Splashscreen (PNG vuoto): aggiunti.
+   Log dettagliato acceso in .env (`PLATEA_LOG=info,tower_http=debug,platea::api::jellyfin=debug`): rimettere `info`. **Da confermare
    dall'utente su iPhone**; i percorsi sconosciuti finiscono nel log ("percorso non gestito").
 4o. [x] Transcodifica per le app Jellyfin: PlaybackInfo legge il `DeviceProfile` (`api/jellyfin_profile.rs`:
    DirectPlay/Codec/Transcoding/SubtitleProfiles, MaxStreamingBitrate) e decide come Platea; se non è direct play apre
