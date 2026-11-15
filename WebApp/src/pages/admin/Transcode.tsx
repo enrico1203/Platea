@@ -3,11 +3,12 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FlaskConical } from "lucide-react";
 import { api } from "../../api/client";
 import { Alert } from "../../components/ui";
+import { CapsMatrix, type Capabilities } from "../../components/CapsMatrix";
 import { useI18n } from "../../i18n";
 
 interface Caps {
   ffmpeg: { ffmpeg: string; ffprobe: string; version: string; is_jellyfin: boolean; available: boolean };
-  capabilities: { tested_at: number; devices: string[]; software_encoders: string[]; selected: { backend: string; device: string; encode: string[]; decode: string[] } | null; results: { backend: string; kind: string; codec: string; ok: boolean; ms: number; error: string | null }[] };
+  capabilities: Capabilities;
   current: { backend: string };
   slots: { hw_used: number; hw_max: number; sw_used: number; sw_max: number };
 }
@@ -19,8 +20,6 @@ export default function Transcode() {
   const { data } = useQuery({ queryKey: ["admin", "transcode"], queryFn: () => api<Caps>("/api/v1/admin/transcode") });
   if (!data) return null;
   const c = data.capabilities;
-  const backends = Array.from(new Set(c.results.map((r) => r.backend)));
-  const codecs = Array.from(new Set(c.results.map((r) => `${r.kind}:${r.codec}`)));
   return (
     <div className="stack-lg">
       <div className="page-head" style={{ marginBottom: 0 }}>
@@ -38,25 +37,9 @@ export default function Transcode() {
         </dl>
       </section>
       {!c.selected && <Alert>{t("admin.transcode.noGpuHelp")}</Alert>}
-      <section className="pl-panel table-wrap">
+      <section className="pl-panel">
         <div className="panel-head"><span className="pl-eyebrow">{t("admin.transcode.matrix")}</span></div>
-        <table className="table matrix">
-          <thead><tr><th>{t("admin.transcode.test")}</th>{backends.map((b) => <th key={b}>{b.toUpperCase()}</th>)}</tr></thead>
-          <tbody>
-            {codecs.map((k) => {
-              const [kind, codec] = k.split(":");
-              return (
-                <tr key={k}>
-                  <td className="t-label">{kind === "encode" ? t("admin.transcode.encode") : t("admin.transcode.decode")} <span className="t-mono">{codec.toUpperCase().replace("10", " 10 bit")}</span></td>
-                  {backends.map((b) => {
-                    const r = c.results.find((x) => x.backend === b && x.kind === kind && x.codec === codec);
-                    return <td key={b} className={`t-mono-sm ${r?.ok ? "ok" : "ko"}`} title={r?.error ?? undefined}>{r ? (r.ok ? `✓ ${r.ms} ms` : "✗") : "—"}</td>;
-                  })}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <CapsMatrix caps={c} />
       </section>
       <section className="pl-panel panel-pad stack">
         <h2 className="t-h3">{t("admin.transcode.dockerTitle")}</h2>

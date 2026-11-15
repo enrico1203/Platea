@@ -1,10 +1,10 @@
 //! Ricerca di FFmpeg: jellyfin-ffmpeg se presente, poi il PATH. Il percorso si cambia dalla dashboard.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FfmpegInfo {
     pub ffmpeg: PathBuf,
     pub ffprobe: PathBuf,

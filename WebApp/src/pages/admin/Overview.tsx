@@ -83,6 +83,8 @@ export function SessionRow({ s, fetchedAt, onStop }: { s: SessionView; fetchedAt
             <span>{t("admin.overview.session.started", { time: hhmm(s.started_at), ago: duration(serverNow - s.started_at) })}</span>
             {s.ip && <span>{s.ip} · {s.remote ? t("admin.overview.session.remote") : t("admin.overview.session.local")}</span>}
             {s.backend && <span>{t("admin.overview.session.encoder")}: {s.backend === "copia" ? t("admin.overview.session.copy") : s.backend}{s.throttled ? ` · ${t("admin.overview.throttled")}` : ""}</span>}
+            {s.executor && <span>{t("admin.overview.session.executor", { name: s.executor })}</span>}
+            {s.source && <span>{t("admin.overview.session.readFrom", { name: s.source })}</span>}
           </div>
         </div>
         <div className="pl-session__right">

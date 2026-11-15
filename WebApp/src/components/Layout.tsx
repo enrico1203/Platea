@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Home, Search, Film, Tv, LayoutDashboard, FolderOpen, Users, ListChecks, SearchCheck, Cpu, Settings, ScrollText, Server, Terminal, User, Info, LogOut, Library as LibraryIcon, ListVideo, PanelLeftClose, PanelLeftOpen, ArrowUp } from "lucide-react";
+import { Home, Search, Film, Tv, LayoutDashboard, FolderOpen, Users, ListChecks, SearchCheck, Cpu, Settings, ScrollText, Server, Terminal, User, Info, LogOut, Library as LibraryIcon, ListVideo, PanelLeftClose, PanelLeftOpen, ArrowUp, Network } from "lucide-react";
 import { Logo, Mark, useServerName } from "./Logo";
 import { api, mediaUrl } from "../api/client";
 import type { Library, Page } from "../api/types";
@@ -29,6 +29,7 @@ const ADMIN_LINKS = [
   { to: "/admin/review", icon: SearchCheck, label: "admin.review.title" },
   { to: "/admin/jobs", icon: ListChecks, label: "admin.jobs.title" },
   { to: "/admin/transcode", icon: Cpu, label: "admin.transcode.title" },
+  { to: "/admin/nodes", icon: Network, label: "admin.nodes.title" },
   { to: "/admin/settings", icon: Settings, label: "admin.settings.title" },
   { to: "/admin/activity", icon: ScrollText, label: "admin.activity.title" },
   { to: "/admin/logs", icon: Terminal, label: "admin.logs.title" },

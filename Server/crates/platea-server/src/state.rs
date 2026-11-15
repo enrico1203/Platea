@@ -29,6 +29,8 @@ pub struct AppState {
     pub ffmpeg: FfmpegLocator,
     pub transcoder: Arc<TranscodeManager>,
     pub sessions: SessionManager,
+    /// Nodi: registro, stato dal vivo, scelta di esecutori e copie.
+    pub nodes: crate::nodes::NodeManager,
     pub tmdb: Tmdb,
     pub server_id: String,
     /// Codice di primo avvio: presente finché la procedura guidata non crea l'amministratore.

@@ -11,6 +11,7 @@ pub mod items;
 pub mod jellyfin;
 pub mod jellyfin_profile;
 pub mod libraries;
+pub mod nodes;
 pub mod openapi_map;
 pub mod playback;
 pub mod playlists;
@@ -181,6 +182,7 @@ pub fn router(state: Shared) -> Router {
     let api = collections::routes(api);
     let api = download::routes(api);
     let api = admin::routes(api);
+    let api = nodes::routes(api);
     let api = events::routes(api);
     let doc = openapi(&api.docs);
     let doc_route = axum::routing::get(move || {

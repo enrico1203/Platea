@@ -51,7 +51,7 @@ export interface PlaybackInfo {
 export interface Trickplay { interval_ms: number; width: number; height: number; cols: number; rows: number; count: number; url: string }
 export interface SessionView { id: string; user: string; item_id: string; title: string; subtitle: string | null; poster_url: string | null; device_name: string; client: string; method: Method; reasons: string[]; chain: string; bitrate: number | null; position_ms: number; duration_ms: number; paused: boolean; throttled: boolean; started_at: number;
   server_now: number; position_at: number; paused_since: number | null; last_seen: number; ip: string | null; remote: boolean;
-  details: SessionDetails; buffered_until_ms: number | null; backend: string | null; bandwidth_bps: number; bytes_sent: number }
+  details: SessionDetails; buffered_until_ms: number | null; backend: string | null; executor?: string | null; source?: string | null; bandwidth_bps: number; bytes_sent: number }
 export interface SessionDetails {
   file: { name: string | null; size: number; container: string; bitrate: number | null };
   video: { codec: string; profile: string | null; width: number; height: number; bit_depth: number | null; hdr: string | null; bitrate: number | null } | null;

@@ -3,13 +3,13 @@
 //! Per ogni backend si codifica un secondo di video sintetico e si decodificano campioni brevi.
 
 use super::command::{Backend, HwProfile};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
 use tokio::process::Command;
 
-#[derive(Debug, Clone, Serialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TestResult {
     pub backend: String,
     pub kind: String,
@@ -19,7 +19,7 @@ pub struct TestResult {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Capabilities {
     pub tested_at: i64,
     pub ffmpeg_version: String,

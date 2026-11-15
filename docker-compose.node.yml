@@ -1,0 +1,52 @@
+# Nodo Platea: transcodifica e/o copie delle cartelle per un server Platea, su un'altra macchina.
+#   docker compose -f docker-compose.node.yml up -d
+# Chiave da inserire nel server (Amministrazione → Nodi → Aggiungi nodo):
+#   docker compose -f docker-compose.node.yml exec node platea node key
+# La porta 8097 va tenuta sulla LAN o su Tailscale, mai esposta su Internet.
+
+services:
+  node:
+    image: ghcr.io/enrico1203/platea-server:${PLATEA_TAG:-latest}
+    container_name: platea-node
+    command: ["node"]
+    restart: unless-stopped
+    ports:
+      - "${PLATEA_NODE_PORT:-8097}:8097"
+    environment:
+      PLATEA_ROLE: node
+      PLATEA_DATA_DIR: /data
+      PLATEA_TRANSCODE_DIR: /transcode
+      PLATEA_CACHE_DIR: /cache
+      # Nome mostrato nella dashboard (predefinito: nome della macchina).
+      # PLATEA_NODE_NAME: nodo-gpu
+      # Chiave fissa invece di quella generata al primo avvio (almeno 16 caratteri).
+      # PLATEA_NODE_KEY: ...
+      # Accetta richieste solo da queste reti (es. Tailscale e LAN).
+      # PLATEA_NODE_ALLOW: 100.64.0.0/10,192.168.1.0/24
+      # Radici dei media da cui il nodo può leggere (predefinito /media).
+      # PLATEA_NODE_MEDIA: /media
+      PLATEA_LOG: ${PLATEA_LOG:-info}
+      TZ: ${TZ:-Europe/Rome}
+    volumes:
+      # Chiave del nodo. uid 1000: sudo chown -R 1000:1000 node-data
+      - ./node-data:/data
+      # Copie delle cartelle (ruolo CDN, e transcodifica dal file locale), sempre in sola lettura.
+      # Stessa struttura della cartella sul server, anche un secondo mount rclone.
+      # - /mnt/film:/media/film:ro,rslave
+    # Segmenti in RAM: il nodo non tiene niente su disco.
+    tmpfs:
+      - /transcode:size=4g,uid=1000,gid=1000
+      - /cache:size=256m,uid=1000,gid=1000
+    # GPU Intel (Arc compresa) o AMD: serve anche il gruppo di /dev/dri/renderD128 (stat -c %g /dev/dri/renderD128).
+    # devices:
+    #   - /dev/dri:/dev/dri
+    # group_add:
+    #   - "993"
+    # GPU NVIDIA
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]

@@ -1758,13 +1758,6 @@ async fn playback_info(
     Ok(Json(json!({ "MediaSources": [src], "PlaySessionId": session })))
 }
 
-async fn open_cached(state: &Shared, file_id: i64) -> ApiResult<(Arc<std::fs::File>, crate::api::playback::FileInfo)> {
-    let info = crate::api::playback::load_file(state, file_id).await?;
-    let timeout = Duration::from_secs(state.settings.get().scanner.fs_timeout_seconds as u64);
-    let f = crate::stream::open_library_file(file_id, &info.abs, &info.root, timeout).await?;
-    Ok((f, info))
-}
-
 async fn choose_file(state: &Shared, item: i64, source: Option<&str>) -> ApiResult<i64> {
     if let Some(fid) = source.and_then(|s| state.ids.decode(s)) {
         let ok: Option<i64> =
@@ -1793,14 +1786,19 @@ async fn do_stream(state: &Shared, user: &AuthUser, item: &str, uri: &Uri, metho
     let fid = choose_file(state, id, source.as_deref()).await?;
     crate::probe::ensure_probed(state, fid).await.ok();
     let info = crate::api::playback::load_file(state, fid).await?;
-    if let Some(url) = &info.url {
-        return crate::stream::proxy(&state.http, url, method, headers).await;
-    }
-    let (file, info) = open_cached(state, fid).await?;
-    let ct = crate::stream::content_type_for(&info.media.container, &info.abs);
     // Byte inviati alla sessione di questo dispositivo, se Infuse l'ha già aperta con un rapporto.
-    let sent = COMPAT_SESSIONS.lock().unwrap().get(&(user.token_id, id)).and_then(|sid| state.sessions.get(sid)).map(|s| s.bytes_sent.clone());
-    crate::stream::serve_file(file, info.size as u64, info.mtime, ct, method, headers, sent)
+    let session = COMPAT_SESSIONS.lock().unwrap().get(&(user.token_id, id)).and_then(|sid| state.sessions.get(sid));
+    let sent = session.as_ref().map(|s| s.bytes_sent.clone());
+    // Stessa copia per tutte le richieste Range di questo dispositivo su questo file.
+    let opts = crate::nodes::cdn::Options { sticky: state.nodes.sticky_get((user.token_id, fid)), allow_redirect: false, download: false };
+    let served = crate::nodes::cdn::serve(state, &info, method, headers, opts, sent).await?;
+    state.nodes.sticky_set((user.token_id, fid), served.node);
+    if let Some(s) = session {
+        if s.copy_node.swap(served.node, std::sync::atomic::Ordering::Relaxed) != served.node {
+            *s.copy_name.lock().unwrap() = state.nodes.row(served.node).filter(|r| !r.is_local).map(|r| r.name);
+        }
+    }
+    Ok(served.response)
 }
 
 async fn download(State(state): State<Shared>, user: AuthUser, Path(item): Path<String>, method: Method, headers: HeaderMap) -> ApiResult<Response> {

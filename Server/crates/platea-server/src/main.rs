@@ -21,6 +21,8 @@ mod metadata;
 mod mkv;
 mod mp4;
 mod net;
+mod node;
+mod nodes;
 mod prefs;
 mod probe;
 mod quickconnect;
@@ -31,6 +33,7 @@ mod settings;
 mod state;
 mod stream;
 mod strm;
+mod sysinfo;
 mod transcode;
 mod trickplay;
 mod util;
@@ -44,14 +47,14 @@ use tokio::sync::Semaphore;
 use tracing_subscriber::EnvFilter;
 
 /// Controllo di salute per Docker: una richiesta HTTP minima, senza dipendenze nell'immagine.
-fn healthcheck(bind: &str) -> i32 {
+pub(crate) fn healthcheck(bind: &str, path: &str) -> i32 {
     use std::io::{Read, Write};
     let port = bind.rsplit(':').next().unwrap_or("8096");
     let addr = format!("127.0.0.1:{port}");
     let Ok(addr) = addr.parse::<SocketAddr>() else { return 1 };
     let Ok(mut s) = std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_secs(3)) else { return 1 };
     let _ = s.set_read_timeout(Some(std::time::Duration::from_secs(3)));
-    if s.write_all(b"GET /api/v1/health HTTP/1.0\r\nHost: localhost\r\n\r\n").is_err() {
+    if s.write_all(format!("GET {path} HTTP/1.0\r\nHost: localhost\r\n\r\n").as_bytes()).is_err() {
         return 1;
     }
     let mut buf = [0u8; 64];
@@ -61,10 +64,29 @@ fn healthcheck(bind: &str) -> i32 {
     }
 }
 
+/// Log su stdout e nella dashboard.
+pub(crate) fn init_tracing(level: &str) {
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::util::SubscriberInitExt;
+    let filter = EnvFilter::try_new(level).unwrap_or_else(|_| EnvFilter::new("info"));
+    let fmt = tracing_subscriber::fmt::layer().with_target(false).with_ansi(std::io::IsTerminal::is_terminal(&std::io::stdout())).compact();
+    tracing_subscriber::registry().with(filter).with(fmt).with(logs::DashboardLayer).init();
+}
+
 fn main() -> anyhow::Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+    // Modalità nodo: `platea node` (transcodifica e copie delle cartelle per un server Platea).
+    if args.get(1).map(String::as_str) == Some("node") {
+        return node::main(&args[2..]);
+    }
     let boot = boot::BootConfig::from_env();
     if std::env::args().any(|a| a == "--healthcheck") {
-        std::process::exit(healthcheck(&boot.bind));
+        // L'immagine è la stessa per server e nodo: il controllo di salute vale per entrambi.
+        if std::env::var("PLATEA_NODE_BIND").is_ok() || std::env::var("PLATEA_ROLE").is_ok_and(|r| r == "node") {
+            let bind = std::env::var("PLATEA_NODE_BIND").unwrap_or_else(|_| "0.0.0.0:8097".into());
+            std::process::exit(healthcheck(&bind, "/node/v1/health"));
+        }
+        std::process::exit(healthcheck(&boot.bind, "/api/v1/health"));
     }
     if std::env::args().any(|a| a == "--version") {
         println!("platea {}", state::VERSION);
@@ -73,13 +95,7 @@ fn main() -> anyhow::Result<()> {
     if let Some(code) = cli::dispatch(&boot) {
         std::process::exit(code);
     }
-    {
-        use tracing_subscriber::layer::SubscriberExt;
-        use tracing_subscriber::util::SubscriberInitExt;
-        let filter = EnvFilter::try_new(&boot.log).unwrap_or_else(|_| EnvFilter::new("info"));
-        let fmt = tracing_subscriber::fmt::layer().with_target(false).with_ansi(std::io::IsTerminal::is_terminal(&std::io::stdout())).compact();
-        tracing_subscriber::registry().with(filter).with(fmt).with(logs::DashboardLayer).init();
-    }
+    init_tracing(&boot.log);
 
     raise_open_files_limit();
     // Pool di thread bloccanti ampio: ogni mount lento consuma i propri thread, non il runtime.
@@ -141,6 +157,7 @@ async fn run(boot: boot::BootConfig) -> anyhow::Result<()> {
         jobs: jobs::JobQueue::new(),
         ffmpeg,
         sessions: Default::default(),
+        nodes: Default::default(),
         server_id,
         setup_code: Mutex::new(None),
         image_downloads: Semaphore::new(4),
@@ -169,7 +186,9 @@ async fn run(boot: boot::BootConfig) -> anyhow::Result<()> {
     jobs::recover(&state).await?;
     tokio::spawn(jobs::run_dispatcher(state.clone()));
     tokio::spawn(jobs::run_scheduler(state.clone()));
+    state.nodes.reload(&state.db).await?;
     tokio::spawn(sessions::run_maintenance(state.clone()));
+    tokio::spawn(nodes::run_health(state.clone()));
     tokio::spawn(watch::run(state.clone()));
     // Prova delle GPU in sottofondo: l'API è pronta subito.
     {
@@ -211,7 +230,7 @@ async fn shutdown(state: Shared) {
 
 /// Centinaia di riproduzioni e connessioni contemporanee: il limite di file aperti predefinito (spesso 1024)
 /// non basta. Si alza il limite "soft" fino al massimo consentito ("hard") del container.
-fn raise_open_files_limit() {
+pub(crate) fn raise_open_files_limit() {
     #[cfg(unix)]
     unsafe {
         let mut lim = libc::rlimit { rlim_cur: 0, rlim_max: 0 };

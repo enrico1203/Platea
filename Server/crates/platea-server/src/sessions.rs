@@ -3,13 +3,12 @@
 //! lo ricevono nell'URL, e il token principale non finisce mai nei log.
 //! Le posizioni di riproduzione si accumulano in memoria e partono insieme in una transazione.
 
+use crate::nodes::hls::HlsHandle;
 use crate::state::Shared;
-use crate::transcode::HlsRuntime;
 use crate::util::{now_ms, random_hex};
 use platea_playback::{Decision, Method};
 use serde::Serialize;
 use std::collections::HashMap;
-use std::fs::File;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
@@ -53,9 +52,10 @@ pub struct PlaySession {
     pub bytes_sent: Arc<AtomicU64>,
     rate: Mutex<RateSample>,
     pub history_id: i64,
-    pub hls: Option<Arc<HlsRuntime>>,
-    /// Descrittore aperto per la durata della sessione: su un mount cloud riaprire costa secondi.
-    pub file: Mutex<Option<Arc<File>>>,
+    pub hls: Option<Arc<HlsHandle>>,
+    /// Copia da cui si legge il file in direct play (id del nodo, 0 = non ancora scelta) e nome del nodo.
+    pub copy_node: AtomicI64,
+    pub copy_name: Mutex<Option<String>>,
 }
 
 #[derive(Default)]
@@ -89,7 +89,7 @@ impl PlaySession {
         bitrate: Option<i64>,
         duration_ms: i64,
         history_id: i64,
-        hls: Option<Arc<HlsRuntime>>,
+        hls: Option<Arc<HlsHandle>>,
         extra: SessionExtra,
     ) -> Self {
         let now = now_ms();
@@ -125,7 +125,8 @@ impl PlaySession {
             rate: Mutex::new(RateSample { at: now, ..Default::default() }),
             history_id,
             hls,
-            file: Mutex::new(None),
+            copy_node: AtomicI64::new(0),
+            copy_name: Mutex::new(None),
         }
     }
 
@@ -251,6 +252,10 @@ pub struct SessionView {
     pub buffered_until_ms: Option<i64>,
     /// Chi codifica davvero adesso (dopo un eventuale ripiego): "copia", "NVENC", "Software"…
     pub backend: Option<String>,
+    /// Nodo che esegue la transcodifica o il remux (assente = questo server).
+    pub executor: Option<String>,
+    /// Nodo da cui si legge il file in direct play (assente = questo server).
+    pub source: Option<String>,
     pub bandwidth_bps: u64,
     pub bytes_sent: u64,
 }
@@ -372,7 +377,7 @@ async fn mark_parents(tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>, user: i64, i
 pub async fn stop_session(state: &Shared, id: &str) -> Option<Arc<PlaySession>> {
     let s = state.sessions.remove(id)?;
     if let Some(h) = &s.hls {
-        h.stop().await;
+        h.stop(state).await;
     }
     let pos = s.position_ms.load(Ordering::Relaxed);
     if pos > 0 && !s.extra {
@@ -447,7 +452,7 @@ pub async fn session_view(state: &Shared, s: &PlaySession) -> SessionView {
         duration_ms: s.duration_ms,
         paused: s.paused.load(Ordering::Relaxed),
         throttled: match &s.hls {
-            Some(h) => h.is_paused().await,
+            Some(h) => h.is_paused(state).await,
             None => false,
         },
         started_at: s.started_at,
@@ -459,10 +464,15 @@ pub async fn session_view(state: &Shared, s: &PlaySession) -> SessionView {
         remote: s.remote,
         details: s.details.clone(),
         buffered_until_ms: match &s.hls {
-            Some(h) => h.buffered_until_ms().await,
+            Some(h) => h.buffered_until_ms(state).await,
             None => None,
         },
-        backend: s.hls.as_ref().map(|h| h.backend()),
+        backend: match &s.hls {
+            Some(h) => Some(h.backend(state).await),
+            None => None,
+        },
+        executor: s.hls.as_ref().map(|h| h.executor_name()).filter(|n| !n.is_empty()),
+        source: s.copy_name.lock().unwrap().clone(),
         bandwidth_bps: s.bandwidth(),
         bytes_sent: s.bytes_sent.load(Ordering::Relaxed),
     }

@@ -315,30 +315,25 @@ impl HlsRuntime {
         self.spec.fmp4
     }
 
-    pub fn segment_duration_ms(&self, n: usize) -> i64 {
-        let start = self.cuts[n];
-        let end = self.cuts.get(n + 1).copied().unwrap_or(self.duration_ms);
-        (end - start).max(1)
+    /// Segmento `n` pronto da inviare: il file MPEG-TS, oppure i frammenti fMP4 composti (vedi `append_fragment`).
+    pub async fn segment_bytes(&self, n: usize) -> Result<Vec<u8>, HlsError> {
+        let paths = self.segment(n).await?;
+        let mut bytes = Vec::new();
+        for p in &paths {
+            let frag = read_part(p).await?;
+            if self.spec.fmp4 {
+                append_fragment(&mut bytes, &frag);
+            } else {
+                bytes.extend(frag);
+            }
+        }
+        Ok(bytes)
     }
 
-    /// Playlist VOD con tutti i segmenti.
-    pub fn playlist(&self, segment_url: impl Fn(usize) -> String) -> String {
-        let max = (0..self.cuts.len()).map(|i| self.segment_duration_ms(i)).max().unwrap_or(6000);
-        let mut out = String::with_capacity(self.cuts.len() * 48 + 200);
-        if self.spec.fmp4 {
-            out.push_str("#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-PLAYLIST-TYPE:VOD\n#EXT-X-INDEPENDENT-SEGMENTS\n");
-        } else {
-            out.push_str("#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-PLAYLIST-TYPE:VOD\n");
-        }
-        out.push_str(&format!("#EXT-X-TARGETDURATION:{}\n#EXT-X-MEDIA-SEQUENCE:0\n", (max as f64 / 1000.0).ceil() as i64));
-        if self.spec.fmp4 {
-            out.push_str(&format!("#EXT-X-MAP:URI=\"{}\"\n", segment_url(usize::MAX)));
-        }
-        for i in 0..self.cuts.len() {
-            out.push_str(&format!("#EXTINF:{:.3},\n{}\n", self.segment_duration_ms(i) as f64 / 1000.0, segment_url(i)));
-        }
-        out.push_str("#EXT-X-ENDLIST\n");
-        out
+    /// Segmento d'inizializzazione fMP4 pronto da inviare.
+    pub async fn init_bytes(&self) -> Result<Vec<u8>, HlsError> {
+        let p = self.init_segment().await?;
+        read_part(&p).await
     }
 
     fn seg_path(&self, n: usize) -> PathBuf {
@@ -666,6 +661,39 @@ impl HlsRuntime {
             let _ = tokio::fs::remove_dir_all(dir).await;
         });
     }
+}
+
+/// Un file sparito mentre la richiesta aspettava: la sessione è stata chiusa (nuova riproduzione, stop, salto che
+/// ha riavviato la transcodifica) e la sua cartella cancellata. Non è un errore del server.
+async fn read_part(p: &std::path::Path) -> Result<Vec<u8>, HlsError> {
+    tokio::fs::read(p).await.map_err(|e| if e.kind() == std::io::ErrorKind::NotFound { HlsError::Stopped } else { HlsError::Failed(e.to_string()) })
+}
+
+/// Durata del segmento `n` in ms.
+pub fn segment_duration_ms(cuts: &[i64], duration_ms: i64, n: usize) -> i64 {
+    let start = cuts[n];
+    let end = cuts.get(n + 1).copied().unwrap_or(duration_ms);
+    (end - start).max(1)
+}
+
+/// Playlist VOD con tutti i segmenti: la scrive sempre il server, chiunque esegua FFmpeg.
+pub fn playlist(cuts: &[i64], duration_ms: i64, fmp4: bool, segment_url: impl Fn(usize) -> String) -> String {
+    let max = (0..cuts.len()).map(|i| segment_duration_ms(cuts, duration_ms, i)).max().unwrap_or(6000);
+    let mut out = String::with_capacity(cuts.len() * 48 + 200);
+    if fmp4 {
+        out.push_str("#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-PLAYLIST-TYPE:VOD\n#EXT-X-INDEPENDENT-SEGMENTS\n");
+    } else {
+        out.push_str("#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-PLAYLIST-TYPE:VOD\n");
+    }
+    out.push_str(&format!("#EXT-X-TARGETDURATION:{}\n#EXT-X-MEDIA-SEQUENCE:0\n", (max as f64 / 1000.0).ceil() as i64));
+    if fmp4 {
+        out.push_str(&format!("#EXT-X-MAP:URI=\"{}\"\n", segment_url(usize::MAX)));
+    }
+    for i in 0..cuts.len() {
+        out.push_str(&format!("#EXTINF:{:.3},\n{}\n", segment_duration_ms(cuts, duration_ms, i) as f64 / 1000.0, segment_url(i)));
+    }
+    out.push_str("#EXT-X-ENDLIST\n");
+    out
 }
 
 /// Primo segmento da `start` in poi non ancora completato.

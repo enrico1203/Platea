@@ -38,6 +38,7 @@ const AdminSettings = lazy(() => import("./pages/admin/Settings"));
 const AdminActivity = lazy(() => import("./pages/admin/Activity"));
 const AdminSystem = lazy(() => import("./pages/admin/System"));
 const AdminLogs = lazy(() => import("./pages/admin/Logs"));
+const AdminNodes = lazy(() => import("./pages/admin/Nodes"));
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, refetchOnWindowFocus: false, retry: (n, e) => n < 2 && (e as { status?: number }).status !== 404 && (e as { status?: number }).status !== 403 } },
@@ -81,6 +82,7 @@ function Routed() {
           <Route path="admin/jobs" element={<Guard admin><AdminJobs /></Guard>} />
           <Route path="admin/review" element={<Guard admin><AdminReview /></Guard>} />
           <Route path="admin/transcode" element={<Guard admin><AdminTranscode /></Guard>} />
+          <Route path="admin/nodes" element={<Guard admin><AdminNodes /></Guard>} />
           <Route path="admin/settings/:group?" element={<Guard admin><AdminSettings /></Guard>} />
           <Route path="admin/activity" element={<Guard admin><AdminActivity /></Guard>} />
           <Route path="admin/system" element={<Guard admin><AdminSystem /></Guard>} />

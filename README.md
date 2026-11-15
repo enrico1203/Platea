@@ -86,6 +86,7 @@ The [`docker-compose.yml`](docker-compose.yml) in this repository is more comple
 - Direct play first. The client declares what it can play and the server picks direct play, then remux, then transcoding, and records the reason.
 - Light remux, HEVC included. A browser that decodes HEVC gets the video copied into fMP4 segments, and only the audio is converted.
 - Hardware transcoding on Intel (QSV, VA-API), NVIDIA (NVENC) and AMD (VA-API), with HDR to SDR tone mapping. If the GPU fails, the session falls back to software.
+- Nodes: other machines that transcode for the server (for example one with a GPU) or hold copies of library folders, with priorities, weights, rules like "4K only" and automatic failover.
 - Fast scans. A scan only lists folders, several at a time, and opens no files when nothing changed. Thousands of movies on an rclone mount are listed in under a minute. New files on local disks show up within seconds.
 - A missing mount never deletes anything. If the library root is empty or unreadable, the scan stops. If many files disappear at once, nothing is removed until you confirm.
 - Metadata from TMDB, from Kodi `.nfo` files (episode NFOs included) and from Plex `.plexmatch` files. Media folders are never written to.
@@ -107,6 +108,23 @@ Uncomment the matching lines in the `server` service of [`docker-compose.yml`](d
 - NVIDIA: the `deploy` block with the NVIDIA runtime.
 
 Then go to Administration › Transcoding › Test now. The server encodes and decodes one second of real video for each combination and shows what works.
+
+### Nodes
+
+A node is another machine running the same image with `platea node`. The server reaches it over the LAN or Tailscale and can give it two jobs, alone or together:
+
+- Transcoding. The node gets the file from the server, transcodes it (on its GPU if it has one) and sends the segments back. Clients only ever talk to the server.
+- File copies. The node holds a copy of some library folders (a real copy or a second rclone mount). Direct play, downloads and apps read the file from there, with load balancing and failover between copies. When the node also transcodes, it reads the file locally.
+
+On the node machine:
+
+```sh
+mkdir node-data && sudo chown 1000:1000 node-data
+docker compose -f docker-compose.node.yml up -d
+docker compose -f docker-compose.node.yml exec node platea node key
+```
+
+Then on the server go to Administration › Nodes › Add node and enter the node address (port 8097) and that key. Each executor, this server included, has a priority, a weight (90 and 10 split sessions 90/10), a session limit and rules (4K only, HDR only, codecs, libraries, only if the GPU can do it). Offline nodes are skipped, and a session whose node dies moves to the next one from the same segment. Keep port 8097 on the LAN or Tailscale. The full guide is in [docs/nodi.md](docs/nodi.md) (Italian).
 
 ### Cloud storage with rclone
 
@@ -226,6 +244,7 @@ git clone https://github.com/enrico1203/Platea.git && cd Platea
 cp .env.example .env
 docker compose up -d --build                  # server on :8096, web app on :8080
 scripts/cargo.sh test                         # server tests
+scripts/nodes-test/run.sh                     # end-to-end test: server and two nodes in containers
 docker run --rm -v "$PWD/WebApp:/app" -w /app node:22-alpine npm run typecheck
 ```
 

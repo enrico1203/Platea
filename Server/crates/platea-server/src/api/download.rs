@@ -100,13 +100,13 @@ async fn serve(State(state): State<Shared>, Path((token, _name)): Path<(String, 
         return Err(ApiError::coded(axum::http::StatusCode::FORBIDDEN, "DownloadNotAllowed", "Download non consentito"));
     }
     let info = super::playback::load_file(&state, file_id).await?;
-    if let Some(url) = &info.url {
-        return crate::stream::proxy(&state.http, url, &method, &headers).await;
+    let opts = crate::nodes::cdn::Options { sticky: state.nodes.sticky_get((-user_id, file_id)), allow_redirect: true, download: true };
+    let served = crate::nodes::cdn::serve(&state, &info, &method, &headers, opts, None).await?;
+    state.nodes.sticky_set((-user_id, file_id), served.node);
+    let mut resp = served.response;
+    if resp.status() == axum::http::StatusCode::FOUND {
+        return Ok(resp);
     }
-    let timeout = std::time::Duration::from_secs(state.settings.get().scanner.fs_timeout_seconds as u64);
-    let file = crate::stream::open_library_file(file_id, &info.abs, &info.root, timeout).await?;
-    let ct = crate::stream::content_type_for(&info.media.container, &info.abs);
-    let mut resp = crate::stream::serve_file(file, info.size as u64, info.mtime, ct, &method, &headers, None)?;
     let name = file_name(&info.abs);
     let disp = format!("attachment; filename=\"{}\"; filename*=UTF-8''{}", name.replace(['"', '\\'], "_"), urlencoding::encode(&name));
     if let Ok(v) = HeaderValue::from_str(&disp) {
@@ -121,13 +121,10 @@ pub async fn serve_for_user(state: &Shared, user: &AuthUser, item_id: i64, metho
     super::items::load_item(state, user, item_id).await?;
     let fid = choose_file(state, item_id, None).await?;
     let info = super::playback::load_file(state, fid).await?;
-    if let Some(url) = &info.url {
-        return crate::stream::proxy(&state.http, url, method, headers).await;
-    }
-    let timeout = std::time::Duration::from_secs(state.settings.get().scanner.fs_timeout_seconds as u64);
-    let file = crate::stream::open_library_file(fid, &info.abs, &info.root, timeout).await?;
-    let ct = crate::stream::content_type_for(&info.media.container, &info.abs);
-    let mut resp = crate::stream::serve_file(file, info.size as u64, info.mtime, ct, method, headers, None)?;
+    let opts = crate::nodes::cdn::Options { sticky: state.nodes.sticky_get((user.token_id, fid)), allow_redirect: false, download: true };
+    let served = crate::nodes::cdn::serve(state, &info, method, headers, opts, None).await?;
+    state.nodes.sticky_set((user.token_id, fid), served.node);
+    let mut resp = served.response;
     if let Ok(v) = HeaderValue::from_str(&format!("attachment; filename*=UTF-8''{}", urlencoding::encode(&file_name(&info.abs)))) {
         resp.headers_mut().insert(header::CONTENT_DISPOSITION, v);
     }

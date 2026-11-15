@@ -393,6 +393,64 @@ impl Default for NotificationSettings {
 /// Campi che richiedono un riavvio.
 pub const RESTART_FIELDS: &[(&str, &str)] = &[];
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum NodeStrategy {
+    /// Sessioni in corso divise in proporzione ai pesi.
+    Weighted,
+    /// Chi ha meno lavoro in rapporto ai propri posti.
+    LeastLoaded,
+    /// Sempre il primo dell'elenco (per priorità, poi per peso) finché ha posto.
+    Ordered,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(default)]
+#[schemars(title = "Nodi")]
+pub struct NodeSettings {
+    /// Indirizzo con cui i nodi raggiungono questo server per leggere i file (es. http://100.64.0.1:8096).
+    /// Vuoto = l'indirizzo da cui il nodo vede arrivare il server, con la porta qui sotto.
+    #[schemars(title = "Indirizzo del server per i nodi")]
+    pub server_url: String,
+    /// Porta del server vista dai nodi quando l'indirizzo è automatico (quella pubblicata da Docker).
+    #[schemars(title = "Porta del server per i nodi", range(min = 1, max = 65535))]
+    pub server_port: u32,
+    /// Come dividere le transcodifiche tra esecutori con la stessa priorità.
+    #[schemars(title = "Bilanciamento")]
+    pub strategy: NodeStrategy,
+    /// A parità di priorità, prima chi ha il file in una cartella propria (non lo riceve dal server).
+    #[schemars(title = "Preferisci chi ha il file in locale")]
+    pub prefer_local_copy: bool,
+    /// Se nessun esecutore accetta il lavoro (regole, nodi spenti o pieni), transcodifica comunque questo server.
+    #[schemars(title = "Ripiego su questo server")]
+    pub fallback_local: bool,
+    /// Ogni quanti secondi il server controlla i nodi.
+    #[schemars(title = "Controllo dei nodi (s)", range(min = 2, max = 60))]
+    pub heartbeat_seconds: u32,
+    /// Controlli falliti di fila dopo cui un nodo è considerato offline.
+    #[schemars(title = "Offline dopo controlli falliti", range(min = 1, max = 20))]
+    pub offline_after: u32,
+    /// Direct play e download con un link firmato verso il nodo, invece di passare dal server. Solo per i nodi con un
+    /// indirizzo pubblico impostato; consuma la banda del nodo invece di quella del server.
+    #[schemars(title = "Consegna diretta dai nodi")]
+    pub direct_delivery: bool,
+}
+
+impl Default for NodeSettings {
+    fn default() -> Self {
+        NodeSettings {
+            server_url: String::new(),
+            server_port: 8096,
+            strategy: NodeStrategy::Weighted,
+            prefer_local_copy: true,
+            fallback_local: true,
+            heartbeat_seconds: 5,
+            offline_after: 3,
+            direct_delivery: false,
+        }
+    }
+}
+
 /// Campi di testo lunghi: nella dashboard diventano aree di testo.
 pub const MULTILINE_FIELDS: &[(&str, &str)] = &[("general", "login_message"), ("general", "custom_css")];
 
@@ -405,9 +463,10 @@ pub struct AllSettings {
     pub metadata: MetadataSettings,
     pub scanner: ScannerSettings,
     pub notifications: NotificationSettings,
+    pub nodes: NodeSettings,
 }
 
-pub const GROUPS: &[&str] = &["general", "network", "playback", "transcode", "metadata", "scanner", "notifications"];
+pub const GROUPS: &[&str] = &["general", "network", "playback", "transcode", "metadata", "scanner", "notifications", "nodes"];
 
 #[derive(Clone)]
 pub struct Settings {
@@ -430,6 +489,7 @@ impl Settings {
             metadata: load_group(&rows, "metadata"),
             scanner: load_group(&rows, "scanner"),
             notifications: load_group(&rows, "notifications"),
+            nodes: load_group(&rows, "nodes"),
         };
         Ok(Settings { inner: Arc::new(RwLock::new(Arc::new(all))), db })
     }
@@ -448,6 +508,7 @@ impl Settings {
         out.insert("metadata".into(), serde_json::to_value(schemars::schema_for!(MetadataSettings)).unwrap());
         out.insert("scanner".into(), serde_json::to_value(schemars::schema_for!(ScannerSettings)).unwrap());
         out.insert("notifications".into(), serde_json::to_value(schemars::schema_for!(NotificationSettings)).unwrap());
+        out.insert("nodes".into(), serde_json::to_value(schemars::schema_for!(NodeSettings)).unwrap());
         // Segna i segreti e i campi che richiedono riavvio.
         for (grp, field) in SECRET_FIELDS {
             if let Some(p) = out.get_mut(*grp).and_then(|s| s.pointer_mut(&format!("/properties/{field}"))) {
@@ -478,6 +539,7 @@ impl Settings {
             "metadata": all.metadata,
             "scanner": all.scanner,
             "notifications": all.notifications,
+            "nodes": all.nodes,
         });
         for (grp, field) in SECRET_FIELDS {
             if let Some(g) = v.get_mut(*grp).and_then(|g| g.as_object_mut()) {
@@ -498,6 +560,7 @@ impl Settings {
             "metadata" => serde_json::to_value(&all.metadata).ok()?,
             "scanner" => serde_json::to_value(&all.scanner).ok()?,
             "notifications" => serde_json::to_value(&all.notifications).ok()?,
+            "nodes" => serde_json::to_value(&all.nodes).ok()?,
             _ => return None,
         })
     }
@@ -535,6 +598,7 @@ impl Settings {
             "metadata" => next.metadata = serde_json::from_value(merged.clone()).map_err(parse_err)?,
             "scanner" => next.scanner = serde_json::from_value(merged.clone()).map_err(parse_err)?,
             "notifications" => next.notifications = serde_json::from_value(merged.clone()).map_err(parse_err)?,
+            "nodes" => next.nodes = serde_json::from_value(merged.clone()).map_err(parse_err)?,
             _ => unreachable!(),
         }
         validate(&next)?;
@@ -600,6 +664,10 @@ fn validate(s: &AllSettings) -> Result<(), String> {
     }
     if s.general.custom_css.len() > 64 * 1024 {
         return Err("Il CSS personalizzato può essere al massimo di 64 KB".into());
+    }
+    let u = s.nodes.server_url.trim();
+    if !u.is_empty() && !(u.starts_with("http://") || u.starts_with("https://")) {
+        return Err("Indirizzo del server per i nodi non valido (serve http:// o https://)".into());
     }
     if s.general.min_password_length < 4 {
         return Err("La lunghezza minima della password è 4".into());

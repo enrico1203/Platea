@@ -564,6 +564,18 @@ async fn history(State(state): State<Shared>, _a: AdminUser, Query(q): Query<Pag
     })))
 }
 
+/// Backend imposto dalle impostazioni (server o nodo); `None` = prova automatica.
+pub fn forced_backend(b: &HwBackend) -> Option<Backend> {
+    match b {
+        HwBackend::Auto => None,
+        HwBackend::None => Some(Backend::Software),
+        HwBackend::Qsv => Some(Backend::Qsv),
+        HwBackend::Vaapi => Some(Backend::Vaapi),
+        HwBackend::Nvenc => Some(Backend::Nvenc),
+        HwBackend::Amf => Some(Backend::Amf),
+    }
+}
+
 /// Prova reale delle GPU: all'avvio e su richiesta dalla dashboard.
 pub async fn run_hw_detection(state: &Shared) {
     let f = state.ffmpeg.get();
@@ -571,14 +583,7 @@ pub async fn run_hw_detection(state: &Shared) {
         return;
     }
     let s = state.settings.get();
-    let forced = match s.transcode.hw_backend {
-        HwBackend::Auto => None,
-        HwBackend::None => Some(Backend::Software),
-        HwBackend::Qsv => Some(Backend::Qsv),
-        HwBackend::Vaapi => Some(Backend::Vaapi),
-        HwBackend::Nvenc => Some(Backend::Nvenc),
-        HwBackend::Amf => Some(Backend::Amf),
-    };
+    let forced = forced_backend(&s.transcode.hw_backend);
     let mut caps = crate::transcode::hw::detect(&f.ffmpeg, &s.transcode.vaapi_device, forced, &state.boot.cache_dir).await;
     caps.ffmpeg_version = f.version.clone();
     if let Ok(j) = serde_json::to_string(&caps) {

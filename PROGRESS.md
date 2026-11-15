@@ -450,6 +450,25 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
    route e riferimenti esistano), `operationId` dal percorso; `scripts/generate-clients.sh` valida il documento e
    genera i client Kotlin e Swift (openapi-generator 7.12, in `clients/`, non versionato). Restano le app Android/TV
    e Apple. Quando cambiano i tipi della web UI: rilanciare `scripts/openapi-schemas.sh`.
+8b. [x] **Nodi** (15/11/2026, richiesta dell'utente; guida in `docs/nodi.md`). Stesso eseguibile in modalità nodo
+   (`platea node`, porta 8097, `docker-compose.node.yml`), senza database: chiave condivisa (`PLATEA_NODE_KEY` o
+   generata in `/data/node.key`, `platea node key`), reti ammesse facoltative, sola lettura sotto `/media`.
+   Ruoli, anche insieme: transcodifica (il nodo riceve il file dal server via `/api/v1/node-source/{token}` o lo legge
+   dalla sua copia, e rimanda i segmenti; la playlist resta del server) e copie delle cartelle (CDN: direct play,
+   download, Infuse/Jellyfin e sorgente di FFmpeg leggono dalla copia, con Range e failover).
+   Bilanciamento per esecutore, server compreso (riga `is_local` della migrazione 0023): priorità a livelli, pesi
+   (90/10), limite di sessioni, regole "accetta solo" (altezza, HDR, codec, librerie, transcodifica/remux, solo con
+   GPU), svuotamento; impostazioni `nodes` (strategia, preferenza per chi ha il file, ripiego sul server, indirizzo
+   del server per i nodi, consegna diretta con link firmati HMAC verso l'indirizzo pubblico del nodo).
+   Failover: heartbeat ogni 5 s (offline dopo 3), avvio sul successivo dell'elenco, a metà sessione si riparte su un
+   altro esecutore dallo stesso segmento (fMP4 transcodificato: 410 e il player riapre da solo), interruttore dopo 3
+   errori in 5 min, nodo senza heartbeat per 60 s chiude FFmpeg. Pagina Amministrazione › Nodi (stato dal vivo,
+   matrice GPU, log, riavvio, cartelle con Sfoglia e verifica), "Eseguita da"/"Letta da" nelle riproduzioni.
+   Codice: `src/node/`, `src/nodes/` (route.rs puro con test, hls.rs, cdn.rs, client.rs, proto.rs), `api/nodes.rs`.
+   Provato con `scripts/nodes-test/run.sh` (server + 2 nodi in container, file sintetici): **52 prove su 52**
+   (pesi 9/1 su 10 sessioni, solo-4K, 1+2 dal file locale, failover in 2,2 s, CDN byte per byte, copia troncata
+   esclusa, link firmato e manomesso, nodo orfano). Browser (Playwright): pagina su desktop e telefono, zero errori,
+   campi a 16 px. **Da provare su hardware vero: un nodo con GPU (QSV/VA-API), vedi `PROGRESS.local.md`.**
 8. Priorità C di `docs/confronto-jellyfin.md` e decisioni aperte del piano (licenza, sistemi supportati, PostgreSQL).
 
 ## Debito tecnico noto (da fare dopo)
@@ -458,6 +477,7 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-15 — Nodi: transcodifica e copie delle cartelle su altre macchine, con bilanciamento e failover.
 - 2026-11-15 — Release v0.1.1 (prima con immagini native amd64+arm64; la build di v0.1.0 in emulazione è stata annullata, tag e release v0.1.0 restano senza immagine del server).
 - 2026-11-15 — File .strm (indirizzi http/https), riprodotti attraverso il server.
 - 2026-11-15 — Cambio di tipo di una libreria (film ↔ serie): prima veniva ignorato. Ora i titoli si cancellano e la

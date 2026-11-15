@@ -2,7 +2,7 @@
 
 Open source media server: server Rust (`Server/`) + web UI React (`WebApp/`), avviati da `docker-compose.yml` nella root.
 
-- Piano: `docs/piano-di-progetto.md`. Brand: `docs/brand-identity.md`.
+- Piano: `docs/piano-di-progetto.md`. Brand: `docs/brand-identity.md`. Nodi (transcodifica e CDN su altre macchine): `docs/nodi.md`.
 - **Stato dei lavori e indicazioni dell'utente: `PROGRESS.md`. Leggerlo per primo e aggiornarlo a ogni passo.**
   Le note private sull'installazione dell'utente stanno in `PROGRESS.local.md` (non versionato): mai nei file versionati,
   perché la repository è pubblica.

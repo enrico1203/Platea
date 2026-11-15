@@ -920,7 +920,7 @@ Criterio di uscita: le due app sono pubblicate e riproducono in direct play i fo
 - [x] Collezioni automatiche e playlist
 - [ ] Download per la visione offline nelle app
 - [ ] Autenticazione esterna con OIDC o LDAP
-- [ ] Transcodifica su macchine worker
+- [x] Transcodifica su macchine worker (nodi: `docs/nodi.md`, anche copie delle cartelle con bilanciamento e failover)
 - [ ] Musica e altri tipi di libreria
 
 Criterio di uscita: nessuno, è lavoro continuo ordinato secondo le richieste degli utenti.

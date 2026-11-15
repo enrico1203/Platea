@@ -56,6 +56,11 @@ export default function Player() {
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
   // Ripiego sulla transcodifica: impostato da start(), usato dai gestori di errore di hls.js e del video.
   const fallbackRef = useRef<(() => void) | null>(null);
+  // Sessione chiusa dal server (410: l'esecutore della transcodifica è caduto senza ricambio): si riapre dalla
+  // posizione corrente, al massimo qualche volta per film.
+  const reopenRef = useRef<(() => void) | null>(null);
+  const reopensRef = useRef(0);
+  const adminStopRef = useRef(false);
   // Ultima posizione davvero riprodotta: dopo un errore Safari riporta in currentTime valori senza senso
   // (es. 4008 s a un secondo dall'avvio), e il ripiego ripartirebbe da lì.
   const playedRef = useRef<number | null>(null);
@@ -146,6 +151,13 @@ export default function Player() {
             return;
           }
           const code = (d.response as { code?: number } | undefined)?.code;
+          if (code === 410 && !adminStopRef.current && reopenRef.current && reopensRef.current < 5) {
+            reopensRef.current++;
+            const r = reopenRef.current;
+            reopenRef.current = null;
+            r();
+            return;
+          }
           const detail = [d.type, d.details, code ? `HTTP ${code}` : null, d.error?.message].filter(Boolean).join(" · ");
           reportClientError(p.session_id, detail);
           // Remux rifiutato dal browser (codec, contenitore): si riprova una volta con la transcodifica.
@@ -212,6 +224,10 @@ export default function Player() {
       fallbackRef.current = opts.force || p.method === "transcode" ? null : () => {
         triedFallback.current = true;
         start({ startMs: playedRef.current != null ? playedRef.current * 1000 : opts.startMs, audioIndex: p.audio_index, subtitleIndex: opts.subtitleIndex, force: true });
+      };
+      reopenRef.current = () => {
+        const v = videoRef.current;
+        start({ startMs: v && v.currentTime > 0 ? v.currentTime * 1000 : opts.startMs, audioIndex: p.audio_index, subtitleIndex: opts.subtitleIndex, force: opts.force });
       };
       // Primo avvio: sottotitolo scelto dal server secondo le preferenze dell'utente.
       if (opts.subtitleIndex === undefined && opts.audioIndex === undefined && p.subtitle_default != null) setSubIndex(p.subtitle_default);
@@ -416,6 +432,7 @@ export default function Player() {
         window.setTimeout(() => setNotice(null), 10000);
       }
     } else if (e.type === "playback.stopped" && d.by === "admin") {
+      adminStopRef.current = true;
       v?.pause();
       setError(t("player.stoppedByAdmin"));
     }

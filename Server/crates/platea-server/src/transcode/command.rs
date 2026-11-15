@@ -79,7 +79,7 @@ impl HwProfile {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SourceVideo {
     pub index: u32,
     pub codec: String,
@@ -89,7 +89,7 @@ pub struct SourceVideo {
     pub hdr: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JobSpec {
     pub input: PathBuf,
     pub video: Option<SourceVideo>,
@@ -190,6 +190,11 @@ pub fn build_args(spec: &JobSpec, hw: &HwProfile) -> Vec<String> {
     }
     if spec.threads > 0 && !hw_decode {
         push(&mut a, &["-threads", &spec.threads.to_string()]);
+    }
+    if is_http(&spec.input) {
+        // Ingresso in rete (.strm, file letto dal server o da un nodo): una connessione caduta si riprende
+        // invece di troncare la transcodifica.
+        push(&mut a, &["-reconnect", "1", "-reconnect_on_network_error", "1", "-reconnect_delay_max", "10", "-rw_timeout", "30000000"]);
     }
     a.push("-i".into());
     a.push(spec.input.to_string_lossy().to_string());
@@ -315,6 +320,12 @@ pub fn build_args(spec: &JobSpec, hw: &HwProfile) -> Vec<String> {
     push(&mut a, &["-reset_timestamps", "0", "-break_non_keyframes", "0"]);
     a.push(spec.out_dir.join("seg_%05d.ts").to_string_lossy().to_string());
     a
+}
+
+/// Ingresso in rete (indirizzo http/https) invece di un file.
+pub fn is_http(input: &std::path::Path) -> bool {
+    let s = input.to_string_lossy();
+    s.starts_with("http://") || s.starts_with("https://")
 }
 
 /// Quanto dopo il keyframe di partenza punta la ricerca nella copia.
@@ -548,6 +559,25 @@ mod tests {
         let j = joined(&build_args(&spec(v, AudioAction::Copy), &HwProfile::software()));
         assert!(j.contains("[0:0][0:4]overlay"));
         assert!(j.contains("-map [v]"));
+    }
+
+    #[test]
+    fn http_input_reconnects() {
+        let mut s = spec(VideoAction::Copy, AudioAction::Copy);
+        s.input = "http://10.0.0.2:8096/api/v1/node-source/abc".into();
+        let j = joined(&build_args(&s, &HwProfile::software()));
+        assert!(j.contains("-reconnect 1 -reconnect_on_network_error 1"), "{j}");
+        assert!(j.find("-reconnect").unwrap() < j.find("-i http").unwrap());
+        let j = joined(&build_args(&spec(VideoAction::Copy, AudioAction::Copy), &HwProfile::software()));
+        assert!(!j.contains("-reconnect"));
+    }
+
+    #[test]
+    fn spec_roundtrips_as_json() {
+        let v = VideoAction::Transcode { codec: "h264".into(), max_width: 1920, max_height: 1080, bitrate: 8_000_000, tonemap: true, burn_subtitle: Some(3) };
+        let s = spec(v, AudioAction::Transcode { codec: "aac".into(), channels: 2, bitrate: 192_000 });
+        let back: JobSpec = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        assert_eq!(build_args(&back, &HwProfile::software()), build_args(&s, &HwProfile::software()));
     }
 
     #[test]

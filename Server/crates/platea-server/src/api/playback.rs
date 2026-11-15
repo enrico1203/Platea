@@ -7,7 +7,7 @@ use crate::error::{ApiError, ApiResult};
 use crate::sessions::{stop_session, PlaySession, SessionManager};
 use crate::state::Shared;
 use crate::transcode::command::{plan_segments, JobSpec, SourceVideo};
-use crate::transcode::{HlsError, HlsRuntime};
+use crate::transcode::HlsError;
 use crate::util::now_ms;
 use axum::body::Body;
 use axum::extract::{Path, Query, State};
@@ -21,10 +21,6 @@ use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
-
-/// Limite della transcodifica senza GPU.
-const SOFTWARE_MAX_WIDTH: u32 = 1920;
-const SOFTWARE_MAX_HEIGHT: u32 = 1080;
 
 pub fn routes(api: Api) -> Api {
     api.post("/api/v1/playback/info", "Riproduzione", Access::User, "Decisione di riproduzione e apertura della sessione", info)
@@ -90,6 +86,9 @@ pub struct FileInfo {
     /// Indirizzo http(s) di un file `.strm`: FFmpeg legge da lì, direct play e download rimandano lì.
     pub url: Option<String>,
     pub root: PathBuf,
+    /// Cartella della libreria (`library_paths.id`) e percorso relativo: per trovare le copie sui nodi.
+    pub library_path_id: i64,
+    pub rel: String,
     pub size: i64,
     pub mtime: i64,
     pub media: MediaInfo,
@@ -105,14 +104,14 @@ impl FileInfo {
 
 /// Dati tecnici di un file dal database: lo storage non viene toccato.
 pub async fn load_file(state: &Shared, file_id: i64) -> ApiResult<FileInfo> {
-    let row: Option<(String, String, i64, i64, Option<String>, Option<i64>, Option<i64>, String, Option<String>)> = sqlx::query_as(
-        "SELECT p.path, f.relative_path, f.size, f.mtime, f.container, f.bitrate, f.duration_ms, f.state, f.stream_url FROM media_files f
+    let row: Option<(String, String, i64, i64, Option<String>, Option<i64>, Option<i64>, String, Option<String>, i64)> = sqlx::query_as(
+        "SELECT p.path, f.relative_path, f.size, f.mtime, f.container, f.bitrate, f.duration_ms, f.state, f.stream_url, p.id FROM media_files f
          JOIN library_paths p ON p.id = f.library_path_id WHERE f.id = ?",
     )
     .bind(file_id)
     .fetch_optional(&state.db.read)
     .await?;
-    let Some((root, rel, size, mtime, container, bitrate, duration, st, url)) = row else { return Err(ApiError::not_found("File")) };
+    let Some((root, rel, size, mtime, container, bitrate, duration, st, url, library_path_id)) = row else { return Err(ApiError::not_found("File")) };
     if st != "present" {
         return Err(ApiError::coded(StatusCode::CONFLICT, "FileMissing", "Il file non è disponibile: il mount potrebbe essere assente"));
     }
@@ -180,7 +179,7 @@ pub async fn load_file(state: &Shared, file_id: i64) -> ApiResult<FileInfo> {
         }
     }
     let root = PathBuf::from(root);
-    Ok(FileInfo { id: file_id, abs: root.join(&rel), url, root, size, mtime, media, streams: subs_meta })
+    Ok(FileInfo { id: file_id, abs: root.join(&rel), url, root, library_path_id, rel, size, mtime, media, streams: subs_meta })
 }
 
 fn codec_label(c: &str) -> String {
@@ -337,9 +336,9 @@ pub async fn start(state: Shared, user: AuthUser, req: InfoReq) -> ApiResult<Val
         audio_index: req.audio_index,
         subtitle_index: req.subtitle_index,
         allow_remux: user.perms.allow_remux,
-        allow_transcode: user.perms.allow_transcode && state.ffmpeg.get().available,
+        allow_transcode: user.perms.allow_transcode && (state.ffmpeg.get().available || crate::nodes::any_transcoder_online(&state)),
         user_max_bitrate: user_max,
-        server_video_encoders: allowed_encoders(&state),
+        server_video_encoders: decision_encoders(&state),
         force_transcode: req.force_transcode,
     };
 
@@ -394,8 +393,9 @@ pub async fn start(state: Shared, user: AuthUser, req: InfoReq) -> ApiResult<Val
 
     let (session_id, token) = SessionManager::new_ids();
     let duration_ms = file.media.duration_ms.map(|d| d as i64).or(item.runtime_ms).unwrap_or(0);
-    let mut hls: Option<Arc<HlsRuntime>> = None;
+    let mut hls: Option<Arc<crate::nodes::hls::HlsHandle>> = None;
     let mut backend_label = String::from("Software");
+    let mut executor = String::new();
 
     if decision.method != pb::Method::DirectPlay {
         let seg_ms = s.playback.segment_seconds as i64 * 1000;
@@ -416,24 +416,6 @@ pub async fn start(state: Shared, user: AuthUser, req: InfoReq) -> ApiResult<Val
             }
         }
         let cuts = cuts.unwrap_or_else(|| plan_segments(duration_ms, seg_ms, None));
-        let hw = if matches!(decision.video, VideoAction::Transcode { .. }) {
-            state.transcoder.current_profile()
-        } else {
-            crate::transcode::command::HwProfile::software()
-        };
-        // Il codec scelto deve essere codificabile dal backend; altrimenti software.
-        let hw = match &decision.video {
-            VideoAction::Transcode { codec, .. } if !hw.encode.contains(codec) => crate::transcode::command::HwProfile::software(),
-            _ => hw,
-        };
-        backend_label = hw.backend.label().to_string();
-        // In software un 4K non regge il tempo reale: al massimo 1080p (proporzioni in `output_size`).
-        if hw.backend == crate::transcode::command::Backend::Software {
-            if let VideoAction::Transcode { max_width, max_height, .. } = &mut decision.video {
-                *max_width = (*max_width).min(SOFTWARE_MAX_WIDTH);
-                *max_height = (*max_height).min(SOFTWARE_MAX_HEIGHT);
-            }
-        }
         let ts = s.transcode.clone();
         let spec = JobSpec {
             input: file.input(),
@@ -473,18 +455,59 @@ pub async fn start(state: Shared, user: AuthUser, req: InfoReq) -> ApiResult<Val
             },
             run: 0,
         };
-        tokio::fs::create_dir_all(&spec.out_dir).await.map_err(|e| ApiError::Internal(e.into()))?;
-        hls = Some(Arc::new(HlsRuntime::new(spec.out_dir.clone(), cuts, duration_ms, spec, state.ffmpeg.get().ffmpeg.clone(), hw, state.transcoder.clone())));
+        let library_id: i64 =
+            sqlx::query_scalar("SELECT library_id FROM library_paths WHERE id = ?").bind(file.library_path_id).fetch_one(&state.db.read).await?;
+        let v = file.media.video.as_ref();
+        let job = crate::nodes::route::Job {
+            height: v.map(|v| v.height).unwrap_or(0),
+            hdr: v.is_some_and(|v| v.hdr.is_some()),
+            codec: v.map(|v| v.codec.clone()).unwrap_or_default(),
+            bit_depth: v.and_then(|v| v.bit_depth).unwrap_or(8),
+            library_id,
+            transcode: matches!(decision.video, VideoAction::Transcode { .. }),
+            out_codec: match &decision.video {
+                VideoAction::Transcode { codec, .. } => Some(codec.clone()),
+                VideoAction::Copy => None,
+            },
+        };
+        let seg = s.playback.segment_seconds.max(2) as usize;
+        let plan = crate::nodes::hls::Plan {
+            session_id: session_id.clone(),
+            spec,
+            job,
+            file_id: file.id,
+            file_size: file.size,
+            library_path_id: file.library_path_id,
+            rel: file.rel.clone(),
+            cuts,
+            duration_ms,
+            ahead: (s.playback.throttle_ahead_seconds as usize / seg).max(5),
+            keep: s.playback.keep_segments_behind as usize,
+        };
+        let started = crate::nodes::hls::start(&state, plan).await?;
+        // Dimensioni effettive (ridotte se la transcodifica finisce in software), per la riga tecnica.
+        decision.video = match (&decision.video, started.video) {
+            (VideoAction::Transcode { tonemap, .. }, VideoAction::Transcode { codec, max_width, max_height, bitrate, burn_subtitle, .. }) => {
+                VideoAction::Transcode { codec, max_width, max_height, bitrate, tonemap: *tonemap, burn_subtitle }
+            }
+            (d, _) => d.clone(),
+        };
+        backend_label = if matches!(decision.video, VideoAction::Copy) { "Software".into() } else { started.backend.clone() };
+        executor = started.executor;
+        hls = Some(started.handle);
     }
 
-    let chain = chain_text(&file.media, &decision, &backend_label);
+    let mut chain = chain_text(&file.media, &decision, &backend_label);
+    if !executor.is_empty() {
+        chain.push_str(&format!(" · {executor}"));
+    }
     let bitrate = match &decision.video {
         VideoAction::Transcode { bitrate, .. } => Some(*bitrate as i64),
         VideoAction::Copy => file.media.bitrate.map(|b| b as i64),
     };
     let reason = decision.reasons.iter().map(|r| r.as_str()).collect::<Vec<_>>().join(",");
     let history_id = sqlx::query(
-        "INSERT INTO playback_history (user_id, item_id, file_id, client, device_name, method, reason, started_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO playback_history (user_id, item_id, file_id, client, device_name, method, reason, started_at, node) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(user.user_id)
     .bind(item_id)
@@ -494,6 +517,7 @@ pub async fn start(state: Shared, user: AuthUser, req: InfoReq) -> ApiResult<Val
     .bind(decision.method.as_str())
     .bind(if reason.is_empty() { None } else { Some(reason.clone()) })
     .bind(now_ms())
+    .bind(if executor.is_empty() { None } else { Some(executor.clone()) })
     .execute(&state.db.write)
     .await?
     .last_insert_rowid();
@@ -601,6 +625,28 @@ pub async fn start(state: Shared, user: AuthUser, req: InfoReq) -> ApiResult<Val
         "max_bitrate": user_max,
         "container": file.media.container,
     }))
+}
+
+/// Encoder video per la decisione: quelli del server più quelli dei nodi di transcodifica raggiungibili (l'esecutore
+/// si sceglie poi tra chi sa codificare il codec deciso).
+fn decision_encoders(state: &Shared) -> Vec<String> {
+    let s = state.settings.get();
+    let allowed = |c: &str| c == "h264" || (c == "hevc" && s.transcode.allow_hevc_output) || (c == "av1" && s.transcode.allow_av1_output);
+    let mut v = if state.ffmpeg.get().available { allowed_encoders(state) } else { vec![] };
+    for r in state.nodes.rows().iter().filter(|r| !r.is_local && r.enabled && r.role_transcode && !r.draining) {
+        if !state.nodes.online(r.id) {
+            continue;
+        }
+        for c in state.nodes.live(r.id).status.map(|st| st.encoders).unwrap_or_default() {
+            if allowed(&c) && !v.contains(&c) {
+                v.push(c);
+            }
+        }
+    }
+    if v.is_empty() {
+        v.push("h264".into());
+    }
+    v
 }
 
 /// Encoder video consentiti dalle impostazioni e disponibili sulla macchina.
@@ -720,34 +766,19 @@ async fn direct(State(state): State<Shared>, Path(id): Path<String>, Query(q): Q
         return Err(ApiError::BadRequest("Questa sessione usa HLS".into()));
     }
     let info = load_file(&state, s.file_id).await?;
-    if let Some(url) = &info.url {
-        return crate::stream::proxy(&state.http, url, &method, &headers).await;
+    // Questo server o un nodo con la cartella in copia; la sessione resta sulla copia scelta.
+    let sticky = Some(s.copy_node.load(Ordering::Relaxed)).filter(|n| *n != 0);
+    let opts = crate::nodes::cdn::Options { sticky, allow_redirect: true, download: false };
+    let served = crate::nodes::cdn::serve(&state, &info, &method, &headers, opts, Some(s.bytes_sent.clone())).await?;
+    if state.nodes.has_remote() {
+        let prev = s.copy_node.swap(served.node, Ordering::Relaxed);
+        if prev != served.node {
+            let name = state.nodes.row(served.node).filter(|r| !r.is_local).map(|r| r.name);
+            *s.copy_name.lock().unwrap() = name;
+            state.events.admin("sessions.changed", json!({ "updated": s.id }));
+        }
     }
-    // Descrittore aperto una volta per sessione.
-    let existing = s.file.lock().unwrap().clone();
-    let file = match existing {
-        Some(f) => f,
-        None => {
-            let timeout = Duration::from_secs(state.settings.get().scanner.fs_timeout_seconds as u64);
-            let f = crate::stream::open_library_file(s.file_id, &info.abs, &info.root, timeout).await?;
-            *s.file.lock().unwrap() = Some(f.clone());
-            f
-        }
-    };
-    let ct = crate::stream::content_type_for(&info.media.container, &info.abs);
-    crate::stream::serve_file(file, info.size as u64, info.mtime, ct, &method, &headers, Some(s.bytes_sent.clone()))
-}
-
-/// Un segmento sparito mentre la richiesta aspettava: la sessione è stata chiusa (nuova riproduzione,
-/// stop, salto che ha riavviato la transcodifica) e la sua cartella cancellata. Non è un errore del server.
-async fn read_segment(p: &std::path::Path) -> ApiResult<Vec<u8>> {
-    tokio::fs::read(p).await.map_err(|e| {
-        if e.kind() == std::io::ErrorKind::NotFound {
-            ApiError::coded(StatusCode::GONE, "SessionEnded", "La sessione di riproduzione è terminata")
-        } else {
-            ApiError::Internal(e.into())
-        }
-    })
+    Ok(served.response)
 }
 
 async fn hls(State(state): State<Shared>, Path((id, name)): Path<(String, String)>, Query(q): Query<TokenQuery>, headers: HeaderMap) -> ApiResult<Response> {
@@ -764,8 +795,7 @@ async fn hls(State(state): State<Shared>, Path((id, name)): Path<(String, String
             .unwrap());
     }
     if name == "init.mp4" && rt.is_fmp4() {
-        let p = rt.init_segment().await.map_err(|e| ApiError::coded(StatusCode::INTERNAL_SERVER_ERROR, "TranscodeFailed", e.to_string()))?;
-        let bytes = read_segment(&p).await?;
+        let bytes = rt.init(&state).await.map_err(hls_error)?;
         let (resp, sent) = crate::stream::serve_bytes(bytes, "video/mp4", "private, max-age=3600", &headers);
         s.bytes_sent.fetch_add(sent, Ordering::Relaxed);
         return Ok(resp);
@@ -778,31 +808,30 @@ async fn hls(State(state): State<Shared>, Path((id, name)): Path<(String, String
             s.position_ms.store(*start, Ordering::Relaxed);
         }
     }
-    let paths = match rt.segment(n).await {
-        Ok(p) => p,
-        Err(HlsError::OutOfRange) => return Err(ApiError::not_found("Segmento")),
+    let bytes = match rt.segment(&state, n).await {
+        Ok(b) => b,
         Err(HlsError::Busy) => {
             let mut r = ApiError::coded(StatusCode::SERVICE_UNAVAILABLE, "TranscodeBusy", HlsError::Busy.to_string()).into_response();
             r.headers_mut().insert(header::RETRY_AFTER, axum::http::HeaderValue::from_static("2"));
             return Ok(r);
         }
-        Err(e) => return Err(ApiError::coded(StatusCode::INTERNAL_SERVER_ERROR, "TranscodeFailed", e.to_string())),
+        Err(e) => return Err(hls_error(e)),
     };
-    // fMP4: i frammenti del segmento uno dopo l'altro (più coppie moof/mdat sono un segmento valido),
-    // senza i loro styp/sidx (vedi `append_fragment`).
-    let mut bytes = Vec::new();
-    for p in &paths {
-        let frag = read_segment(p).await?;
-        if rt.is_fmp4() {
-            crate::transcode::append_fragment(&mut bytes, &frag);
-        } else {
-            bytes.extend(frag);
-        }
-    }
     let ct = if rt.is_fmp4() { "video/mp4" } else { "video/mp2t" };
     let (resp, sent) = crate::stream::serve_bytes(bytes, ct, "private, max-age=3600", &headers);
     s.bytes_sent.fetch_add(sent, Ordering::Relaxed);
     Ok(resp)
+}
+
+/// Errori della sessione HLS. Una sessione chiusa (nuova riproduzione, stop, esecutore perso senza ricambio) è 410:
+/// il player web riapre alla posizione corrente.
+fn hls_error(e: HlsError) -> ApiError {
+    match e {
+        HlsError::OutOfRange => ApiError::not_found("Segmento"),
+        HlsError::Stopped => ApiError::coded(StatusCode::GONE, "SessionEnded", "La sessione di riproduzione è terminata"),
+        HlsError::Busy => ApiError::coded(StatusCode::SERVICE_UNAVAILABLE, "TranscodeBusy", HlsError::Busy.to_string()),
+        HlsError::Failed(m) => ApiError::coded(StatusCode::INTERNAL_SERVER_ERROR, "TranscodeFailed", m),
+    }
 }
 
 /// Sottotitoli di testo in WebVTT: estratti al primo utilizzo, poi in cache.

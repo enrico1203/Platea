@@ -500,3 +500,19 @@ a.person:focus-visible .person__img { outline: 2px solid var(--focus); outline-o
 .job-progress__bar.is-indeterminate span { width: 30%; animation: job-progress-slide 1.6s ease-in-out infinite; }
 @keyframes job-progress-slide { from { left: -30%; } to { left: 100%; } }
 @media (prefers-reduced-motion: reduce) { .job-progress__bar.is-indeterminate span { animation: none; left: 0; width: 100%; opacity: .35; } }
+
+/* Nodi */
+.node-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 440px), 1fr)); gap: var(--space-4); }
+.node-card { min-width: 0; }
+.node-card__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.node-card__actions { flex-wrap: wrap; gap: var(--space-2); }
+.node-card .kv { font-size: 14px; }
+.node-logs { margin: 0; padding: 12px; background: var(--surface-2); border-radius: 10px; overflow: auto; max-height: 50vh; white-space: pre; font-size: 12px; }
+.node-folder { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-2); align-items: end; }
+.node-browse { max-height: 50vh; overflow-y: auto; }
+.node-browse__item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; border: 0; border-radius: 8px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.node-browse__item:hover, .node-browse__item:focus-visible { background: var(--surface-2); }
+.form-grid--3 { grid-template-columns: repeat(auto-fill, minmax(min(100%, 170px), 1fr)); }
+@media (max-width: 600px) {
+  .node-folder { grid-template-columns: 1fr; }
+}
