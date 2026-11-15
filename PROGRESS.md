@@ -51,7 +51,7 @@ Se la sessione si interrompe, alla ripresa ("continua") si riparte da qui: legge
   `Range: bytes=a-b`; l'API HLS ignorava Range e mandava ogni volta il segmento intero, che Safari leggeva al posto del
   pezzo → loop sul segmento 0 ed "error 3 Media failed to decode". Gli stessi segmenti di Platea serviti da nginx
   (che rispetta Range) partivano. Ora init e segmenti rispondono 206 con Content-Range (`stream::serve_bytes`).
-  Verificato: 200 con Accept-Ranges, 206 con i byte esatti. Da confermare dall'utente su iPhone.
+  Verificato: 200 con Accept-Ranges, 206 con i byte esatti. **Confermato dall'utente: su iPhone funziona.**
   Intanto: se l'HLS nativo non mostra fotogrammi entro 10 s dal play, il player passa alla transcodifica
   (prima aspettava l'errore di Safari, ~3 min). Log HTTP dettagliato attivo (`PLATEA_LOG=info,tower_http=debug` in
   .env): rimettere `info` a indagine finita.
@@ -292,18 +292,21 @@ Script del benchmark: `scripts/bench_library.py` (genera la libreria sintetica).
 
 ## Prossimi passi
 
-0. Libreria cloud: 302 film senza NFO restano "in attesa" finché non c'è una chiave TMDB (chiederla all'utente).
-1. Provare Infuse reale contro il server (serve un dispositivo Apple: chiedere all'utente) e correggere le differenze.
-2. Fase 3: verificare QSV/VA-API/NVENC su hardware reale (qui non c'è GPU: solo software testato).
-3. Fase 4: fatto (log in tempo reale, chiavi API, notify per dischi locali).
-4. Fase 5: fatti test di carico, libreria sintetica, CI, storage lento e mount bloccato.
+Aggiornati il 15/11/2026. Chiave TMDB messa dall'utente nelle Impostazioni: 10.883 film e 5.790 serie associati;
+restano 321 "da verificare" e 328 non riconosciuti (da vedere a mano dall'utente).
+
+1. Keyframe degli MP4 remoti dal box `stss` (ora un MP4 remoto senza indice va sempre in transcodifica).
+2. Miniature sulla barra di avanzamento (trickplay), opzionali per libreria.
+3. Quick Connect: accesso con un codice da un altro dispositivo (serve alle app TV).
+4. `.plexmatch` righe `ep:` e NFO dei singoli episodi.
+5. Fase 3: QSV/VA-API/NVENC/AMD, tone mapping in GPU, uscita HEVC/AV1 su hardware reale (qui non c'è GPU).
+6. Fase 5 (rilascio): documentazione completa, binari multipiattaforma, aggiornamento tra versioni, revisione di sicurezza.
+7. Fase 6: client Kotlin/Swift dall'OpenAPI, app Android/TV e Apple.
+8. Priorità C di `docs/confronto-jellyfin.md` e decisioni aperte del piano (licenza, sistemi supportati, PostgreSQL).
 
 ## Debito tecnico noto (da fare dopo)
 
-- Keyframe per MP4 remoti: leggere `stss` dal box moov (ora su remoto senza Cues si transcodifica).
-- `.plexmatch`: righe `ep:` per episodi con nomi non standard. NFO degli episodi (`<episodio>.nfo`) non letti.
-- Chiavi API con ambito limitato: tabella presente, endpoint da fare.
-- Log in tempo reale in dashboard da fare.
+- Vedi i punti 1 e 4 dei Prossimi passi.
 
 ## Registro
 
