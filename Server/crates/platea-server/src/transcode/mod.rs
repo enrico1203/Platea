@@ -27,35 +27,34 @@ pub struct TranscodeManager {
     failures: StdMutex<HashMap<Backend, u32>>,
 }
 
-/// Limite delle transcodifiche software: 0 = una per core logico.
-pub fn effective_sw_limit(setting: u32) -> u32 {
-    if setting > 0 {
-        return setting;
+/// Posti del semaforo per un limite delle impostazioni: 0 = illimitato.
+fn permits(limit: u32) -> usize {
+    if limit == 0 {
+        Semaphore::MAX_PERMITS
+    } else {
+        limit as usize
     }
-    std::thread::available_parallelism().map(|n| n.get() as u32).unwrap_or(2).max(1)
 }
 
 impl TranscodeManager {
     pub fn new(max_hw: u32, max_sw: u32) -> Self {
-        let max_sw = effective_sw_limit(max_sw);
         TranscodeManager {
             caps: RwLock::new(hw::Capabilities::default()),
-            hw_slots: RwLock::new(Arc::new(Semaphore::new(max_hw as usize))),
-            sw_slots: RwLock::new(Arc::new(Semaphore::new(max_sw as usize))),
+            hw_slots: RwLock::new(Arc::new(Semaphore::new(permits(max_hw)))),
+            sw_slots: RwLock::new(Arc::new(Semaphore::new(permits(max_sw)))),
             hw_limit: AtomicI64::new(max_hw as i64),
             sw_limit: AtomicI64::new(max_sw as i64),
             failures: StdMutex::new(HashMap::new()),
         }
     }
 
-    /// Applica a caldo i limiti dalle impostazioni.
+    /// Applica a caldo i limiti dalle impostazioni (0 = illimitato).
     pub fn apply_limits(&self, max_hw: u32, max_sw: u32) {
-        let max_sw = effective_sw_limit(max_sw);
         if self.hw_limit.swap(max_hw as i64, Ordering::SeqCst) != max_hw as i64 {
-            *self.hw_slots.write().unwrap() = Arc::new(Semaphore::new(max_hw.max(1) as usize));
+            *self.hw_slots.write().unwrap() = Arc::new(Semaphore::new(permits(max_hw)));
         }
         if self.sw_limit.swap(max_sw as i64, Ordering::SeqCst) != max_sw as i64 {
-            *self.sw_slots.write().unwrap() = Arc::new(Semaphore::new(max_sw.max(1) as usize));
+            *self.sw_slots.write().unwrap() = Arc::new(Semaphore::new(permits(max_sw)));
         }
     }
 
@@ -107,12 +106,14 @@ impl TranscodeManager {
         }
     }
 
+    /// (GPU in uso, limite GPU, CPU in uso, limite CPU); limite 0 = illimitato.
     pub fn active_counts(&self) -> (usize, usize, usize, usize) {
         let hw = self.hw_slots.read().unwrap();
         let sw = self.sw_slots.read().unwrap();
-        let hw_lim = self.hw_limit.load(Ordering::Relaxed).max(0) as usize;
-        let sw_lim = self.sw_limit.load(Ordering::Relaxed).max(0) as usize;
-        (hw_lim.saturating_sub(hw.available_permits()), hw_lim, sw_lim.saturating_sub(sw.available_permits()), sw_lim)
+        let hw_lim = self.hw_limit.load(Ordering::Relaxed).max(0) as u32;
+        let sw_lim = self.sw_limit.load(Ordering::Relaxed).max(0) as u32;
+        let used = |lim: u32, s: &Semaphore| permits(lim).saturating_sub(s.available_permits());
+        (used(hw_lim, &hw), hw_lim as usize, used(sw_lim, &sw), sw_lim as usize)
     }
 }
 

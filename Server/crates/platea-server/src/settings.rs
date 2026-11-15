@@ -151,11 +151,11 @@ pub struct TranscodeSettings {
     /// Dispositivo per VA-API e QSV.
     #[schemars(title = "Dispositivo DRI")]
     pub vaapi_device: String,
-    /// Transcodifiche contemporanee su GPU.
-    #[schemars(title = "Transcodifiche hardware contemporanee", range(min = 1, max = 64))]
+    /// Transcodifiche contemporanee su GPU. 0 = illimitate.
+    #[schemars(title = "Transcodifiche hardware contemporanee", range(min = 0, max = 64))]
     pub max_hw_transcodes: u32,
-    /// Transcodifiche contemporanee in software. 0 = automatico: una per core logico (ogni sessione si ferma
-    /// quando è avanti di qualche minuto, quindi in media pesa quanto la visione in tempo reale).
+    /// Transcodifiche contemporanee in software. 0 = illimitate (ogni sessione si ferma quando è avanti di qualche
+    /// minuto, quindi in media pesa quanto la visione in tempo reale).
     #[schemars(title = "Transcodifiche software contemporanee", range(min = 0, max = 64))]
     pub max_sw_transcodes: u32,
     /// Preset x264 per la codifica software. Più veloce = più transcodifiche insieme, a parità di qualità più
@@ -186,7 +186,7 @@ impl Default for TranscodeSettings {
             ffprobe_path: String::new(),
             hw_backend: HwBackend::Auto,
             vaapi_device: "/dev/dri/renderD128".into(),
-            max_hw_transcodes: 8,
+            max_hw_transcodes: 0,
             max_sw_transcodes: 0,
             sw_preset: "veryfast".into(),
             sw_crf: 23,

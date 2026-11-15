@@ -59,7 +59,8 @@ Se la sessione si interrompe, alla ripresa ("continua") si riparte da qui: legge
   1080p HEVC → H.264 veryfast 4,8×, superfast 7,7×, ultrafast 13×; 1917 4K HDR10 → 1080p: catena zscale+tonemap a
   piena risoluzione 1,5×, `tonemapx` di jellyfin-ffmpeg dopo lo scale 3,4× (decodifica 4K da sola 3,8×).
   Ora: tonemapx dopo lo scale (zscale dopo lo scale se FFmpeg non è di Jellyfin), software al massimo 1080p,
-  `max_sw_transcodes` predefinito 0 = una per core (prima 2 fissi), suggerimenti su preset e limite nelle impostazioni,
+  `max_sw_transcodes` e `max_hw_transcodes` predefiniti 0 = illimitate (richiesta dell'utente; prima 2 e 8 fissi),
+  configurabili; dashboard mostra ∞; suggerimenti su preset e limite nelle impostazioni,
   ripiego dalla posizione realmente riprodotta (Safari dopo un errore riporta currentTime senza senso).
 - 15/11/2026 notte: Infuse completo (serie comprese: Fields in tutti gli elenchi), AirPlay e Google Cast nel player,
   pausa dei lavori, dispositivi per utente, soggetto leggibile dei lavori, manutenzione programmata del DB (PRAGMA

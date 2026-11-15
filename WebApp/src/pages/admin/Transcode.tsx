@@ -33,7 +33,7 @@ export default function Transcode() {
           <dt>FFmpeg</dt><dd className="t-mono">{data.ffmpeg.ffmpeg} · {data.ffmpeg.version || "—"}{data.ffmpeg.is_jellyfin ? " · jellyfin-ffmpeg" : ""}</dd>
           <dt>{t("admin.transcode.backend")}</dt><dd className="t-mono">{data.current.backend.toUpperCase()}</dd>
           <dt>{t("admin.transcode.devices")}</dt><dd className="t-mono">{c.devices.join(", ") || t("admin.transcode.noDevices")}</dd>
-          <dt>{t("admin.transcode.slots")}</dt><dd className="t-mono">GPU {data.slots.hw_used}/{data.slots.hw_max} · CPU {data.slots.sw_used}/{data.slots.sw_max}</dd>
+          <dt>{t("admin.transcode.slots")}</dt><dd className="t-mono">GPU {data.slots.hw_used}/{data.slots.hw_max || "∞"} · CPU {data.slots.sw_used}/{data.slots.sw_max || "∞"}</dd>
           <dt>{t("admin.transcode.lastTest")}</dt><dd>{c.tested_at ? relative(c.tested_at) : "—"}</dd>
         </dl>
       </section>
