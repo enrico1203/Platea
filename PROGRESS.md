@@ -47,11 +47,11 @@ Se la sessione si interrompe, alla ripresa ("continua") si riparte da qui: legge
   hls.js li ignora, il player nativo di Safari no. Ora il segmento ha un solo styp e poi solo moof/mdat
   (`append_fragment` in `transcode/mod.rs`). Verificato su un server di prova con copia del DB: segmenti 0–2 continui
   (19,4 s), salto al 600 con inizio esatto a 3620,909 s.
-  **Ancora aperto:** su iPhone (iOS 18.7) la copia HEVC in HLS nativo NON parte: Safari chiede il segmento 0 in loop
-  (~5/s) per minuti, poi errore; il 4K HDR10 (HEVC Main 10 High tier) dà subito "error 3 Media failed to decode".
-  Tempi/box dei segmenti verificati coerenti (tfdt, elst, hvcC con VPS/SPS/PPS). Pronte 4 varianti di prova dello
-  stesso spezzone di 10 Lives (ffmpeg standard / copyts+frag_discont / composizione Platea / stereo) da far aprire
-  all'utente in Safari per isolare la causa (pubblicarle richiede il suo consenso).
+  **Causa vera (trovata con una pagina di prova su iPhone):** il player nativo di Safari legge i segmenti a pezzi con
+  `Range: bytes=a-b`; l'API HLS ignorava Range e mandava ogni volta il segmento intero, che Safari leggeva al posto del
+  pezzo → loop sul segmento 0 ed "error 3 Media failed to decode". Gli stessi segmenti di Platea serviti da nginx
+  (che rispetta Range) partivano. Ora init e segmenti rispondono 206 con Content-Range (`stream::serve_bytes`).
+  Verificato: 200 con Accept-Ranges, 206 con i byte esatti. Da confermare dall'utente su iPhone.
   Intanto: se l'HLS nativo non mostra fotogrammi entro 10 s dal play, il player passa alla transcodifica
   (prima aspettava l'errore di Safari, ~3 min). Log HTTP dettagliato attivo (`PLATEA_LOG=info,tower_http=debug` in
   .env): rimettere `info` a indagine finita.

@@ -706,7 +706,7 @@ async fn read_segment(p: &std::path::Path) -> ApiResult<Vec<u8>> {
     })
 }
 
-async fn hls(State(state): State<Shared>, Path((id, name)): Path<(String, String)>, Query(q): Query<TokenQuery>) -> ApiResult<Response> {
+async fn hls(State(state): State<Shared>, Path((id, name)): Path<(String, String)>, Query(q): Query<TokenQuery>, headers: HeaderMap) -> ApiResult<Response> {
     let s = session_by_token(&state, &id, q.t.as_deref())?;
     let rt = s.hls.clone().ok_or_else(|| ApiError::BadRequest("Questa sessione è in direct play".into()))?;
     if name == "main.m3u8" {
@@ -722,12 +722,9 @@ async fn hls(State(state): State<Shared>, Path((id, name)): Path<(String, String
     if name == "init.mp4" && rt.is_fmp4() {
         let p = rt.init_segment().await.map_err(|e| ApiError::coded(StatusCode::INTERNAL_SERVER_ERROR, "TranscodeFailed", e.to_string()))?;
         let bytes = read_segment(&p).await?;
-        s.bytes_sent.fetch_add(bytes.len() as u64, Ordering::Relaxed);
-        return Ok(Response::builder()
-            .header(header::CONTENT_TYPE, "video/mp4")
-            .header(header::CACHE_CONTROL, "private, max-age=3600")
-            .body(Body::from(bytes))
-            .unwrap());
+        let (resp, sent) = crate::stream::serve_bytes(bytes, "video/mp4", "private, max-age=3600", &headers);
+        s.bytes_sent.fetch_add(sent, Ordering::Relaxed);
+        return Ok(resp);
     }
     let ext = if rt.is_fmp4() { ".m4s" } else { ".ts" };
     let n: usize = name.strip_suffix(ext).and_then(|n| n.parse().ok()).ok_or_else(|| ApiError::not_found("Segmento"))?;
@@ -758,9 +755,10 @@ async fn hls(State(state): State<Shared>, Path((id, name)): Path<(String, String
             bytes.extend(frag);
         }
     }
-    s.bytes_sent.fetch_add(bytes.len() as u64, Ordering::Relaxed);
     let ct = if rt.is_fmp4() { "video/mp4" } else { "video/mp2t" };
-    Ok(Response::builder().header(header::CONTENT_TYPE, ct).header(header::CACHE_CONTROL, "private, max-age=3600").body(Body::from(bytes)).unwrap())
+    let (resp, sent) = crate::stream::serve_bytes(bytes, ct, "private, max-age=3600", &headers);
+    s.bytes_sent.fetch_add(sent, Ordering::Relaxed);
+    Ok(resp)
 }
 
 /// Sottotitoli di testo in WebVTT: estratti al primo utilizzo, poi in cache.

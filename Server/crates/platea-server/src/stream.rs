@@ -159,6 +159,42 @@ pub fn serve_file(
     builder.body(body).map_err(|e| ApiError::Internal(e.into()))
 }
 
+/// Risposta per un contenuto già in memoria (segmenti HLS), con le richieste `Range`.
+///
+/// Il player nativo di Safari (iPhone, iPad, Mac) legge i segmenti a pezzi con `Range: bytes=a-b`: se arriva il
+/// segmento intero al posto del pezzo, lo interpreta come i byte da `a` in poi, lo rifiuta e richiede lo stesso
+/// segmento in loop ("Media failed to decode"). hls.js scarica i segmenti interi e non se ne accorge.
+/// Restituisce la risposta e i byte effettivamente inviati.
+pub fn serve_bytes(bytes: Vec<u8>, content_type: &str, cache_control: &str, headers: &HeaderMap) -> (Response, u64) {
+    let size = bytes.len() as u64;
+    let range = headers.get(header::RANGE).and_then(|v| v.to_str().ok()).map(|r| parse_range(r, size));
+    let builder =
+        Response::builder().header(header::ACCEPT_RANGES, "bytes").header(header::CONTENT_TYPE, content_type).header(header::CACHE_CONTROL, cache_control);
+    match range {
+        Some(Some((s, e))) => {
+            let part = bytes[s as usize..=e as usize].to_vec();
+            let n = part.len() as u64;
+            let r = builder
+                .status(StatusCode::PARTIAL_CONTENT)
+                .header(header::CONTENT_RANGE, format!("bytes {s}-{e}/{size}"))
+                .header(header::CONTENT_LENGTH, HeaderValue::from(n))
+                .body(Body::from(part))
+                .unwrap();
+            (r, n)
+        }
+        Some(None) => {
+            let r = Response::builder()
+                .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                .header(header::ACCEPT_RANGES, "bytes")
+                .header(header::CONTENT_RANGE, format!("bytes */{size}"))
+                .body(Body::empty())
+                .unwrap();
+            (r, 0)
+        }
+        None => (builder.header(header::CONTENT_LENGTH, HeaderValue::from(size)).body(Body::from(bytes)).unwrap(), size),
+    }
+}
+
 mod bytes_stream {
     //! Flusso di blocchi letti con `read_at` (pread) su un thread bloccante: nessuno stato di posizione
     //! condiviso, più richieste Range in parallelo sullo stesso descrittore.
@@ -212,5 +248,21 @@ mod tests {
         assert_eq!(parse_range("bytes=100-", 100), None);
         assert_eq!(parse_range("bytes=5-1", 100), None);
         assert_eq!(parse_range("items=0-1", 100), None);
+    }
+
+    #[test]
+    fn bytes_with_range() {
+        let data: Vec<u8> = (0..100u8).collect();
+        let mut h = HeaderMap::new();
+        let (r, n) = serve_bytes(data.clone(), "video/mp4", "no-cache", &h);
+        assert_eq!((r.status(), n), (StatusCode::OK, 100));
+        assert_eq!(r.headers()[header::ACCEPT_RANGES], "bytes");
+        h.insert(header::RANGE, HeaderValue::from_static("bytes=10-19"));
+        let (r, n) = serve_bytes(data.clone(), "video/mp4", "no-cache", &h);
+        assert_eq!((r.status(), n), (StatusCode::PARTIAL_CONTENT, 10));
+        assert_eq!(r.headers()[header::CONTENT_RANGE], "bytes 10-19/100");
+        h.insert(header::RANGE, HeaderValue::from_static("bytes=200-"));
+        let (r, _) = serve_bytes(data, "video/mp4", "no-cache", &h);
+        assert_eq!(r.status(), StatusCode::RANGE_NOT_SATISFIABLE);
     }
 }
