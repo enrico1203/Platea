@@ -1245,7 +1245,18 @@ fn normalize_query(uri: &Uri) -> ItemsQuery {
         for pair in q.split('&') {
             let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
             let v = urlencoding::decode(&v.replace('+', " ")).map(|s| s.into_owned()).unwrap_or_default();
-            map.insert(k.to_lowercase(), v);
+            // Le app recenti (Swiftfin, SDK di Jellyfin 12) ripetono il parametro per ogni valore
+            // (`includeItemTypes=Movie&includeItemTypes=Series`): i valori si uniscono con la virgola.
+            map.entry(k.to_lowercase())
+                .and_modify(|e: &mut String| {
+                    if !v.is_empty() {
+                        if !e.is_empty() {
+                            e.push(',');
+                        }
+                        e.push_str(&v);
+                    }
+                })
+                .or_insert(v);
         }
     }
     let s = |k: &str| map.get(k).cloned().filter(|v| !v.is_empty());
@@ -2036,6 +2047,16 @@ mod tests {
         let mut v = json!({ "a": null, "b": 1, "c": { "d": null, "e": [ { "f": null, "g": "x" } ] } });
         strip_nulls(&mut v);
         assert_eq!(v, json!({ "b": 1, "c": { "e": [ { "g": "x" } ] } }));
+    }
+    #[test]
+    fn repeated_query_params_are_merged() {
+        let uri: Uri = "/Items?includeItemTypes=Movie&includeItemTypes=Series&fields=Genres&fields=Studios&limit=20".parse().unwrap();
+        let q = normalize_query(&uri);
+        assert_eq!(q.include_item_types.as_deref(), Some("Movie,Series"));
+        assert_eq!(q.fields.as_deref(), Some("Genres,Studios"));
+        assert_eq!(q.limit, Some(20));
+        let uri: Uri = "/Items?IncludeItemTypes=Movie,Series".parse().unwrap();
+        assert_eq!(normalize_query(&uri).include_item_types.as_deref(), Some("Movie,Series"));
     }
     #[test]
     fn iso_dates() {

@@ -386,8 +386,10 @@ restano 321 "da verificare" e 328 non riconosciuti (da vedere a mano dall'utente
    virgolette, codificati, in qualsiasi ordine (test). Jellyfin è passato da 10.11 a 12.x: dichiarata 12.1.0
    (Swiftfin chiede ≥ 12.1.0, tre numeri). Log mascherato dei token rifiutati (`richiesta Jellyfin senza token
    riconosciuto`) lasciato a livello info per diagnosi future.
-   Log dettagliato acceso in .env (`PLATEA_LOG=info,tower_http=debug,platea::api::jellyfin=debug`): rimettere `info`. **Da confermare
-   dall'utente su iPhone**; i percorsi sconosciuti finiscono nel log ("percorso non gestito").
+   Poi: /Playback/BitrateTest (prova di velocità prima di ogni video: senza, "Impossibile caricare l'elemento"),
+   LiveTv vuoti, e parametri ripetuti (`includeItemTypes=Movie&includeItemTypes=Series`) uniti con la virgola
+   (prima valeva solo l'ultimo). **Confermato dall'utente: Swiftfin entra, riproduce e mostra Media.**
+   Log di nuovo `PLATEA_LOG=info`. I percorsi sconosciuti finiscono nel log ("percorso non gestito").
 4o. [x] Transcodifica per le app Jellyfin: PlaybackInfo legge il `DeviceProfile` (`api/jellyfin_profile.rs`:
    DirectPlay/Codec/Transcoding/SubtitleProfiles, MaxStreamingBitrate) e decide come Platea; se non è direct play apre
    la sessione HLS di Platea (`playback::start`, ora riusabile) e la restituisce come `TranscodingUrl`; i rapporti con

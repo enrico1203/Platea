@@ -21,7 +21,7 @@ Platea serve il file originale quando il client lo regge, fa remux o transcodifi
 - **Trailer.** Dai metadati di TMDB e dagli NFO di Kodi, nel dettaglio del titolo e in Infuse.
 - **Notifiche.** Webhook verso Discord, ntfy, Home Assistant o uno script: riproduzioni, titoli nuovi, accessi, mount che non risponde (Impostazioni › Notifiche).
 - **Sottotitoli in più.** L'amministratore carica un SRT/VTT/ASS o lo cerca su OpenSubtitles (con l'hash del file, per la versione giusta): finisce nella cache di Platea, non nella cartella del film.
-- **App Jellyfin.** Oltre a Infuse, le app Jellyfin (Swiftfin, Jellyfin per Android e TV) si collegano al server; quando un'app non apre un formato, Platea fa remux o transcodifica in HLS come per la web UI.
+- **App Jellyfin.** Oltre a Infuse, le app Jellyfin si collegano al server (Swiftfin 1.7 provato: Platea si presenta come Jellyfin 12.1); quando un'app non apre un formato, Platea fa remux o transcodifica in HLS come per la web UI.
 - **Tutto dalla dashboard.** Nessun file di configurazione da modificare dopo il primo avvio.
 
 ## Avvio rapido
@@ -154,10 +154,11 @@ Metadati locali, letti una volta e mai scritti:
 | --- | --- | --- |
 | WebApp Platea | Qualunque browser: computer, tablet, telefono (installabile come app web) | OK |
 | Infuse | iPhone, iPad, Apple TV, Mac (collegamento come server Jellyfin) | OK (provato su iPhone con Infuse 8.5, anche dal tunnel Cloudflare) |
+| Swiftfin | iPhone, iPad, Apple TV (app Jellyfin ufficiale) | OK (provato su iPhone con Swiftfin 1.7, dal tunnel Cloudflare: accesso, home, Media, riproduzione) |
 | App Android nativa | Telefoni, tablet, Android TV, Fire TV con Fire OS | TODO (fase 6) |
 | App iOS nativa | iPhone, iPad, Mac | TODO (fase 6) |
 
-Infuse si collega come a un server Jellyfin: indirizzo del server sulla porta 8096, utente e password di Platea, modalità diretta (quella predefinita). Platea espone solo la parte dell'API Jellyfin che serve a Infuse (login, librerie, elenchi, dettagli, immagini, ricerca, stato di visione, stream del file originale con Range, rapporti di riproduzione); le riproduzioni di Infuse compaiono in Panoramica come direct play.
+Infuse e Swiftfin si collegano come a un server Jellyfin: indirizzo del server sulla porta 8096 (o il nome del tunnel che punta lì), utente e password di Platea. Platea si presenta come Jellyfin 12.1 ed espone la parte dell'API Jellyfin che serve alle app: login (anche Quick Connect), librerie, elenchi, dettagli, immagini, ricerca, stato di visione, stream del file originale con Range, rapporti di riproduzione, WebSocket. Infuse riproduce sempre il file originale; per le altre app Platea legge il profilo del dispositivo e, se serve, fa remux o transcodifica in HLS. Le riproduzioni compaiono in Panoramica.
 
 ## Lingue
 
