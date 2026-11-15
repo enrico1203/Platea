@@ -238,6 +238,10 @@ async fn apply_patch(state: &Shared, id: i64, p: UserPatch) -> ApiResult<()> {
     if p.disabled == Some(true) {
         sqlx::query("DELETE FROM tokens WHERE user_id = ?").bind(id).execute(&mut *tx).await?;
     }
+    // Riattivato: si riparte da zero tentativi falliti (altrimenti il primo errore lo bloccherebbe di nuovo).
+    if p.disabled == Some(false) {
+        sqlx::query("UPDATE users SET failed_logins = 0 WHERE id = ?").bind(id).execute(&mut *tx).await?;
+    }
     tx.commit().await?;
     state.token_cache.remove_user(id);
     Ok(())

@@ -66,10 +66,16 @@ pub async fn do_login(state: &Shared, req: &LoginReq, ip: Option<std::net::IpAdd
     let ok = verify_password(req.password.clone(), hash).await;
     if !ok || id == 0 || disabled != 0 {
         state.login_limiter.fail(&keys);
+        if !ok && id != 0 && disabled == 0 {
+            lockout_check(state, id, &username, is_admin != 0, ip).await;
+        }
         state.db.activity(None, "login_failed", &format!("Accesso non riuscito per {}", req.username.trim()), ip.map(|i| i.to_string()).as_deref()).await;
         return Err(ApiError::coded(axum::http::StatusCode::UNAUTHORIZED, "InvalidCredentials", "Nome utente o password non corretti"));
     }
     state.login_limiter.success(&keys);
+    if let Err(e) = sqlx::query("UPDATE users SET failed_logins = 0 WHERE id = ? AND failed_logins <> 0").bind(id).execute(&state.db.write).await {
+        tracing::warn!(error = %e, "azzeramento dei tentativi falliti non riuscito");
+    }
     let device_id = req.device_id.clone().filter(|d| !d.is_empty()).unwrap_or_else(|| crate::util::random_hex(8));
     let t = issue_token(
         state,
@@ -91,6 +97,35 @@ pub async fn do_login(state: &Shared, req: &LoginReq, ip: Option<std::net::IpAdd
         )
         .await;
     Ok(LoginOk { user_id: id, username, is_admin: is_admin != 0, token: t.token })
+}
+
+/// Conta una password sbagliata e, con il blocco attivo, disattiva l'account alla soglia.
+async fn lockout_check(state: &Shared, id: i64, username: &str, is_admin: bool, ip: Option<std::net::IpAddr>) {
+    let n: i64 = match sqlx::query_scalar("UPDATE users SET failed_logins = failed_logins + 1 WHERE id = ? RETURNING failed_logins")
+        .bind(id)
+        .fetch_one(&state.db.write)
+        .await
+    {
+        Ok(n) => n,
+        Err(e) => {
+            tracing::warn!(error = %e, "conteggio dei tentativi falliti non riuscito");
+            return;
+        }
+    };
+    let limit = state.settings.get().general.lockout_after_failures as i64;
+    // Un amministratore bloccato non potrebbe più riattivare nessuno: resta solo il rallentamento.
+    if limit == 0 || n < limit || is_admin {
+        return;
+    }
+    if sqlx::query("UPDATE users SET disabled = 1 WHERE id = ?").bind(id).execute(&state.db.write).await.is_ok() {
+        state.token_cache.clear();
+        tracing::warn!(user = username, attempts = n, "account bloccato dopo troppi tentativi falliti");
+        state
+            .db
+            .activity(Some(id), "user_locked", &format!("{username} bloccato dopo {n} password sbagliate di fila"), ip.map(|i| i.to_string()).as_deref())
+            .await;
+        state.events.admin("users.changed", serde_json::json!({ "locked": state.ids.encode(id) }));
+    }
 }
 
 async fn login(

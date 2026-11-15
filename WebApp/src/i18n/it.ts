@@ -58,6 +58,11 @@ const it = {
     authorize: "Collega",
     linked: "Collegato: {device}",
   },
+  browse: {
+    genre: "Genere",
+    studio: "Studio o rete",
+    kind: "Tipo",
+  },
   connect: {
     title: "Collega un server",
     unreachable: "Non riesco a raggiungere il server Platea a questo indirizzo.",
@@ -171,6 +176,7 @@ const it = {
     collection: "Collezione",
     collectionCount: { one: "{count} film", other: "{count} film" },
     collectionMovies: "Film della collezione",
+    studios: "Studio:",
     partOf: "Fa parte di",
     seasons: { one: "{count} stagione", other: "{count} stagioni" },
     episodes: { one: "{count} episodio", other: "{count} episodi" },
@@ -643,6 +649,8 @@ const it = {
     general: {
       quick_connect: "Quick Connect",
       quick_connect_hint: "Accesso con un codice di 6 cifre confermato da un dispositivo già collegato: comodo sui televisori. Spento, i codici vengono rifiutati.",
+      lockout_after_failures: "Blocco dopo tentativi falliti",
+      lockout_after_failures_hint: "Dopo questo numero di password sbagliate di fila l'account si disattiva finché un amministratore non lo riattiva (Utenti). 0 = mai. Gli amministratori non si bloccano. Attenzione: chi conosce un nome utente può bloccarlo apposta.",
       server_name: "Nome del server",
       public_url: "URL pubblico",
       min_password_length: "Lunghezza minima password",

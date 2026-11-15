@@ -156,6 +156,8 @@ struct ListQuery {
     kind: Option<String>,
     parent_id: Option<String>,
     genre: Option<String>,
+    /// Studio o rete televisiva (nome esatto).
+    studio: Option<String>,
     sort: Option<String>,
     order: Option<String>,
     played: Option<bool>,
@@ -220,6 +222,14 @@ async fn list(State(state): State<Shared>, user: AuthUser, Query(q): Query<ListQ
             &mut sql,
             " AND EXISTS (SELECT 1 FROM item_genres ig JOIN genres g ON g.id = ig.genre_id WHERE ig.item_id = i.id AND g.name = ?)",
             json!(g),
+            &mut binds,
+        );
+    }
+    if let Some(st) = &q.studio {
+        bind(
+            &mut sql,
+            " AND EXISTS (SELECT 1 FROM item_studios x JOIN studios s ON s.id = x.studio_id WHERE x.item_id = i.id AND s.name = ?)",
+            json!(st),
             &mut binds,
         );
     }

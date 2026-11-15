@@ -330,6 +330,17 @@ restano 321 "da verificare" e 328 non riconosciuti (da vedere a mano dall'utente
 4b. [x] Qualità predefinita per utente (`max_bitrate_local`/`max_bitrate_remote` nelle preferenze, Account): applicata dal
    server in `playback/info` se il player non ha scelto (`explicit_quality`), risposta con `max_bitrate` applicato; nel
    player la voce "Automatica". Provato: 4 Mb/s in casa → transcodifica a 4 Mb/s; scelta esplicita → originale.
+4c. [x] Pagine per genere e studio (`/browse?genre=…`, `/browse?studio=…`, filtro `studio` nell'API): generi e studi
+   cliccabili nel dettaglio. Provato su una copia del DB dell'utente (Dramma, HBO).
+4d. [x] Blocco dopo N password sbagliate di fila (`general.lockout_after_failures`, 0 = spento, predefinito;
+   migrazione 0015 `users.failed_logins`): account disattivato, voce nell'attività; gli amministratori non si
+   bloccano; riattivandolo il conteggio riparte. Provato sulla copia.
+   **Corretto difetto grave:** dopo il cambio "0 = transcodifiche illimitate" la validazione rifiutava 0 e, siccome
+   valida tutte le impostazioni insieme, NESSUN gruppo di impostazioni si poteva più salvare. Tolta la regola,
+   aggiunto un test che i valori predefiniti siano validi.
+   Prove con dati veri: copia del DB in scratchpad (`reset-password` sulla copia, coda in pausa con
+   `server_state.jobs_paused_until`), server e web di prova separati. Attenzione: l'immagine ha già `platea` come
+   entrypoint, quindi `docker run … platea-server:latest reset-password …` (senza ripetere `platea`).
 5. Fase 3: QSV/VA-API/NVENC/AMD, tone mapping in GPU, uscita HEVC/AV1 su hardware reale (qui non c'è GPU).
 6. Fase 5 (rilascio): documentazione completa, aggiornamento tra versioni, revisione di sicurezza.
    **Decisione dell'utente (15/11/2026): solo Docker. Niente binari per Windows/macOS/Linux per ora.**
@@ -341,6 +352,8 @@ restano 321 "da verificare" e 328 non riconosciuti (da vedere a mano dall'utente
 - Nessuno in sospeso dai punti 1–4.
 
 ## Registro
+
+- 2026-11-15 — Pagine per genere e studio, blocco account facoltativo, corretto il salvataggio delle impostazioni.
 
 - 2026-11-15 — Qualità predefinita in casa e fuori casa.
 

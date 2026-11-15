@@ -26,6 +26,7 @@ import About from "./pages/About";
 const Playlists = lazy(() => import("./pages/Playlists"));
 const PlaylistPage = lazy(() => import("./pages/Playlists").then((m) => ({ default: m.PlaylistPage })));
 const Person = lazy(() => import("./pages/Person"));
+const Browse = lazy(() => import("./pages/Browse"));
 const Player = lazy(() => import("./pages/Player"));
 const AdminOverview = lazy(() => import("./pages/admin/Overview"));
 const AdminLibraries = lazy(() => import("./pages/admin/Libraries"));
@@ -68,6 +69,7 @@ function Routed() {
           <Route path="search" element={<Search />} />
           <Route path="playlists" element={<Playlists />} />
           <Route path="person/:id" element={<Person />} />
+          <Route path="browse" element={<Browse />} />
           <Route path="playlist/:id" element={<PlaylistPage />} />
           <Route path="item/:id" element={<ItemPage />} />
           <Route path="account" element={<Account />} />

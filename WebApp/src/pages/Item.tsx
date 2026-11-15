@@ -196,7 +196,10 @@ export default function ItemPage() {
           {item.series_title && item.series_id && <Link to={`/item/${item.series_id}`} className="t-label">{item.series_title}</Link>}
           {item.images.logo && item.kind !== "episode" ? <img className="detail__logo" src={imageUrl(item.images.logo, 500)} alt={item.title} /> : <h1 className="t-display">{item.title}</h1>}
           <div className="detail__meta t-small">{meta.map((m, i) => <span key={i}>{m}</span>)}</div>
-          {item.genres.length > 0 && <div className="chips">{item.genres.map((g) => <Badge key={g}>{g}</Badge>)}</div>}
+          {item.genres.length > 0 && <div className="chips">{item.genres.map((g) => <Link key={g} to={`/browse?genre=${encodeURIComponent(g)}`} className="chip-link"><Badge>{g}</Badge></Link>)}</div>}
+          {item.studios.length > 0 && item.kind !== "episode" && (
+            <div className="t-small muted">{t("item.studios")} {item.studios.slice(0, 4).map((s, i) => <span key={s}>{i > 0 && ", "}<Link to={`/browse?studio=${encodeURIComponent(s)}`}>{s}</Link></span>)}</div>
+          )}
           {item.collections && item.collections.length > 0 && (
             <div className="t-small muted">{t("item.partOf")} {item.collections.map((c, i) => <span key={c.id}>{i > 0 && ", "}<Link to={`/item/${c.id}`}>{c.title}</Link></span>)}</div>
           )}

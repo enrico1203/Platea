@@ -57,6 +57,11 @@ const en = {
     authorize: "Link",
     linked: "Linked: {device}",
   },
+  browse: {
+    genre: "Genre",
+    studio: "Studio or network",
+    kind: "Type",
+  },
   connect: {
     title: "Connect a server",
     unreachable: "Can't reach a Platea server at this address.",
@@ -170,6 +175,7 @@ const en = {
     collection: "Collection",
     collectionCount: { one: "{count} movie", other: "{count} movies" },
     collectionMovies: "Movies in this collection",
+    studios: "Studio:",
     partOf: "Part of",
     seasons: { one: "{count} season", other: "{count} seasons" },
     episodes: { one: "{count} episode", other: "{count} episodes" },
@@ -642,6 +648,8 @@ const en = {
     general: {
       quick_connect: "Quick Connect",
       quick_connect_hint: "Sign in with a 6-digit code confirmed from a device that's already signed in: handy on TVs. When off, codes are refused.",
+      lockout_after_failures: "Lock out after failed attempts",
+      lockout_after_failures_hint: "After this many wrong passwords in a row the account is disabled until an administrator re-enables it (Users). 0 = never. Administrators are never locked out. Note: anyone who knows a username can lock it on purpose.",
       server_name: "Server name",
       public_url: "Public URL",
       min_password_length: "Minimum password length",

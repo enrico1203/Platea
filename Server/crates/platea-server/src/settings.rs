@@ -35,6 +35,10 @@ pub struct GeneralSettings {
     /// Accesso con un codice di 6 cifre confermato da un dispositivo già collegato (televisori, app).
     #[schemars(title = "Quick Connect")]
     pub quick_connect: bool,
+    /// Dopo questo numero di password sbagliate di fila l'account viene disattivato finché un amministratore non lo
+    /// riattiva (0 = mai). Gli amministratori non si bloccano: restano solo rallentati.
+    #[schemars(title = "Blocco dopo tentativi falliti", range(min = 0, max = 100))]
+    pub lockout_after_failures: u32,
 }
 
 impl Default for GeneralSettings {
@@ -47,6 +51,7 @@ impl Default for GeneralSettings {
             backup_keep: 7,
             maintenance_hour: 4,
             quick_connect: true,
+            lockout_after_failures: 0,
         }
     }
 }
@@ -520,11 +525,21 @@ fn validate(s: &AllSettings) -> Result<(), String> {
     if s.metadata.auto_match_threshold < 0.5 || s.metadata.auto_match_threshold > 1.0 {
         return Err("La soglia di associazione deve stare tra 0,5 e 1".into());
     }
-    if s.transcode.max_sw_transcodes == 0 || s.transcode.max_hw_transcodes == 0 {
-        return Err("Il numero di transcodifiche contemporanee deve essere almeno 1".into());
-    }
+    // max_sw_transcodes / max_hw_transcodes: 0 = illimitate, ogni valore è valido.
     if s.general.min_password_length < 4 {
         return Err("La lunghezza minima della password è 4".into());
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// I valori predefiniti devono passare la validazione: altrimenti nessun gruppo si potrebbe salvare
+    /// (la validazione guarda tutte le impostazioni, non solo il gruppo modificato).
+    #[test]
+    fn defaults_are_valid() {
+        assert_eq!(validate(&AllSettings::default()), Ok(()));
+    }
 }

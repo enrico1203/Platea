@@ -20,7 +20,7 @@ La colonna **Priorità** indica l'ordine di lavoro: **A** subito, **B** dopo, **
 | Scadenza dell'account | ❌ | ✅ (solo Platea) | — |
 | Fasce orarie di accesso (AccessSchedules) | ✅ | ✅ | — |
 | Tag consentiti / bloccati | ✅ | ❌ | C |
-| Blocco dopo N tentativi di accesso falliti | ✅ | 🟡 (rallentamento, non blocco) | B |
+| Blocco dopo N tentativi di accesso falliti | ✅ | ✅ (facoltativo, spento di default; sempre il rallentamento) | — |
 | Gestione dei propri dispositivi | ✅ | ✅ (anche "scollega tutti gli altri") | — |
 | Cancellare contenuti dal disco | ✅ | ➖ (Platea non scrive mai nelle cartelle dei media) | — |
 | Gestire collezioni e sottotitoli | ✅ | ❌ | C |
@@ -55,7 +55,7 @@ La colonna **Priorità** indica l'ordine di lavoro: **A** subito, **B** dopo, **
 | Filtri per anno, risoluzione (4K), HDR | ✅ | ✅ (decennio, 4K/1080p/720p/SD, HDR) | — |
 | **Pagina della persona** (filmografia) | ✅ | ✅ | — |
 | **Titoli simili** | ✅ | ✅ (la saga per prima) | — |
-| Pagine per genere e studio | ✅ | 🟡 (filtro per genere) | B |
+| Pagine per genere e studio | ✅ | ✅ (`/browse`, da tutte le librerie) | — |
 | Collezioni | ✅ (manuali) | ✅ (automatiche da NFO e TMDB) | — |
 | Playlist | ✅ | ✅ | — |
 | Playlist condivise con altri utenti | ✅ (10.10) | ❌ | C |
