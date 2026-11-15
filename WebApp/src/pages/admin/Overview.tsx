@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronUp, Square } from "lucide-react";
+import { ChevronDown, ChevronUp, Square, MessageSquare, Play as PlayIcon, Pause as PauseIcon } from "lucide-react";
 import { api, imageUrl } from "../../api/client";
 import type { Overview as OverviewT, SessionView } from "../../api/types";
-import { Alert, Empty, MethodBadge } from "../../components/ui";
+import { Alert, Empty, MethodBadge, toast } from "../../components/ui";
 import { useI18n, type MessageKey } from "../../i18n";
 
 /** Orologio che avanza ogni secondo: posizioni e durate restano vive tra un aggiornamento e l'altro. */
@@ -89,6 +89,13 @@ export function SessionRow({ s, fetchedAt, onStop }: { s: SessionView; fetchedAt
           <span className="pl-session__rate" title={t("admin.overview.session.bandwidthHint")}>{s.bandwidth_bps > 0 ? bitrate(s.bandwidth_bps) : bitrate(s.bitrate)}</span>
           <div style={{ display: "flex", gap: 4 }}>
             <button className="icon-btn" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-label={t("admin.overview.session.details")} title={t("admin.overview.session.details")}>{open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</button>
+            {onStop && s.client.startsWith("Platea") && <>
+              <button className="icon-btn" onClick={() => api(`/api/v1/admin/sessions/${s.id}/command`, { body: { command: s.paused ? "resume" : "pause" } })} aria-label={t(s.paused ? "admin.overview.resume" : "admin.overview.pause")} title={t(s.paused ? "admin.overview.resume" : "admin.overview.pause")}>{s.paused ? <PlayIcon size={16} /> : <PauseIcon size={16} />}</button>
+              <button className="icon-btn" onClick={async () => {
+                const text = window.prompt(t("admin.overview.messagePrompt", { user: s.user }));
+                if (text?.trim()) { await api(`/api/v1/admin/sessions/${s.id}/command`, { body: { command: "message", text } }); toast(t("admin.overview.messageSent")); }
+              }} aria-label={t("admin.overview.message")} title={t("admin.overview.message")}><MessageSquare size={16} /></button>
+            </>}
             {onStop && <button className="icon-btn" onClick={onStop} aria-label={t("admin.overview.stop")} title={t("admin.overview.stop")}><Square size={16} /></button>}
           </div>
         </div>

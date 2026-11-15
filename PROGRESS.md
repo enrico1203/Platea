@@ -363,6 +363,9 @@ restano 321 "da verificare" e 328 non riconosciuti (da vedere a mano dall'utente
    "Aggiungi a playlist" propone solo le proprie. Provato via API sulla copia (404 prima, lettura sì, modifiche no).
 4j. [x] Scelta delle immagini tra le alternative di TMDB (`/items/{id}/remote-images/{kind}` GET/POST, solo admin):
    griglia nel dialogo Modifica, lingua della libreria per prima; solo percorsi TMDB accettati; campo bloccato.
+4k. [x] Controllo remoto delle sessioni web (`POST /admin/sessions/{id}/command`: pause, resume, message): evento
+   `session.command` sul WebSocket dell'utente; il player esegue o mostra il messaggio; interrotta dall'admin → avviso.
+   Pulsanti nel pannello riproduzioni (solo client Platea). Provato: messaggio mostrato sul player.
 5. Fase 3: QSV/VA-API/NVENC/AMD, tone mapping in GPU, uscita HEVC/AV1 su hardware reale (qui non c'è GPU).
 6. Fase 5 (rilascio). [x] Revisione di sicurezza interna (15/11/2026), corretti:
    - download delle immagini: la risposta era letta tutta prima del controllo di dimensione (una risposta senza fine

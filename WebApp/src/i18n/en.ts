@@ -239,6 +239,7 @@ const en = {
     },
   },
   player: {
+    stoppedByAdmin: "Playback was stopped by the administrator.",
     play: "Play",
     pause: "Pause",
     backN: "Back {s} seconds",
@@ -367,6 +368,11 @@ const en = {
       noStreams: "Nothing is playing.",
       paused: "paused",
       throttled: "FFmpeg suspended: it's ahead",
+      pause: "Pause",
+      resume: "Resume",
+      message: "Send a message",
+      messagePrompt: "Message for {user} (shown on their player):",
+      messageSent: "Message sent.",
       stop: "Stop",
       session: {
         playing: "Playing",

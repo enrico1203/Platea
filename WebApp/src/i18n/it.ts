@@ -240,6 +240,7 @@ const it = {
     },
   },
   player: {
+    stoppedByAdmin: "La riproduzione è stata interrotta dall'amministratore.",
     play: "Riproduci",
     pause: "Pausa",
     backN: "Indietro di {s} secondi",
@@ -368,6 +369,11 @@ const it = {
       noStreams: "Nessuna riproduzione in corso.",
       paused: "in pausa",
       throttled: "FFmpeg sospeso: è avanti",
+      pause: "Metti in pausa",
+      resume: "Riprendi",
+      message: "Manda un messaggio",
+      messagePrompt: "Messaggio per {user} (compare sul suo player):",
+      messageSent: "Messaggio inviato.",
       stop: "Interrompi",
       session: {
         playing: "In riproduzione",

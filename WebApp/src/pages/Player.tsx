@@ -10,6 +10,7 @@ import { buildProfile } from "../lib/profile";
 import { MethodBadge } from "../components/ui";
 import { useI18n } from "../i18n";
 import { useSession } from "../session";
+import { subscribe } from "../api/events";
 import { DEFAULT_PREFS } from "../lib/prefs";
 
 const QUALITIES = [0, 40_000_000, 20_000_000, 8_000_000, 4_000_000, 2_000_000, 1_000_000];
@@ -79,6 +80,8 @@ export default function Player() {
   const [quality, setQuality] = useState<number | null>(readQuality);
   const [seekHint, setSeekHint] = useState<{ side: "left" | "right"; text: string } | null>(null);
   const [dragging, setDragging] = useState<number | null>(null);
+  // Messaggio arrivato dall'amministratore (comando remoto), mostrato qualche secondo sopra il video.
+  const [notice, setNotice] = useState<string | null>(null);
   // Posizione sotto il mouse sulla barra (anteprima senza trascinare).
   const [hoverPos, setHoverPos] = useState<number | null>(null);
   const hideTimer = useRef<number | undefined>(undefined);
@@ -400,6 +403,24 @@ export default function Player() {
     poke();
   }, [poke, seekTo]);
 
+  // Comandi remoti per questa sessione (dalla dashboard): pausa, ripresa, messaggio, interruzione.
+  useEffect(() => subscribe((e) => {
+    const d = e.data as { session_id?: string; command?: string; text?: string | null; from?: string; by?: string } | undefined;
+    if (!d || !info || d.session_id !== info.session_id) return;
+    const v = videoRef.current;
+    if (e.type === "session.command") {
+      if (d.command === "pause") v?.pause();
+      else if (d.command === "resume") v?.play().catch(() => {});
+      else if (d.command === "message" && d.text) {
+        setNotice(`${d.from ?? ""}: ${d.text}`);
+        window.setTimeout(() => setNotice(null), 10000);
+      }
+    } else if (e.type === "playback.stopped" && d.by === "admin") {
+      v?.pause();
+      setError(t("player.stoppedByAdmin"));
+    }
+  }), [info, t]);
+
   const togglePlay = useCallback(() => {
     if (castingRef.current && remoteRef.current) {
       remoteRef.current.controller.playOrPause();
@@ -643,6 +664,7 @@ export default function Player() {
           </div>
         </div>
       )}
+      {notice && <div className="player__notice" role="status">{notice}</div>}
       {seekHint && <div className="player__seek-hint" style={seekHint.side === "left" ? { left: "15%" } : { right: "15%" }}>{seekHint.text}</div>}
 
       {panel === "chapters" && chapters && (

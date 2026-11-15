@@ -24,7 +24,7 @@ La colonna **Priorità** indica l'ordine di lavoro: **A** subito, **B** dopo, **
 | Gestione dei propri dispositivi | ✅ | ✅ (anche "scollega tutti gli altri") | — |
 | Cancellare contenuti dal disco | ✅ | ➖ (Platea non scrive mai nelle cartelle dei media) | — |
 | Gestire collezioni e sottotitoli | ✅ | ❌ | C |
-| Controllo remoto di altre sessioni | ✅ | ❌ | C |
+| Controllo remoto di altre sessioni | ✅ | ✅ (dalla dashboard: pausa, ripresa, messaggio, interruzione; player web) | — |
 | Utente nascosto dalla schermata di accesso | ✅ | ➖ (Platea non elenca gli utenti all'accesso) | — |
 
 ## Preferenze dell'utente (scelte dall'utente)

@@ -21,6 +21,7 @@ pub fn routes(api: Api) -> Api {
     api.get("/api/v1/admin/overview", "Amministrazione", Access::Admin, "Riproduzioni attive, risorse, lavori, avvisi", overview)
         .get("/api/v1/admin/sessions", "Amministrazione", Access::Admin, "Riproduzioni attive con metodo e motivo", sessions)
         .delete("/api/v1/admin/sessions/{id}", "Amministrazione", Access::Admin, "Interrompe una riproduzione", kill_session)
+        .post("/api/v1/admin/sessions/{id}/command", "Amministrazione", Access::Admin, "Pausa, ripresa o messaggio al player di una sessione (player web)", session_command)
         .get("/api/v1/admin/jobs", "Amministrazione", Access::Admin, "Coda e cronologia dei lavori", jobs)
         .post("/api/v1/admin/jobs/{id}/retry", "Amministrazione", Access::Admin, "Nuovo tentativo di un lavoro non riuscito", retry_job)
         .delete("/api/v1/admin/jobs/failed", "Amministrazione", Access::Admin, "Svuota l'elenco dei lavori non riusciti", clear_failed)
@@ -295,6 +296,27 @@ async fn kill_session(State(state): State<Shared>, AdminUser(admin): AdminUser, 
     let s = crate::sessions::stop_session(&state, &id).await.ok_or_else(|| ApiError::not_found("Sessione"))?;
     state.events.to_user(s.user_id, "playback.stopped", json!({ "session_id": id, "by": "admin" }));
     state.db.activity(Some(admin.user_id), "session_killed", &format!("{} ha interrotto la riproduzione di {}", admin.username, s.username), None).await;
+    Ok(Json(json!({ "ok": true })))
+}
+
+#[derive(Deserialize)]
+struct CommandReq {
+    command: String,
+    #[serde(default)]
+    text: Option<String>,
+}
+
+/// Comando al player web di una sessione, attraverso il WebSocket dell'utente. Le app senza WebSocket (Infuse) lo ignorano.
+async fn session_command(State(state): State<Shared>, AdminUser(admin): AdminUser, Path(id): Path<String>, Json(req): Json<CommandReq>) -> ApiResult<Json<Value>> {
+    let s = state.sessions.get(&id).ok_or_else(|| ApiError::not_found("Sessione"))?;
+    if !matches!(req.command.as_str(), "pause" | "resume" | "message") {
+        return Err(ApiError::BadRequest("Comando: pause, resume o message".into()));
+    }
+    let text: Option<String> = req.text.map(|t| t.trim().chars().take(300).collect()).filter(|t: &String| !t.is_empty());
+    if req.command == "message" && text.is_none() {
+        return Err(ApiError::BadRequest("Serve il testo del messaggio".into()));
+    }
+    state.events.to_user(s.user_id, "session.command", json!({ "session_id": id, "command": req.command, "text": text, "from": admin.username }));
     Ok(Json(json!({ "ok": true })))
 }
 
