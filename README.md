@@ -11,7 +11,7 @@ Platea serve il file originale quando il client lo regge, fa remux o transcodifi
 - **NFO e .plexmatch.** Legge gli NFO di Kodi, Jellyfin e Radarr e i `.plexmatch` di Plex: identificativi esatti e, anche senza chiave TMDB, trama, cast, generi e locandine. Le cartelle dei media non vengono mai scritte: immagini e metadati stanno nel database e nella cache.
 - **Nessuna licenza, nessun limite.** Utenti, dispositivi, stream e funzioni illimitati, transcodifica hardware inclusa.
 - **Collezioni automatiche.** Le saghe (James Bond, Harry Potter…) si formano da sole dagli NFO e da TMDB.
-- **Limite per età.** Per ogni utente una classificazione massima: le sigle di ogni paese (T, VM14, PG-13, TV-MA…) diventano età, e i titoli oltre il limite spariscono ovunque, Infuse compreso.
+- **Limite per età e per genere.** Per ogni utente una classificazione massima e, se serve, generi nascosti o solo alcuni generi consentiti. Per la classificazione, le sigle di ogni paese (T, VM14, PG-13, TV-MA…) diventano età, e i titoli oltre il limite spariscono ovunque, Infuse compreso.
 - **Ogni utente a modo suo.** Lingua dell'audio e dei sottotitoli, episodio successivo automatico, home su misura, immagine del profilo; per l'amministratore download consentito o no, fasce orarie, profili per bambini.
 - **Account con scadenza.** Dopo la data scelta l'utente continua a sfogliare la libreria ma non riproduce né scarica.
 - **Miniature sulla barra di avanzamento**, attivabili per libreria (spente di default e sempre spente alla creazione di una libreria remota, perché richiedono di leggere ogni file per intero): griglie JPEG in `cache/trickplay`, solo keyframe decodificati, un file alla volta, in pausa durante le riproduzioni.

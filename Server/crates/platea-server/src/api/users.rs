@@ -43,9 +43,11 @@ struct UserRow {
     block_unrated: i64,
     access_schedule: Option<String>,
     avatar_version: Option<i64>,
+    blocked_genres: Option<String>,
+    allowed_genres: Option<String>,
 }
 
-const USER_COLS: &str = "id, username, is_admin, disabled, all_libraries, allow_remux, allow_transcode, max_bitrate, max_streams, max_rating, allow_remote, manage_devices, created_at, last_login_at, expires_at, allow_download, block_unrated, access_schedule, avatar_version";
+const USER_COLS: &str = "id, username, is_admin, disabled, all_libraries, allow_remux, allow_transcode, max_bitrate, max_streams, max_rating, allow_remote, manage_devices, created_at, last_login_at, expires_at, allow_download, block_unrated, access_schedule, avatar_version, blocked_genres, allowed_genres";
 
 async fn view(state: &Shared, u: UserRow) -> ApiResult<Value> {
     let libs: Vec<i64> = sqlx::query_scalar("SELECT library_id FROM user_library_access WHERE user_id = ?").bind(u.id).fetch_all(&state.db.read).await?;
@@ -70,6 +72,8 @@ async fn view(state: &Shared, u: UserRow) -> ApiResult<Value> {
         "expired": u.is_admin == 0 && u.expires_at.is_some_and(|e| now_ms() >= e),
         "allow_download": u.allow_download != 0,
         "block_unrated": u.block_unrated != 0,
+        "blocked_genres": u.blocked_genres.as_deref().and_then(|s| serde_json::from_str::<Value>(s).ok()).unwrap_or(json!([])),
+        "allowed_genres": u.allowed_genres.as_deref().and_then(|s| serde_json::from_str::<Value>(s).ok()).unwrap_or(json!([])),
         "access_schedule": u.access_schedule.as_deref().and_then(|s| serde_json::from_str::<Value>(s).ok()).unwrap_or(json!([])),
         "avatar": u.avatar_version.map(|v| format!("/api/v1/users/{}/avatar?v={v}", state.ids.encode(u.id))),
         "devices": devices,
@@ -127,6 +131,10 @@ struct UserPatch {
     /// Fasce orarie di accesso; elenco vuoto o `null` = sempre.
     #[serde(deserialize_with = "crate::util::double_option")]
     access_schedule: Option<Option<Vec<crate::auth::ScheduleSlot>>>,
+    /// Generi nascosti a questo utente (nomi).
+    blocked_genres: Option<Vec<String>>,
+    /// Generi consentiti (nomi); elenco vuoto = tutti.
+    allowed_genres: Option<Vec<String>>,
 }
 
 async fn create(State(state): State<Shared>, AdminUser(admin): AdminUser, Json(p): Json<UserPatch>) -> ApiResult<Json<Value>> {
@@ -198,6 +206,13 @@ async fn apply_patch(state: &Shared, id: i64, p: UserPatch) -> ApiResult<()> {
     set_bool!(manage_devices);
     set_bool!(allow_download);
     set_bool!(block_unrated);
+    for (col, v) in [("blocked_genres", &p.blocked_genres), ("allowed_genres", &p.allowed_genres)] {
+        if let Some(list) = v {
+            let clean: Vec<String> = list.iter().map(|g| g.trim().to_string()).filter(|g| !g.is_empty()).take(200).collect();
+            let json = (!clean.is_empty()).then(|| serde_json::to_string(&clean).unwrap_or_default());
+            sqlx::query(&format!("UPDATE users SET {col} = ? WHERE id = ?")).bind(json).bind(id).execute(&mut *tx).await?;
+        }
+    }
     if let Some(v) = p.access_schedule {
         let v = v.filter(|s| !s.is_empty());
         if let Some(slots) = &v {

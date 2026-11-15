@@ -403,6 +403,11 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
    da sole. Riproduzione con `file_id` (anche per gli extra), sessione `extra`: l'avanzamento non tocca il titolo.
    Sezione "Contenuti extra" nel dettaglio. Strato Jellyfin: SpecialFeatures/LocalTrailers ancora vuoti.
    Provato su server di prova: extra di film e serie, sample ignorato, film non segnato come iniziato.
+4r. [x] Generi nascosti / consentiti per utente (migrazione 0020 `users.blocked_genres`, `allowed_genres`, JSON di
+   nomi risolti in identificativi al caricamento dei permessi): `AuthUser::genre_filter` nel `library_filter` (elenchi,
+   ricerca, home, strato Jellyfin) e in `can_see_item` (dettaglio, riproduzione); stagioni ed episodi usano i generi
+   della serie, collezioni sempre visibili. Scelta a pulsanti nel dialogo dell'utente. Provato sulla copia: horror
+   nascosto ovunque (404 su dettaglio e riproduzione), "solo Animazione" → 28 film su 10.960 anche via Jellyfin.
 5. Fase 3: QSV/VA-API/NVENC/AMD, tone mapping in GPU, uscita HEVC/AV1 su hardware reale (qui non c'è GPU).
 5b. [x] Apertura del progetto (15/11/2026, richiesta dell'utente): repository pubblica; README con licenza
    AGPL-3.0, progetti collegati con link e licenze verificate (Jellyfin GPL-2.0, Swiftfin MPL-2.0, Findroid GPL-3.0,

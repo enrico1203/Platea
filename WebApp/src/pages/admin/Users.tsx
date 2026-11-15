@@ -26,7 +26,10 @@ function UserDialog({ user, onClose }: { user: UserAdmin | null; onClose: () => 
     allow_download: user?.allow_download ?? true,
     block_unrated: user?.block_unrated ?? false,
     access_schedule: user?.access_schedule ?? [],
+    blocked_genres: user?.blocked_genres ?? [],
+    allowed_genres: user?.allowed_genres ?? [],
   });
+  const { data: genres } = useQuery({ queryKey: ["genres", "all"], queryFn: () => api<{ items: { name: string; count: number }[] }>("/api/v1/genres").then((r) => r.items) });
   const [error, setError] = useState<string | null>(null);
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF({ ...f, [k]: v });
   const save = async () => {
@@ -75,6 +78,18 @@ function UserDialog({ user, onClose }: { user: UserAdmin | null; onClose: () => 
       <Switch checked={f.allow_download} onChange={(v) => set("allow_download", v)} label={t("admin.users.allowDownload")} hint={t("admin.users.allowDownloadHint")} />
       <Switch checked={f.block_unrated} onChange={(v) => set("block_unrated", v)} label={t("admin.users.blockUnrated")} hint={t("admin.users.blockUnratedHint")} />
       <ScheduleEditor value={f.access_schedule} onChange={(v) => set("access_schedule", v)} />
+      {genres && genres.length > 0 && (["blocked_genres", "allowed_genres"] as const).map((k) => (
+        <div key={k} className="stack" style={{ gap: 6 }}>
+          <span className="pl-field__label">{t(k === "blocked_genres" ? "admin.users.blockedGenres" : "admin.users.allowedGenres")}</span>
+          <span className="pl-field__hint">{t(k === "blocked_genres" ? "admin.users.blockedGenresHint" : "admin.users.allowedGenresHint")}</span>
+          <div className="genre-picker">
+            {genres.map((g) => {
+              const on = f[k].includes(g.name);
+              return <button key={g.name} type="button" className={`genre-chip${on ? " on" : ""}`} aria-pressed={on} onClick={() => set(k, on ? f[k].filter((x) => x !== g.name) : [...f[k], g.name])}>{g.name}</button>;
+            })}
+          </div>
+        </div>
+      ))}
       <SelectField label={t("admin.users.maxRating")} value={f.max_rating} onChange={(v) => set("max_rating", v)} hint={t("admin.users.maxRatingHint")} options={[
         { value: "", label: t("admin.users.ratingNone") },
         ...["0", "6", "10", "12", "14", "16"].map((a) => ({ value: a, label: a === "0" ? t("admin.users.ratingAll") : t("admin.users.ratingAge", { age: a }) })),

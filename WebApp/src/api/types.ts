@@ -75,6 +75,8 @@ export interface Overview {
   alerts: { level: "danger" | "warning" | "info"; code: string; message: string }[];
 }
 export interface UserAdmin {
+  /** Generi nascosti e consentiti (vuoto = tutti). */
+  blocked_genres?: string[]; allowed_genres?: string[];
   id: string; username: string; is_admin: boolean; disabled: boolean; all_libraries: boolean; library_ids: string[]; allow_remux: boolean; allow_transcode: boolean;
   max_bitrate: number | null; max_streams: number | null; max_rating: string | null; allow_remote: boolean; manage_devices: boolean; created_at: number; last_login_at: number | null; devices: number; active_streams: number; expires_at: number | null; expired: boolean; allow_download: boolean; block_unrated: boolean; access_schedule: ScheduleSlot[]; avatar: string | null;
 }

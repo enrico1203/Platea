@@ -49,6 +49,10 @@ pub struct Permissions {
     pub block_unrated: bool,
     /// Fasce orarie in cui si può riprodurre; vuoto = sempre.
     pub schedule: Vec<ScheduleSlot>,
+    /// Generi nascosti (identificativi): i titoli con almeno uno di questi generi non si vedono.
+    pub blocked_genre_ids: Vec<i64>,
+    /// Generi consentiti (identificativi); vuoto = tutti. Si vedono solo i titoli con almeno uno di questi generi.
+    pub allowed_genre_ids: Vec<i64>,
 }
 
 /// Una fascia oraria di accesso: giorni (0 = domenica) e intervallo in minuti dalla mezzanotte, ora locale.
@@ -110,7 +114,28 @@ impl AuthUser {
             let ids: Vec<String> = self.perms.library_ids.iter().map(|i| i.to_string()).collect();
             format!(" AND {column} IN ({})", ids.join(","))
         };
-        libs + &self.rating_filter(column)
+        libs + &self.rating_filter(column) + &self.genre_filter(column)
+    }
+
+    /// Generi bloccati e consentiti (`alias.library_id` → `alias`). Stagioni ed episodi usano i generi della serie;
+    /// le collezioni restano visibili (i loro film sono filtrati uno per uno). Solo identificativi interi nella query.
+    fn genre_filter(&self, column: &str) -> String {
+        let Some(a) = column.strip_suffix(".library_id") else { return String::new() };
+        let mut out = String::new();
+        let ids = |v: &[i64]| v.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",");
+        if !self.perms.blocked_genre_ids.is_empty() {
+            out.push_str(&format!(
+                " AND ({a}.kind = 'collection' OR NOT EXISTS (SELECT 1 FROM item_genres xg WHERE xg.item_id = COALESCE({a}.series_id, {a}.id) AND xg.genre_id IN ({})))",
+                ids(&self.perms.blocked_genre_ids)
+            ));
+        }
+        if !self.perms.allowed_genre_ids.is_empty() {
+            out.push_str(&format!(
+                " AND ({a}.kind = 'collection' OR EXISTS (SELECT 1 FROM item_genres xg WHERE xg.item_id = COALESCE({a}.series_id, {a}.id) AND xg.genre_id IN ({})))",
+                ids(&self.perms.allowed_genre_ids)
+            ));
+        }
+        out
     }
 
     /// Limite di classificazione sugli elementi (`alias.library_id` → `alias`). Episodi e stagioni usano quella della serie;
@@ -136,6 +161,14 @@ impl AuthUser {
     pub async fn can_see_item(&self, state: &Shared, item_id: i64, library_id: i64) -> ApiResult<bool> {
         if !self.can_see_library(library_id) {
             return Ok(false);
+        }
+        let genres = self.genre_filter("i.library_id");
+        if !genres.is_empty() {
+            let ok: Option<i64> =
+                sqlx::query_scalar(&format!("SELECT 1 FROM items i WHERE i.id = ? {genres}")).bind(item_id).fetch_optional(&state.db.read).await?;
+            if ok.is_none() {
+                return Ok(false);
+            }
         }
         let Some(max) = self.effective_max_age() else { return Ok(true) };
         let unrated = if self.perms.block_unrated { "CASE WHEN i.kind = 'collection' THEN 0 ELSE 99 END" } else { "0" };
@@ -313,8 +346,24 @@ pub async fn load_permissions(state: &Shared, user_id: i64) -> anyhow::Result<Op
     if disabled != 0 {
         return Ok(None);
     }
-    let (allow_download, block_unrated, schedule): (i64, i64, Option<String>) =
-        sqlx::query_as("SELECT allow_download, block_unrated, access_schedule FROM users WHERE id = ?").bind(user_id).fetch_one(&state.db.read).await?;
+    let (allow_download, block_unrated, schedule, blocked, allowed): (i64, i64, Option<String>, Option<String>, Option<String>) =
+        sqlx::query_as("SELECT allow_download, block_unrated, access_schedule, blocked_genres, allowed_genres FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_one(&state.db.read)
+            .await?;
+    // Nomi dei generi → identificativi (un genere che non esiste più non conta).
+    let genre_ids = |raw: Option<String>| async move {
+        let names: Vec<String> = raw.as_deref().and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default();
+        let mut ids = Vec::new();
+        for n in names {
+            if let Ok(Some(id)) = sqlx::query_scalar::<_, i64>("SELECT id FROM genres WHERE name = ?").bind(&n).fetch_optional(&state.db.read).await {
+                ids.push(id);
+            }
+        }
+        ids
+    };
+    let blocked_genre_ids = genre_ids(blocked).await;
+    let allowed_genre_ids = genre_ids(allowed).await;
     let library_ids: Vec<i64> = if all_libraries != 0 {
         vec![]
     } else {
@@ -337,6 +386,8 @@ pub async fn load_permissions(state: &Shared, user_id: i64) -> anyhow::Result<Op
             allow_download: allow_download != 0,
             block_unrated: block_unrated != 0,
             schedule: schedule.as_deref().and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default(),
+            blocked_genre_ids,
+            allowed_genre_ids,
         },
     )))
 }

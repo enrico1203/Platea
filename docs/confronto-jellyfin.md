@@ -19,7 +19,7 @@ La colonna **Priorità** indica l'ordine di lavoro: **A** subito, **B** dopo, **
 | **Download del file originale** | ✅ (EnableContentDownloading) | ✅ (link firmato riprendibile, anche Infuse) | — |
 | Scadenza dell'account | ❌ | ✅ (solo Platea) | — |
 | Fasce orarie di accesso (AccessSchedules) | ✅ | ✅ | — |
-| Tag consentiti / bloccati | ✅ | ❌ | C |
+| Tag consentiti / bloccati | ✅ | ✅ (per genere: nascosti o solo consentiti, ovunque, Infuse compreso) | — |
 | Blocco dopo N tentativi di accesso falliti | ✅ | ✅ (facoltativo, spento di default; sempre il rallentamento) | — |
 | Gestione dei propri dispositivi | ✅ | ✅ (anche "scollega tutti gli altri") | — |
 | Cancellare contenuti dal disco | ✅ | ➖ (Platea non scrive mai nelle cartelle dei media) | — |

@@ -484,3 +484,8 @@ a.person:focus-visible .person__img { outline: 2px solid var(--focus); outline-o
 .extra-card { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-1); color: inherit; text-align: left; cursor: pointer; min-width: 0; }
 .extra-card:hover, .extra-card:focus-visible { border-color: var(--blue); }
 .extra-card__icon { display: grid; place-items: center; width: 40px; height: 40px; flex: none; border-radius: var(--radius-full); background: var(--surface-2); }
+
+/* Scelta dei generi (permessi dell'utente). */
+.genre-picker { display: flex; flex-wrap: wrap; gap: 6px; }
+.genre-chip { height: 30px; padding: 0 12px; border: 1px solid var(--line-control); border-radius: var(--radius-full); background: var(--surface-2); color: var(--ink-muted); font: 500 13px/18px var(--font-sans); cursor: pointer; }
+.genre-chip.on { background: var(--blue); border-color: var(--blue); color: #fff; }
