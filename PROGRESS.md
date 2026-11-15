@@ -375,6 +375,12 @@ restano 321 "da verificare" e 328 non riconosciuti (da vedere a mano dall'utente
    cancella, aggiungi/togli film e serie (anche di librerie diverse). Il collegamento automatico alle saghe non le
    tocca più (`collections::link`). Web: "Aggiungi a collezione" nel dettaglio, gestione nella pagina della collezione.
    Provato sulla copia: Goldfinger resta in James Bond e nella collezione manuale dopo il rinnovo.
+4n. Swiftfin (app Jellyfin ufficiale per iOS) dava "errore 404" dopo il login: lo strato Jellyfin dichiara 10.11 e le
+   app recenti usano endpoint che mancavano. Aggiunti: /System/Configuration, /Items/Root, Similar (vero, come la web
+   UI), LocalTrailers, SpecialFeatures, Ancestors, ThemeMedia, Suggestions, Movies/Recommendations, Playlists, Devices,
+   MediaSegments, Localization/*, UserItems/{id}/UserData (GET/POST), POST Users/{id}/Configuration|Policy,
+   DisplayPreferences (POST). Il tentativo dell'utente era prima di un riavvio: log persi. **Da confermare
+   dall'utente su iPhone**; i percorsi sconosciuti finiscono nel log ("percorso non gestito").
 5. Fase 3: QSV/VA-API/NVENC/AMD, tone mapping in GPU, uscita HEVC/AV1 su hardware reale (qui non c'è GPU).
 6. Fase 5 (rilascio). [x] Revisione di sicurezza interna (15/11/2026), corretti:
    - download delle immagini: la risposta era letta tutta prima del controllo di dimensione (una risposta senza fine

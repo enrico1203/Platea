@@ -91,7 +91,34 @@ pub fn router() -> Router<Shared> {
         .route("/UserPlayedItems/{item}", post(played_add).delete(played_del))
         .route("/Users/{user}/FavoriteItems/{item}", post(fav_add_u).delete(fav_del_u))
         .route("/UserFavoriteItems/{item}", post(fav_add).delete(fav_del))
-        .route("/DisplayPreferences/{id}", get(display_prefs))
+        .route("/DisplayPreferences/{id}", get(display_prefs).post(ok_empty))
+        // Endpoint usati dalle app Jellyfin recenti (Swiftfin, Jellyfin Android/TV, Findroid).
+        .route("/System/Configuration", get(system_configuration))
+        .route("/Items/Root", get(items_root))
+        .route("/Users/{user}/Items/Root", get(items_root_u))
+        .route("/Items/{item}/Similar", get(similar))
+        .route("/Movies/{item}/Similar", get(similar))
+        .route("/Shows/{item}/Similar", get(similar))
+        .route("/Items/{item}/LocalTrailers", get(empty_array))
+        .route("/Users/{user}/Items/{item}/LocalTrailers", get(empty_array))
+        .route("/Items/{item}/SpecialFeatures", get(empty_array))
+        .route("/Users/{user}/Items/{item}/SpecialFeatures", get(empty_array))
+        .route("/Items/{item}/Ancestors", get(empty_array))
+        .route("/Items/{item}/ThemeMedia", get(theme_media))
+        .route("/Items/Suggestions", get(empty_items))
+        .route("/Movies/Recommendations", get(empty_array))
+        .route("/Playlists", get(empty_items))
+        .route("/Devices", get(empty_items))
+        .route("/MediaSegments/{item}", get(empty_items))
+        .route("/Localization/Options", get(localization_options))
+        .route("/Localization/Cultures", get(localization_cultures))
+        .route("/Localization/Countries", get(localization_countries))
+        .route("/Localization/ParentalRatings", get(empty_array))
+        .route("/UserItems/{item}/UserData", get(user_data).post(user_data_update))
+        .route("/Users/{user}/Items/{item}/UserData", get(user_data_u).post(user_data_update_u))
+        .route("/Users/{user}/Configuration", post(ok_empty))
+        .route("/Users/Configuration", post(ok_empty))
+        .route("/Users/{user}/Policy", post(ok_empty))
         .route("/Branding/Configuration", get(branding))
         .layer(axum::middleware::map_response(omit_nulls))
 }
@@ -231,6 +258,25 @@ static CANONICAL: Lazy<HashMap<String, &'static str>> = Lazy::new(|| {
         "DisplayPreferences",
         "Branding",
         "Configuration",
+        "Root",
+        "Similar",
+        "Movies",
+        "LocalTrailers",
+        "SpecialFeatures",
+        "Ancestors",
+        "ThemeMedia",
+        "Suggestions",
+        "Recommendations",
+        "Playlists",
+        "Devices",
+        "MediaSegments",
+        "Localization",
+        "Options",
+        "Cultures",
+        "Countries",
+        "ParentalRatings",
+        "UserData",
+        "Policy",
     ];
     words.iter().map(|w| (w.to_lowercase(), *w)).collect()
 });
@@ -1900,4 +1946,166 @@ mod tests {
         assert_eq!(iso(0), "1970-01-01T00:00:00.0000000Z");
         assert_eq!(iso(1_700_000_000_000), "2023-11-14T22:13:20.0000000Z");
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Endpoint delle app Jellyfin recenti: risposte vere dove Platea ha l'equivalente, vuote ma valide altrove.
+
+async fn system_configuration(State(state): State<Shared>, _u: AuthUser) -> Json<Value> {
+    let s = state.settings.get();
+    let lang = s.metadata.language.clone();
+    Json(json!({
+        "ServerName": s.general.server_name,
+        "UICulture": lang.split('-').next().unwrap_or("it"),
+        "PreferredMetadataLanguage": lang.split('-').next().unwrap_or("it"),
+        "MetadataCountryCode": s.metadata.country,
+        "IsStartupWizardCompleted": true,
+        "EnableMetrics": false,
+        "QuickConnectAvailable": s.general.quick_connect,
+        "EnableRemoteAccess": true,
+        "EnableCaseSensitiveItemIds": true,
+        "LibraryMonitorDelay": 60,
+        "MinResumePct": 5,
+        "MaxResumePct": s.playback.played_threshold_percent,
+        "MinResumeDurationSeconds": s.playback.resume_min_seconds,
+    }))
+}
+
+fn root_dto(state: &Shared) -> Value {
+    json!({
+        "Name": "Media Folders",
+        "ServerId": state.server_id,
+        "Id": "e9d5075a555c1cbc394eec4cef295274",
+        "Type": "UserRootFolder",
+        "IsFolder": true,
+        "CollectionType": "folders",
+        "LocationType": "Remote",
+        "ImageTags": {},
+        "BackdropImageTags": [],
+    })
+}
+
+async fn items_root(State(state): State<Shared>, _u: AuthUser) -> Json<Value> {
+    Json(root_dto(&state))
+}
+
+async fn items_root_u(State(state): State<Shared>, _u: AuthUser, Path(_x): Path<String>) -> Json<Value> {
+    Json(root_dto(&state))
+}
+
+/// Titoli simili: stessi generi, la saga prima; come la pagina del titolo nella web UI.
+async fn similar(State(state): State<Shared>, user: AuthUser, Path(item): Path<String>, uri: Uri) -> ApiResult<Json<Value>> {
+    let id = item_id(&state, &item)?;
+    let row = crate::api::items::load_item(&state, &user, id).await?;
+    let base = match row.kind.as_str() {
+        "movie" | "series" => id,
+        "season" | "episode" => row.series_id.unwrap_or(id),
+        _ => return Ok(Json(json!({ "Items": [], "TotalRecordCount": 0, "StartIndex": 0 }))),
+    };
+    let kind = if row.kind == "movie" { "movie" } else { "series" };
+    let sql = format!(
+        "SELECT i.id FROM items i JOIN (
+            SELECT ig.item_id AS sid, COUNT(*) AS shared FROM item_genres ig
+            WHERE ig.genre_id IN (SELECT genre_id FROM item_genres WHERE item_id = ?2) AND ig.item_id <> ?2
+            GROUP BY ig.item_id
+         ) g ON g.sid = i.id
+         WHERE i.kind = '{kind}' AND i.available = 1 AND ?1 = ?1 {}
+         ORDER BY EXISTS (SELECT 1 FROM collection_members a JOIN collection_members b ON a.collection_id = b.collection_id WHERE a.item_id = ?2 AND b.item_id = i.id) DESC,
+                  g.shared DESC, COALESCE(i.community_rating, 0) DESC
+         LIMIT 12",
+        user.library_filter("i.library_id")
+    );
+    let ids: Vec<i64> = sqlx::query_scalar(&sql).bind(user.user_id).bind(base).fetch_all(&state.db.read).await?;
+    if ids.is_empty() {
+        return Ok(Json(json!({ "Items": [], "TotalRecordCount": 0, "StartIndex": 0 })));
+    }
+    let mut q = normalize_query(&uri);
+    q.ids = Some(ids.iter().map(|i| item_guid(&state, *i)).collect::<Vec<_>>().join(","));
+    q.parent_id = None;
+    q.limit = None;
+    q.start_index = None;
+    q.recursive = Some(true);
+    query_items(&state, &user, q).await
+}
+
+async fn theme_media(State(state): State<Shared>, _u: AuthUser, Path(item): Path<String>) -> Json<Value> {
+    let empty = json!({ "Items": [], "TotalRecordCount": 0, "StartIndex": 0, "OwnerId": item });
+    let _ = &state;
+    Json(json!({ "ThemeVideosResult": empty, "ThemeSongsResult": empty, "SoundtrackSongsResult": empty }))
+}
+
+async fn localization_options() -> Json<Value> {
+    Json(json!([{ "Name": "Italiano", "Value": "it" }, { "Name": "English", "Value": "en-US" }]))
+}
+
+async fn localization_cultures() -> Json<Value> {
+    let c = |name: &str, two: &str, three: &str| json!({ "Name": name, "DisplayName": name, "TwoLetterISOLanguageName": two, "ThreeLetterISOLanguageName": three, "ThreeLetterISOLanguageNames": [three] });
+    Json(json!([
+        c("Italiano", "it", "ita"),
+        c("English", "en", "eng"),
+        c("Français", "fr", "fra"),
+        c("Deutsch", "de", "deu"),
+        c("Español", "es", "spa"),
+        c("Português", "pt", "por"),
+        c("日本語", "ja", "jpn")
+    ]))
+}
+
+async fn localization_countries() -> Json<Value> {
+    let c = |name: &str, two: &str, three: &str| json!({ "Name": two, "DisplayName": name, "TwoLetterISORegionName": two, "ThreeLetterISORegionName": three });
+    Json(json!([
+        c("Italia", "IT", "ITA"),
+        c("United States", "US", "USA"),
+        c("United Kingdom", "GB", "GBR"),
+        c("France", "FR", "FRA"),
+        c("Deutschland", "DE", "DEU"),
+        c("España", "ES", "ESP")
+    ]))
+}
+
+/// Dati di visione di un elemento (UserItemDataDto).
+async fn user_data_dto(state: &Shared, user: &AuthUser, item: &str) -> ApiResult<Value> {
+    let id = item_id(state, item)?;
+    let d = detail_dto(state, user, id).await?;
+    Ok(d.get("UserData")
+        .cloned()
+        .unwrap_or_else(|| json!({ "PlaybackPositionTicks": 0, "PlayCount": 0, "IsFavorite": false, "Played": false, "Key": item, "ItemId": item })))
+}
+
+async fn user_data(State(state): State<Shared>, user: AuthUser, Path(item): Path<String>) -> ApiResult<Json<Value>> {
+    Ok(Json(user_data_dto(&state, &user, &item).await?))
+}
+
+async fn user_data_u(State(state): State<Shared>, user: AuthUser, Path((_u, item)): Path<(String, String)>) -> ApiResult<Json<Value>> {
+    Ok(Json(user_data_dto(&state, &user, &item).await?))
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default, rename_all = "PascalCase")]
+struct UserDataUpdate {
+    played: Option<bool>,
+    is_favorite: Option<bool>,
+}
+
+async fn apply_user_data(state: &Shared, user: &AuthUser, item: &str, u: &UserDataUpdate) -> ApiResult<Json<Value>> {
+    if let Some(p) = u.played {
+        let _ = set_flag(state, user, item, "played", p).await?;
+    }
+    if let Some(f) = u.is_favorite {
+        let _ = set_flag(state, user, item, "favorite", f).await?;
+    }
+    Ok(Json(user_data_dto(state, user, item).await?))
+}
+
+async fn user_data_update(State(state): State<Shared>, user: AuthUser, Path(item): Path<String>, Json(u): Json<UserDataUpdate>) -> ApiResult<Json<Value>> {
+    apply_user_data(&state, &user, &item, &u).await
+}
+
+async fn user_data_update_u(
+    State(state): State<Shared>,
+    user: AuthUser,
+    Path((_x, item)): Path<(String, String)>,
+    Json(u): Json<UserDataUpdate>,
+) -> ApiResult<Json<Value>> {
+    apply_user_data(&state, &user, &item, &u).await
 }
