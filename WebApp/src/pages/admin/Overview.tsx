@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { JobProgress } from "../../components/JobProgress";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronUp, Square, MessageSquare, Play as PlayIcon, Pause as PauseIcon } from "lucide-react";
@@ -149,6 +150,7 @@ export default function Overview() {
         <div className="stat"><span className="pl-eyebrow">{t("admin.overview.memory")}</span><span className="t-numeral">{bytes(s.memory_rss_bytes)}</span><span className="t-small subtle">{t("admin.overview.load", { load: s.load_1m != null ? num(s.load_1m, 2) : "—", cpus: s.cpus })} · {t("admin.overview.uptime", { time: duration(s.uptime_ms) })}</span></div>
         <div className="stat"><span className="pl-eyebrow">{t("admin.overview.library")}</span><span className="t-numeral">{num(data.library.files)}</span><span className="t-small subtle">{t("admin.overview.librarySplit", { m: data.library.movies, s: data.library.series, e: data.library.episodes })}</span>{data.library.review > 0 && <Link to="/admin/review" className="t-small">{t("admin.overview.toReview", { count: data.library.review })}</Link>}</div>
       </div>
+      <section><JobProgress hideEmpty /></section>
       <section>
         <div className="pl-panel">
           <div className="panel-head"><span className="pl-eyebrow">{t("admin.overview.active")}</span></div>

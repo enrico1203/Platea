@@ -385,6 +385,20 @@ const en = {
     componentsText: "FFmpeg (jellyfin-ffmpeg) for analysis and transcoding, SQLite, React, hls.js, Lucide icons, Geist font (SIL OFL).",
   },
   admin: {
+    progress: {
+      title: "Progress",
+      eta: "about {time}",
+      etaUnknown: "estimating",
+      paused: "queue paused",
+      dirs: "{done} of {total} folders",
+      dirsFirst: "{done} folders read, first scan: total not known yet",
+      saving: "saving results",
+      items: "{done} of {total}",
+      rate: "{n} per minute",
+      days: "{d} d {h} h",
+      none: "No jobs running.",
+      noLibrary: "General",
+    },
     overview: {
       title: "Overview",
       streams: "Streams",

@@ -98,3 +98,9 @@ export interface UserPrefs {
   max_bitrate_local: number; max_bitrate_remote: number;
 }
 export interface PersonDetail { id: string; name: string; image: string | null; tmdb_id: number | null; items: (Item & { roles: { role: string; character: string | null }[] })[] }
+
+export interface JobProgress {
+  scans: { library_id: string; library: string | null; dirs: number; expected_dirs: number | null; percent: number | null; saving: boolean; started_at: number; eta_ms: number | null }[];
+  queues: { kind: string; library_id: string | null; library: string | null; queued: number; running: number; done: number; total: number; percent: number; per_minute: number; eta_ms: number | null }[];
+  paused_until: number | null;
+}

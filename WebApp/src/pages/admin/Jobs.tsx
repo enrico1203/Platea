@@ -6,6 +6,7 @@ import { api } from "../../api/client";
 import type { Job } from "../../api/types";
 import { Alert, Badge, Dialog, Empty, TextField } from "../../components/ui";
 import { useI18n, type MessageKey } from "../../i18n";
+import { JobProgress } from "../../components/JobProgress";
 
 const STATES = ["queued", "running", "failed", "done", "all"] as const;
 
@@ -31,6 +32,7 @@ export default function Jobs() {
         </div>
       </div>
       {paused && <PausedBanner until={paused} onResume={resume} />}
+      <JobProgress />
       {pauseOpen && <PauseDialog onClose={() => setPauseOpen(false)} onDone={() => qc.invalidateQueries({ queryKey: ["admin", "jobs"] })} />}
       <div className="tabs" role="tablist">
         {STATES.map((s) => (

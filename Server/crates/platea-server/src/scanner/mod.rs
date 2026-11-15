@@ -13,6 +13,7 @@ use anyhow::Context;
 use platea_naming as naming;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, UNIX_EPOCH};
 
 #[derive(Debug, Clone)]
@@ -52,10 +53,71 @@ pub struct ScanStats {
     pub held: usize,
 }
 
+/// Scansioni in corso, per la percentuale e la stima nella dashboard. Ogni voce sparisce quando la scansione
+/// finisce (anche con un errore): la tiene viva la guardia restituita da `start`.
+pub mod progress {
+    use std::collections::HashMap;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
+
+    pub struct Scan {
+        pub library_id: i64,
+        pub started_ms: i64,
+        pub expected_dirs: Option<i64>,
+        pub dirs: AtomicUsize,
+        saving: AtomicBool,
+    }
+
+    impl Scan {
+        pub fn set_saving(&self, v: bool) {
+            self.saving.store(v, Ordering::Relaxed);
+        }
+        pub fn saving(&self) -> bool {
+            self.saving.load(Ordering::Relaxed)
+        }
+    }
+
+    static SCANS: once_cell::sync::Lazy<Mutex<HashMap<i64, Arc<Scan>>>> = once_cell::sync::Lazy::new(Default::default);
+
+    pub struct Guard(Arc<Scan>);
+
+    impl std::ops::Deref for Guard {
+        type Target = Arc<Scan>;
+        fn deref(&self) -> &Arc<Scan> {
+            &self.0
+        }
+    }
+
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            let mut m = SCANS.lock().unwrap();
+            if m.get(&self.0.library_id).is_some_and(|s| Arc::ptr_eq(s, &self.0)) {
+                m.remove(&self.0.library_id);
+            }
+        }
+    }
+
+    pub fn start(library_id: i64, expected_dirs: Option<i64>) -> Guard {
+        let s = Arc::new(Scan { library_id, started_ms: crate::util::now_ms(), expected_dirs, dirs: AtomicUsize::new(0), saving: AtomicBool::new(false) });
+        SCANS.lock().unwrap().insert(library_id, s.clone());
+        Guard(s)
+    }
+
+    pub fn snapshot() -> Vec<Arc<Scan>> {
+        SCANS.lock().unwrap().values().cloned().collect()
+    }
+}
+
 /// Elenco ricorsivo con `workers` thread bloccanti, un livello di cartelle alla volta.
 /// Usa solo `read_dir` e `metadata` (stat): nessun file aperto. Sui mount cloud ogni cartella
 /// non in cache costa una richiesta al provider: leggerne diverse insieme divide il tempo.
+#[cfg(test)]
 pub fn list_tree(root: &Path, start_rel: &str, workers: usize) -> Listing {
+    list_tree_counted(root, start_rel, workers, &AtomicUsize::new(0))
+}
+
+/// Come `list_tree`, contando in `counter` le cartelle lette man mano (avanzamento della scansione).
+pub fn list_tree_counted(root: &Path, start_rel: &str, workers: usize, counter: &AtomicUsize) -> Listing {
     let mut out = Listing::default();
     let mut frontier: Vec<String> = vec![start_rel.trim_matches('/').to_string()];
     let workers = workers.clamp(1, 64);
@@ -72,6 +134,7 @@ pub fn list_tree(root: &Path, start_rel: &str, workers: usize) -> Listing {
                             let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                             let Some(rel_dir) = frontier.get(i) else { break };
                             list_dir(root, rel_dir, &mut l, &mut sub);
+                            counter.fetch_add(1, Ordering::Relaxed);
                         }
                         (l, sub)
                     })
@@ -216,6 +279,12 @@ pub async fn scan_library(state: &Shared, library_id: i64, subpath: Option<Strin
     let settings = state.settings.get();
     let fs_timeout = Duration::from_secs(settings.scanner.fs_timeout_seconds.max(2) as u64);
     let t0 = std::time::Instant::now();
+    let expected: Option<i64> = if subpath.is_none() {
+        sqlx::query_scalar("SELECT last_scan_dirs FROM libraries WHERE id = ?").bind(library_id).fetch_one(&state.db.read).await?
+    } else {
+        None
+    };
+    let progress = progress::start(library_id, expected.filter(|n| *n > 0));
     state.events.admin("scan.started", serde_json::json!({ "library_id": state.ids.encode(library_id), "name": lib_name }));
 
     let mut total = ScanStats::default();
@@ -250,12 +319,15 @@ pub async fn scan_library(state: &Shared, library_id: i64, subpath: Option<Strin
 
         let rp = root_path.clone();
         let sr = start_rel.clone();
+        let counter = progress.clone();
+        progress.set_saving(false);
         // L'elenco gira su un thread bloccante: un mount lento consuma quel thread, non il runtime.
         let workers = if profile == "remote" { settings.scanner.list_concurrency_remote } else { settings.scanner.list_concurrency_local } as usize;
-        let listing = tokio::task::spawn_blocking(move || list_tree(&rp, &sr, workers)).await.context("elenco delle cartelle")?;
+        let listing = tokio::task::spawn_blocking(move || list_tree_counted(&rp, &sr, workers, &counter.dirs)).await.context("elenco delle cartelle")?;
         if !listing.errors.is_empty() {
             tracing::warn!(library = %lib_name, errors = listing.errors.len(), first = %listing.errors[0], "cartelle non leggibili durante l'elenco");
         }
+        progress.set_saving(true);
         let stats = apply_listing(state, library_id, &kind, path_id, &root_path, &start_rel, listing).await?;
         total.listed += stats.listed;
         total.added += stats.added;
@@ -316,6 +388,14 @@ pub async fn scan_library(state: &Shared, library_id: i64, subpath: Option<Strin
                 serde_json::json!({ "library": lib_name, "status": status, "message": message }),
             );
         }
+    }
+    // Il totale atteso per la prossima volta: solo da una scansione completa e senza problemi.
+    if subpath.is_none() && problems.is_empty() {
+        sqlx::query("UPDATE libraries SET last_scan_dirs = ? WHERE id = ?")
+            .bind(progress.dirs.load(Ordering::Relaxed) as i64)
+            .bind(library_id)
+            .execute(&state.db.write)
+            .await?;
     }
     // La conferma vale per una sola scansione completa.
     sqlx::query("UPDATE libraries SET last_scan_at = ?, last_scan_status = ?, last_scan_message = ?, missing_held = ?, confirm_missing = CASE WHEN ? THEN confirm_missing ELSE 0 END WHERE id = ?")

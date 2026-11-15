@@ -29,6 +29,13 @@ pub fn routes(api: Api) -> Api {
             session_command,
         )
         .get("/api/v1/admin/jobs", "Amministrazione", Access::Admin, "Coda e cronologia dei lavori", jobs)
+        .get(
+            "/api/v1/admin/jobs/progress",
+            "Amministrazione",
+            Access::Admin,
+            "Avanzamento dei lavori: percentuale e tempo stimato per tipo e libreria",
+            jobs_progress,
+        )
         .post("/api/v1/admin/jobs/{id}/retry", "Amministrazione", Access::Admin, "Nuovo tentativo di un lavoro non riuscito", retry_job)
         .delete("/api/v1/admin/jobs/failed", "Amministrazione", Access::Admin, "Svuota l'elenco dei lavori non riusciti", clear_failed)
         .get("/api/v1/admin/settings", "Impostazioni", Access::Admin, "Schema e valori di tutte le impostazioni", settings_get)
@@ -751,4 +758,75 @@ pub async fn restore_upload(State(state): State<Shared>, AdminUser(admin): Admin
         .await;
     crate::backup::restart_soon();
     Ok(Json(json!({ "restarting": true, "bytes": total })))
+}
+
+/// Finestra su cui si misura la velocità dei lavori per la stima del tempo.
+const RATE_WINDOW_MS: i64 = 15 * 60_000;
+
+/// Avanzamento per tipo di lavoro e libreria. Il "lotto" comincia col lavoro in attesa più vecchio: il totale è quanto
+/// è stato aggiunto da allora (fatti + da fare), la velocità quella degli ultimi 15 minuti. Le scansioni hanno un
+/// avanzamento proprio: cartelle lette su quelle dell'ultima scansione completa.
+async fn jobs_progress(State(state): State<Shared>, _a: AdminUser) -> ApiResult<Json<Value>> {
+    let now = now_ms();
+    let names: std::collections::HashMap<i64, String> =
+        sqlx::query_as::<_, (i64, String)>("SELECT id, name FROM libraries").fetch_all(&state.db.read).await?.into_iter().collect();
+    let pending: Vec<(String, Option<i64>, i64, i64, i64)> = sqlx::query_as(
+        "SELECT kind, library_id, SUM(state = 'queued'), SUM(state = 'running'), MIN(created_at) FROM jobs
+         WHERE state IN ('queued', 'running') AND kind NOT IN ('scan_library', 'cleanup_missing') GROUP BY kind, library_id",
+    )
+    .fetch_all(&state.db.read)
+    .await?;
+    let mut queues = Vec::new();
+    for (kind, lib, queued, running, since) in pending {
+        let (done, recent): (i64, i64) = sqlx::query_as(
+            "SELECT COUNT(*), COALESCE(SUM(finished_at >= ?4), 0) FROM jobs
+             WHERE state IN ('done', 'failed') AND kind = ?1 AND library_id IS ?2 AND created_at >= ?3",
+        )
+        .bind(&kind)
+        .bind(lib)
+        .bind(since)
+        .bind(now - RATE_WINDOW_MS)
+        .fetch_one(&state.db.read)
+        .await?;
+        let remaining = queued + running;
+        let total = done + remaining;
+        // Velocità sugli ultimi 15 minuti, o da quando è cominciato il lotto se è più recente (almeno un minuto).
+        let window = (now - since).clamp(60_000, RATE_WINDOW_MS);
+        let per_min = recent as f64 * 60_000.0 / window as f64;
+        let eta_ms = (per_min > 0.0).then(|| (remaining as f64 / per_min * 60_000.0) as i64);
+        queues.push(json!({
+            "kind": kind,
+            "library_id": lib.map(|l| state.ids.encode(l)),
+            "library": lib.and_then(|l| names.get(&l).cloned()),
+            "queued": queued,
+            "running": running,
+            "done": done,
+            "total": total,
+            "percent": if total > 0 { done as f64 * 100.0 / total as f64 } else { 0.0 },
+            "per_minute": per_min,
+            "eta_ms": eta_ms,
+        }));
+    }
+    queues.sort_by_key(|q| std::cmp::Reverse(q["queued"].as_i64().unwrap_or(0) + q["running"].as_i64().unwrap_or(0)));
+    let scans: Vec<Value> = crate::scanner::progress::snapshot()
+        .into_iter()
+        .map(|s| {
+            let dirs = s.dirs.load(std::sync::atomic::Ordering::Relaxed) as i64;
+            let elapsed = now - s.started_ms;
+            // Più cartelle del previsto (ne sono state aggiunte): la percentuale si ferma al 99 finché non finisce.
+            let percent = s.expected_dirs.map(|e| (dirs as f64 * 100.0 / e as f64).min(99.0));
+            let eta_ms = s.expected_dirs.filter(|e| dirs > 0 && *e > dirs && !s.saving()).map(|e| elapsed * (e - dirs) / dirs);
+            json!({
+                "library_id": state.ids.encode(s.library_id),
+                "library": names.get(&s.library_id).cloned(),
+                "dirs": dirs,
+                "expected_dirs": s.expected_dirs,
+                "percent": percent,
+                "saving": s.saving(),
+                "started_at": s.started_ms,
+                "eta_ms": eta_ms,
+            })
+        })
+        .collect();
+    Ok(Json(json!({ "scans": scans, "queues": queues, "paused_until": state.jobs.paused_until() })))
 }
