@@ -460,6 +460,9 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 - 2026-11-15 — Release v0.1.1 (prima con immagini native amd64+arm64; la build di v0.1.0 in emulazione è stata annullata, tag e release v0.1.0 restano senza immagine del server).
 - 2026-11-15 — File .strm (indirizzi http/https), riprodotti attraverso il server.
+- 2026-11-15 — Cambio di tipo di una libreria (film ↔ serie): prima veniva ignorato. Ora i titoli si cancellano e la
+  scansione li ricrea dagli stessi file, tenendo righe e analisi (`change_kind` in `api/libraries.rs`, file senza titolo
+  ricollegati in `scanner::apply_listing`). Avanzamento e visti dei vecchi titoli si perdono; la UI lo avvisa.
 
 - 2026-11-15 — Rilascio: build native amd64 e arm64 (niente emulazione), immagini unite per digest.
 

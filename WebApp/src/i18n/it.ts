@@ -131,6 +131,7 @@ const it = {
     movies: "Film",
     shows: "Serie TV",
     kind: "Tipo",
+    kindChange: "Cambiando tipo i titoli di questa libreria vengono ricreati dagli stessi file con una nuova scansione. Avanzamento, visti e preferiti dei titoli attuali si perdono; l'analisi dei file resta.",
     name: "Nome",
     countMovies: { one: "{count} film", other: "{count} film" },
     countShows: { one: "{count} serie", other: "{count} serie" },

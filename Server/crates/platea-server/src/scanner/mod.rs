@@ -185,6 +185,7 @@ struct DbFile {
     mtime: i64,
     state: String,
     item_id: Option<i64>,
+    extra_of: Option<i64>,
     has_nfo: i64,
 }
 
@@ -410,10 +411,11 @@ async fn apply_listing(state: &Shared, library_id: i64, kind: &str, path_id: i64
     let mut stats = ScanStats { listed: listing.videos.len(), dirs: listing.dirs, ..Default::default() };
     let in_scope = |rel: &str| start_rel.is_empty() || rel == start_rel || rel.starts_with(&format!("{start_rel}/"));
 
-    let db_files: Vec<DbFile> = sqlx::query_as("SELECT id, relative_path, size, mtime, state, item_id, has_nfo FROM media_files WHERE library_path_id = ?")
-        .bind(path_id)
-        .fetch_all(&state.db.read)
-        .await?;
+    let db_files: Vec<DbFile> =
+        sqlx::query_as("SELECT id, relative_path, size, mtime, state, item_id, extra_of, has_nfo FROM media_files WHERE library_path_id = ?")
+            .bind(path_id)
+            .fetch_all(&state.db.read)
+            .await?;
     let mut by_path: HashMap<String, DbFile> = db_files.into_iter().map(|f| (f.relative_path.clone(), f)).collect();
 
     let seen: HashSet<&str> = listing.videos.iter().map(|e| e.rel.as_str()).collect();
@@ -432,6 +434,8 @@ async fn apply_listing(state: &Shared, library_id: i64, kind: &str, path_id: i64
     let mut returned: Vec<i64> = Vec::new();
     // Extra nuovi (trailer locali, dietro le quinte…): si collegano al titolo della loro cartella dopo i file principali.
     let mut new_extras: Vec<(Entry, naming::ExtraInfo)> = Vec::new();
+    // File già noti ma senza titolo (la libreria ha cambiato tipo): si ricollegano tenendo riga e analisi.
+    let mut reuse: HashMap<String, i64> = HashMap::new();
     for e in &listing.videos {
         let extra = if naming::is_extra(&e.rel) {
             match naming::extra_info(&e.rel) {
@@ -443,6 +447,16 @@ async fn apply_listing(state: &Shared, library_id: i64, kind: &str, path_id: i64
             None
         };
         match by_path.get(&e.rel) {
+            Some(f) if f.item_id.is_none() && f.extra_of.is_none() => {
+                reuse.insert(e.rel.clone(), f.id);
+                if f.size != e.size || f.mtime != e.mtime {
+                    changed.push((f.id, e.clone()));
+                }
+                match extra {
+                    Some(x) => new_extras.push((e.clone(), x)),
+                    None => new_entries.push(e.clone()),
+                }
+            }
             Some(f) if f.size == e.size && f.mtime == e.mtime => {
                 if f.state == "missing" {
                     returned.push(f.id);
@@ -480,6 +494,23 @@ async fn apply_listing(state: &Shared, library_id: i64, kind: &str, path_id: i64
     for (_dir, entries) in dirs {
         let mut tx = state.db.write.begin().await?;
         for e in entries {
+            if let Some(fid) = reuse.get(&e.rel).copied() {
+                let ident_rel = hints.get(&e.rel).map(String::as_str).unwrap_or(&e.rel);
+                match identify(&mut tx, &mut idx, library_id, kind, ident_rel, now, &mut match_ids, &mut refresh_series).await? {
+                    Some((item_id, version)) => {
+                        sqlx::query("UPDATE media_files SET item_id = ?, version_label = ?, state = 'present', missing_since = NULL WHERE id = ?")
+                            .bind(item_id)
+                            .bind(version)
+                            .bind(fid)
+                            .execute(&mut *tx)
+                            .await?;
+                        touched_items.insert(item_id);
+                        stats.added += 1;
+                    }
+                    None => stats.unrecognized += 1,
+                }
+                continue;
+            }
             // Spostamento o rinomina: stessa dimensione e data di un file scomparso.
             if let Some(cands) = vanished.get_mut(&(e.size, e.mtime)) {
                 let file_name = e.rel.rsplit('/').next().unwrap_or("");
@@ -546,6 +577,16 @@ async fn apply_listing(state: &Shared, library_id: i64, kind: &str, path_id: i64
             // Nessun titolo ancora riconosciuto in quella cartella: si riprova alla prossima scansione.
             let Some((owner_kind, id, series)) = owner else { continue };
             let owner_id = if matches!(owner_kind.as_str(), "episode" | "season") { series.unwrap_or(id) } else { id };
+            if let Some(fid) = reuse.get(&e.rel) {
+                sqlx::query("UPDATE media_files SET extra_of = ?, extra_type = ?, state = 'present', missing_since = NULL WHERE id = ?")
+                    .bind(owner_id)
+                    .bind(x.kind)
+                    .bind(fid)
+                    .execute(&mut *tx)
+                    .await?;
+                stats.added += 1;
+                continue;
+            }
             let fid = sqlx::query(
                 "INSERT INTO media_files (item_id, library_path_id, relative_path, size, mtime, state, probe_state, added_at, extra_of, extra_type)
                  VALUES (NULL, ?, ?, ?, ?, 'present', 'pending', ?, ?, ?)",

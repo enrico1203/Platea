@@ -57,6 +57,7 @@ function LibraryDialog({ lib, onClose }: { lib: Library | null; onClose: () => v
         <TextField label={t("library.name")} value={name} onChange={(e) => setName(e.target.value)} />
         <SelectField label={t("library.kind")} value={kind} onChange={(v) => setKind(v as "movies" | "shows")} options={[{ value: "movies", label: t("library.movies") }, { value: "shows", label: t("library.shows") }]} />
       </div>
+      {lib && kind !== lib.kind && <Alert tone="warning">{t("library.kindChange")}</Alert>}
       <div className="stack" style={{ gap: 6 }}>
         <span className="pl-field__label">{t("admin.libraries.folders")}</span>
         {paths.map((p) => <div className="row" key={p}><span className="t-mono spacer">{p}</span><button className="icon-btn" onClick={() => setPaths(paths.filter((x) => x !== p))} aria-label={t("common.remove")}><X /></button></div>)}

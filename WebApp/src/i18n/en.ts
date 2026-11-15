@@ -130,6 +130,7 @@ const en = {
     movies: "Movies",
     shows: "TV shows",
     kind: "Type",
+    kindChange: "Changing the type rebuilds this library's titles from the same files with a new scan. Progress, watched state and favorites of the current titles are lost; file analysis is kept.",
     name: "Name",
     countMovies: { one: "{count} movie", other: "{count} movies" },
     countShows: { one: "{count} show", other: "{count} shows" },

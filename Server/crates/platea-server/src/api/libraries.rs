@@ -241,6 +241,9 @@ async fn apply_patch(state: &Shared, id: i64, p: LibPatch) -> ApiResult<()> {
     if let Some(n) = p.name.as_ref().map(|n| n.trim()).filter(|n| !n.is_empty()) {
         sqlx::query("UPDATE libraries SET name = ? WHERE id = ?").bind(n).bind(id).execute(&state.db.write).await?;
     }
+    if let Some(k) = p.kind.as_deref() {
+        change_kind(state, id, k).await?;
+    }
     if let Some(sp) = &p.scan_profile {
         if sp != "local" && sp != "remote" {
             return Err(ApiError::BadRequest("Profilo: local oppure remote".into()));
@@ -305,6 +308,38 @@ async fn apply_patch(state: &Shared, id: i64, p: LibPatch) -> ApiResult<()> {
     if p.scan_now == Some(true) {
         jobs::enqueue(state, JobKind::ScanLibrary { library_id: id, subpath: None }, priority::INTERACTIVE, Some(id)).await?;
     }
+    Ok(())
+}
+
+/// Cambio di tipo (film ↔ serie): i titoli riconosciuti col tipo sbagliato si cancellano e la scansione successiva
+/// li ricrea dagli stessi file. Le righe dei file restano, con l'analisi già fatta: non si rilegge nulla dal disco.
+async fn change_kind(state: &Shared, id: i64, kind: &str) -> ApiResult<()> {
+    if kind != "movies" && kind != "shows" {
+        return Err(ApiError::BadRequest("Tipo di libreria: movies oppure shows".into()));
+    }
+    let current: String = sqlx::query_scalar("SELECT kind FROM libraries WHERE id = ?")
+        .bind(id)
+        .fetch_optional(&state.db.read)
+        .await?
+        .ok_or_else(|| ApiError::not_found("Libreria"))?;
+    if current == kind {
+        return Ok(());
+    }
+    let mut tx = state.db.write.begin().await?;
+    sqlx::query("UPDATE libraries SET kind = ? WHERE id = ?").bind(kind).bind(id).execute(&mut *tx).await?;
+    // Lavori in coda sui titoli che stanno per sparire.
+    sqlx::query("DELETE FROM jobs WHERE state = 'queued' AND library_id = ? AND kind IN ('match_item', 'refresh_metadata', 'download_image')")
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+    // Le serie si portano dietro stagioni ed episodi; i file restano con item_id ed extra_of a NULL.
+    sqlx::query("DELETE FROM items WHERE library_id = ? AND kind IN ('series', 'movie')").bind(id).execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM items WHERE library_id = ? AND kind IN ('season', 'episode')").bind(id).execute(&mut *tx).await?;
+    crate::metadata::collections::prune(&mut tx).await.map_err(ApiError::Internal)?;
+    tx.commit().await?;
+    tracing::info!(library = id, from = %current, to = %kind, "tipo di libreria cambiato: titoli da ricreare");
+    jobs::enqueue(state, JobKind::ScanLibrary { library_id: id, subpath: None }, priority::INTERACTIVE, Some(id)).await?;
+    state.events.publish("library.updated", serde_json::json!({}));
     Ok(())
 }
 
