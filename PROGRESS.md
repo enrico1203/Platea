@@ -477,7 +477,7 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
-- 2026-11-15 — Versione nel codice 0.1.2 (era rimasta 0.1.0). Release v0.1.2 da fare (tag): `latest` avrà i nodi.
+- 2026-11-15 — Release v0.1.2 (nodi compresi): immagini 0.1.2, 0.1 e latest su ghcr.io (amd64 e arm64). Versione nel codice allineata (era rimasta 0.1.0).
 - 2026-11-15 — Nodi: transcodifica e copie delle cartelle su altre macchine, con bilanciamento e failover.
 - 2026-11-15 — Release v0.1.1 (prima con immagini native amd64+arm64; la build di v0.1.0 in emulazione è stata annullata, tag e release v0.1.0 restano senza immagine del server).
 - 2026-11-15 — File .strm (indirizzi http/https), riprodotti attraverso il server.
