@@ -193,6 +193,41 @@ struct RunInfo {
     exit_ok: Arc<AtomicBool>,
 }
 
+/// Accoda un frammento fMP4 di FFmpeg a un segmento della playlist tenendo solo `moof`/`mdat` (e lo `styp` del primo).
+///
+/// FFmpeg scrive ogni frammento con `styp` e un `sidx` per traccia che indicizzano solo quel frammento. Messi uno
+/// dopo l'altro, il primo `sidx` dichiara un segmento lungo un frammento: hls.js lo ignora, il player nativo di
+/// Safari (iPhone, iPad, Mac) no, vede un buco rispetto all'EXTINF e resta fermo sul nero. Un box troncato o
+/// illeggibile lascia il resto com'è.
+pub fn append_fragment(out: &mut Vec<u8>, frag: &[u8]) {
+    let first = out.is_empty();
+    let mut off = 0usize;
+    while off + 8 <= frag.len() {
+        let size32 = u32::from_be_bytes(frag[off..off + 4].try_into().unwrap()) as u64;
+        let kind = &frag[off + 4..off + 8];
+        let size = match size32 {
+            0 => (frag.len() - off) as u64,
+            1 if off + 16 <= frag.len() => u64::from_be_bytes(frag[off + 8..off + 16].try_into().unwrap()),
+            _ => size32,
+        };
+        if size < 8 || off as u64 + size > frag.len() as u64 {
+            out.extend_from_slice(&frag[off..]);
+            return;
+        }
+        let end = off + size as usize;
+        let keep = match kind {
+            b"sidx" => false,
+            b"styp" => first,
+            _ => true,
+        };
+        if keep {
+            out.extend_from_slice(&frag[off..end]);
+        }
+        off = end;
+    }
+    out.extend_from_slice(&frag[off..]);
+}
+
 /// Frammenti di una playlist fMP4 scritta da FFmpeg: (durata in ms, nome del file), in ordine.
 pub fn parse_fragment_list(text: &str) -> Vec<(f64, String)> {
     let mut out = Vec::new();
@@ -652,5 +687,29 @@ mod fmp4_tests {
         let g = assign_fragments(&cuts, 1, &frags[2..], true);
         assert_eq!(g[0].0, 1);
         assert_eq!(g[1].0, 2);
+    }
+
+    fn mp4_box(kind: &[u8; 4], body: &[u8]) -> Vec<u8> {
+        let mut b = ((body.len() + 8) as u32).to_be_bytes().to_vec();
+        b.extend_from_slice(kind);
+        b.extend_from_slice(body);
+        b
+    }
+
+    #[test]
+    fn fragments_joined_without_sidx() {
+        let frag = |n: u8| {
+            [mp4_box(b"styp", b"msdh"), mp4_box(b"sidx", &[n; 4]), mp4_box(b"sidx", &[n; 4]), mp4_box(b"moof", &[n; 3]), mp4_box(b"mdat", &[n; 5])].concat()
+        };
+        let mut out = Vec::new();
+        append_fragment(&mut out, &frag(1));
+        append_fragment(&mut out, &frag(2));
+        let want =
+            [mp4_box(b"styp", b"msdh"), mp4_box(b"moof", &[1; 3]), mp4_box(b"mdat", &[1; 5]), mp4_box(b"moof", &[2; 3]), mp4_box(b"mdat", &[2; 5])].concat();
+        assert_eq!(out, want);
+        // Box troncato: il resto si copia com'è, niente panico.
+        let mut out = Vec::new();
+        append_fragment(&mut out, &[0, 0, 0, 40, b'm', b'o', b'o', b'f', 1, 2]);
+        assert_eq!(out.len(), 10);
     }
 }

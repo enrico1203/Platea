@@ -727,10 +727,16 @@ async fn hls(State(state): State<Shared>, Path((id, name)): Path<(String, String
         }
         Err(e) => return Err(ApiError::coded(StatusCode::INTERNAL_SERVER_ERROR, "TranscodeFailed", e.to_string())),
     };
-    // fMP4: i frammenti del segmento uno dopo l'altro (più coppie moof/mdat sono un segmento valido).
+    // fMP4: i frammenti del segmento uno dopo l'altro (più coppie moof/mdat sono un segmento valido),
+    // senza i loro styp/sidx (vedi `append_fragment`).
     let mut bytes = Vec::new();
     for p in &paths {
-        bytes.extend(read_segment(p).await?);
+        let frag = read_segment(p).await?;
+        if rt.is_fmp4() {
+            crate::transcode::append_fragment(&mut bytes, &frag);
+        } else {
+            bytes.extend(frag);
+        }
     }
     s.bytes_sent.fetch_add(bytes.len() as u64, Ordering::Relaxed);
     let ct = if rt.is_fmp4() { "video/mp4" } else { "video/mp2t" };

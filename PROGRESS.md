@@ -42,6 +42,11 @@ Se la sessione si interrompe, alla ripresa ("continua") si riparte da qui: legge
   solo ≤900px); l'elenco delle sezioni è uno solo (`ADMIN_LINKS` in `Layout.tsx`) per menu laterale e barra.
   Il logo in alto mostra il nome del server (Impostazioni › Generali; col nome predefinito resta il wordmark
   `platea`), anche nel titolo della scheda; dopo il salvataggio si aggiorna subito (`refreshInfo` in `session.tsx`).
+  Safari su iPhone restava sul nero con l'HLS fMP4 (1917 4K HDR10, Spider-Man DOVI): ogni frammento di FFmpeg ha
+  styp + sidx propri e il primo sidx del segmento composto dichiarava un solo frammento (~1 s su ~6,6 s di EXTINF);
+  hls.js li ignora, il player nativo di Safari no. Ora il segmento ha un solo styp e poi solo moof/mdat
+  (`append_fragment` in `transcode/mod.rs`). Verificato su un server di prova con copia del DB: segmenti 0–2 continui
+  (19,4 s), salto al 600 con inizio esatto a 3620,909 s. Da confermare dall'utente su iPhone.
 - 15/11/2026 notte: Infuse completo (serie comprese: Fields in tutti gli elenchi), AirPlay e Google Cast nel player,
   pausa dei lavori, dispositivi per utente, soggetto leggibile dei lavori, manutenzione programmata del DB (PRAGMA
   optimize ogni ora, ANALYZE/WAL/VACUUM la notte), indice items(series_id), eventi raggruppati (client e server).
@@ -242,7 +247,7 @@ perché hls.js non legge HEVC in MPEG-TS. Ora:
 - Verificato: Goldfinger HEVC dal cloud → "HEVC copiato · AC3 5.1 → AAC", tfdt dei segmenti 0, 1, 150, 300, 301 uguali
   ai tempi previsti dalla playlist (es. 1436,352 s), segmento dopo un salto in 0,5–1,4 s. In Chrome (H.264 in fMP4, perché
   il Chrome di prova non ha HEVC): avvio, salti a 3000 s e 1200 s, riproduzione corretta, zero errori in console.
-  Da provare dall'utente: un browser con HEVC hardware (Safari, Chrome/Edge su Mac o Windows).
+  Da provare dall'utente: un browser con HEVC hardware (Safari, Chrome/Edge su Mac o Windows). Safari: vedi fix sidx del 15/11.
 
 ### Backup e ripristino (2026-11-14)
 
