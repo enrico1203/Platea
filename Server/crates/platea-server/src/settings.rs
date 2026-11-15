@@ -154,10 +154,12 @@ pub struct TranscodeSettings {
     /// Transcodifiche contemporanee su GPU.
     #[schemars(title = "Transcodifiche hardware contemporanee", range(min = 1, max = 64))]
     pub max_hw_transcodes: u32,
-    /// Transcodifiche contemporanee in software.
-    #[schemars(title = "Transcodifiche software contemporanee", range(min = 1, max = 32))]
+    /// Transcodifiche contemporanee in software. 0 = automatico: una per core logico (ogni sessione si ferma
+    /// quando è avanti di qualche minuto, quindi in media pesa quanto la visione in tempo reale).
+    #[schemars(title = "Transcodifiche software contemporanee", range(min = 0, max = 64))]
     pub max_sw_transcodes: u32,
-    /// Preset x264 per la codifica software.
+    /// Preset x264 per la codifica software. Più veloce = più transcodifiche insieme, a parità di qualità più
+    /// bitrate: su 8 core un 1080p va a circa 5× in veryfast, 8× in superfast, 13× in ultrafast (più sgranato).
     #[schemars(title = "Preset software")]
     pub sw_preset: String,
     /// Qualità costante (CRF) per la codifica software, con tetto di bitrate.
@@ -185,7 +187,7 @@ impl Default for TranscodeSettings {
             hw_backend: HwBackend::Auto,
             vaapi_device: "/dev/dri/renderD128".into(),
             max_hw_transcodes: 8,
-            max_sw_transcodes: 2,
+            max_sw_transcodes: 0,
             sw_preset: "veryfast".into(),
             sw_crf: 23,
             threads: 0,

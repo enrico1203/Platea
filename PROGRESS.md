@@ -46,7 +46,21 @@ Se la sessione si interrompe, alla ripresa ("continua") si riparte da qui: legge
   styp + sidx propri e il primo sidx del segmento composto dichiarava un solo frammento (~1 s su ~6,6 s di EXTINF);
   hls.js li ignora, il player nativo di Safari no. Ora il segmento ha un solo styp e poi solo moof/mdat
   (`append_fragment` in `transcode/mod.rs`). Verificato su un server di prova con copia del DB: segmenti 0–2 continui
-  (19,4 s), salto al 600 con inizio esatto a 3620,909 s. Da confermare dall'utente su iPhone.
+  (19,4 s), salto al 600 con inizio esatto a 3620,909 s.
+  **Ancora aperto:** su iPhone (iOS 18.7) la copia HEVC in HLS nativo NON parte: Safari chiede il segmento 0 in loop
+  (~5/s) per minuti, poi errore; il 4K HDR10 (HEVC Main 10 High tier) dà subito "error 3 Media failed to decode".
+  Tempi/box dei segmenti verificati coerenti (tfdt, elst, hvcC con VPS/SPS/PPS). Pronte 4 varianti di prova dello
+  stesso spezzone di 10 Lives (ffmpeg standard / copyts+frag_discont / composizione Platea / stereo) da far aprire
+  all'utente in Safari per isolare la causa (pubblicarle richiede il suo consenso).
+  Intanto: se l'HLS nativo non mostra fotogrammi entro 10 s dal play, il player passa alla transcodifica
+  (prima aspettava l'errore di Safari, ~3 min). Log HTTP dettagliato attivo (`PLATEA_LOG=info,tower_http=debug` in
+  .env): rimettere `info` a indagine finita.
+- 15/11/2026: transcodifica software più capiente. Misure su questa macchina (8 core), 30 s di film:
+  1080p HEVC → H.264 veryfast 4,8×, superfast 7,7×, ultrafast 13×; 1917 4K HDR10 → 1080p: catena zscale+tonemap a
+  piena risoluzione 1,5×, `tonemapx` di jellyfin-ffmpeg dopo lo scale 3,4× (decodifica 4K da sola 3,8×).
+  Ora: tonemapx dopo lo scale (zscale dopo lo scale se FFmpeg non è di Jellyfin), software al massimo 1080p,
+  `max_sw_transcodes` predefinito 0 = una per core (prima 2 fissi), suggerimenti su preset e limite nelle impostazioni,
+  ripiego dalla posizione realmente riprodotta (Safari dopo un errore riporta currentTime senza senso).
 - 15/11/2026 notte: Infuse completo (serie comprese: Fields in tutti gli elenchi), AirPlay e Google Cast nel player,
   pausa dei lavori, dispositivi per utente, soggetto leggibile dei lavori, manutenzione programmata del DB (PRAGMA
   optimize ogni ora, ANALYZE/WAL/VACUUM la notte), indice items(series_id), eventi raggruppati (client e server).

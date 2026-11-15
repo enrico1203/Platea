@@ -444,6 +444,7 @@ async fn info(State(state): State<Shared>, user: AuthUser, Json(req): Json<InfoR
             threads: ts.threads,
             sw_preset: ts.sw_preset.clone(),
             sw_crf: ts.sw_crf,
+            tonemapx: state.ffmpeg.get().is_jellyfin,
             // HEVC e AV1 copiati viaggiano solo in fMP4; H.264 e la transcodifica restano in MPEG-TS.
             fmp4: match &decision.video {
                 VideoAction::Copy => s.playback.fmp4_always || file.media.video.as_ref().is_some_and(|v| v.codec == "hevc" || v.codec == "av1"),

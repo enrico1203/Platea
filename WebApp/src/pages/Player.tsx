@@ -58,6 +58,8 @@ export default function Player() {
   // Ultima posizione davvero riprodotta: dopo un errore Safari riporta in currentTime valori senza senso
   // (es. 4008 s a un secondo dall'avvio), e il ripiego ripartirebbe da lì.
   const playedRef = useRef<number | null>(null);
+  // HLS nativo di Safari: se rifiuta i segmenti li richiede in loop per minuti prima di dare errore.
+  const stallRef = useRef<number | undefined>(undefined);
   const [playing, setPlaying] = useState(false);
   const [time, setTime] = useState(0);
   const [buffered, setBuffered] = useState(0);
@@ -105,6 +107,7 @@ export default function Player() {
     if (!video) return;
     hlsRef.current?.destroy();
     hlsRef.current = null;
+    window.clearTimeout(stallRef.current);
     video.removeAttribute("src");
     while (video.firstChild) video.removeChild(video.firstChild);
     // Sottotitoli di testo: consegnati a parte in WebVTT, il video non viene toccato.
@@ -156,6 +159,21 @@ export default function Player() {
       } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
         video.src = url;
         video.addEventListener("loadedmetadata", () => { if (startSec > 0) video.currentTime = startSec; }, { once: true });
+        // Nessun fotogramma entro 10 s dalla richiesta di play (non in pausa, nessun errore): copia rifiutata,
+        // si passa subito alla transcodifica. Con l'autoplay bloccato da iOS non scatta (niente evento play).
+        if (p.method !== "transcode") {
+          video.addEventListener("play", () => {
+            window.clearTimeout(stallRef.current);
+            stallRef.current = window.setTimeout(() => {
+              const v = videoRef.current;
+              if (!v || v.paused || v.error || playedRef.current != null || !fallbackRef.current) return;
+              const f = fallbackRef.current;
+              fallbackRef.current = null;
+              reportClientError(p.session_id, "HLS nativo fermo all'avvio: nessun fotogramma in 10 s");
+              f();
+            }, 10_000);
+          }, { once: true });
+        }
       } else {
         setError(t("player.errorNoHls"));
         return;
@@ -308,6 +326,7 @@ export default function Player() {
     start({ startMs: resume });
     return () => {
       stopSession(videoRef.current ? videoRef.current.currentTime * 1000 : undefined);
+      window.clearTimeout(stallRef.current);
       hlsRef.current?.destroy();
       hlsRef.current = null;
     };

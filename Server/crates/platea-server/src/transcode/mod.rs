@@ -27,8 +27,17 @@ pub struct TranscodeManager {
     failures: StdMutex<HashMap<Backend, u32>>,
 }
 
+/// Limite delle transcodifiche software: 0 = una per core logico.
+pub fn effective_sw_limit(setting: u32) -> u32 {
+    if setting > 0 {
+        return setting;
+    }
+    std::thread::available_parallelism().map(|n| n.get() as u32).unwrap_or(2).max(1)
+}
+
 impl TranscodeManager {
     pub fn new(max_hw: u32, max_sw: u32) -> Self {
+        let max_sw = effective_sw_limit(max_sw);
         TranscodeManager {
             caps: RwLock::new(hw::Capabilities::default()),
             hw_slots: RwLock::new(Arc::new(Semaphore::new(max_hw as usize))),
@@ -41,6 +50,7 @@ impl TranscodeManager {
 
     /// Applica a caldo i limiti dalle impostazioni.
     pub fn apply_limits(&self, max_hw: u32, max_sw: u32) {
+        let max_sw = effective_sw_limit(max_sw);
         if self.hw_limit.swap(max_hw as i64, Ordering::SeqCst) != max_hw as i64 {
             *self.hw_slots.write().unwrap() = Arc::new(Semaphore::new(max_hw.max(1) as usize));
         }
