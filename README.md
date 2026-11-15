@@ -155,10 +155,13 @@ Metadati locali, letti una volta e mai scritti:
 | WebApp Platea | Qualunque browser: computer, tablet, telefono (installabile come app web) | OK |
 | Infuse | iPhone, iPad, Apple TV, Mac (collegamento come server Jellyfin) | OK (provato su iPhone con Infuse 8.5, anche dal tunnel Cloudflare) |
 | Swiftfin | iPhone, iPad, Apple TV (app Jellyfin ufficiale) | OK (provato su iPhone con Swiftfin 1.7, dal tunnel Cloudflare: accesso, home, Media, riproduzione) |
+| App ufficiale "Jellyfin" (iOS, Android, desktop) | — | Non supportata: è un contenitore dell'interfaccia web di Jellyfin, che Platea non include. Usare Swiftfin, Infuse o la WebApp |
 | App Android nativa | Telefoni, tablet, Android TV, Fire TV con Fire OS | TODO (fase 6) |
 | App iOS nativa | iPhone, iPad, Mac | TODO (fase 6) |
 
 Infuse e Swiftfin si collegano come a un server Jellyfin: indirizzo del server sulla porta 8096 (o il nome del tunnel che punta lì), utente e password di Platea. Platea si presenta come Jellyfin 12.1 ed espone la parte dell'API Jellyfin che serve alle app: login (anche Quick Connect), librerie, elenchi, dettagli, immagini, ricerca, stato di visione, stream del file originale con Range, rapporti di riproduzione, WebSocket. Infuse riproduce sempre il file originale; per le altre app Platea legge il profilo del dispositivo e, se serve, fa remux o transcodifica in HLS. Le riproduzioni compaiono in Panoramica.
+
+L'app ufficiale "Jellyfin" (e Jellyfin Media Player sul computer) non funziona: non disegna le pagine da sé ma apre l'interfaccia web di Jellyfin servita dal server a `/web/`, che Platea non contiene, e si ferma con «Il server Jellyfin ha restituito un errore» (codice 404). Funzionano invece le app che usano solo l'API: Swiftfin, Infuse.
 
 ## Lingue
 
