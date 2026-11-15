@@ -2,11 +2,11 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../../api/client";
-import { Alert, SelectField, Switch, TextField, toast } from "../../components/ui";
+import { Alert, SelectField, Switch, TextField, toast, TextAreaField } from "../../components/ui";
 import { useI18n, type MessageKey } from "../../i18n";
 import { useSession } from "../../session";
 
-type Schema = { title?: string; description?: string; type?: string | string[]; enum?: string[]; items?: Schema; minimum?: number; maximum?: number; format?: string; $ref?: string; allOf?: Schema[]; writeOnly?: boolean; "x-restart"?: boolean; properties?: Record<string, Schema>; definitions?: Record<string, Schema> };
+type Schema = { title?: string; description?: string; type?: string | string[]; enum?: string[]; items?: Schema; minimum?: number; maximum?: number; format?: string; $ref?: string; allOf?: Schema[]; writeOnly?: boolean; "x-restart"?: boolean; "x-multiline"?: boolean; properties?: Record<string, Schema>; definitions?: Record<string, Schema> };
 interface SettingsData { schema: Record<string, Schema>; values: Record<string, Record<string, unknown>>; groups: string[] }
 
 function resolve(s: Schema, root: Schema): Schema {
@@ -76,6 +76,9 @@ function GroupForm({ group, schema, values, onSaved }: { group: string; schema: 
         if (type === "array") {
           const arr = (val(field) as string[] | undefined) ?? [];
           return <TextField key={field} label={label(field, s)} mono value={field in draft ? String(draft[field + "__raw"] ?? arr.join(", ")) : arr.join(", ")} onChange={(e) => setDraft({ ...draft, [field]: e.target.value.split(",").map((x) => x.trim()).filter(Boolean), [field + "__raw"]: e.target.value })} hint={(hint(field, s) ?? "") + ` · ${t("admin.settings.commaHint")}`} />;
+        }
+        if (s["x-multiline"]) {
+          return <TextAreaField key={field} label={label(field, s)} mono={field.includes("css")} value={String(val(field) ?? "")} onChange={(e) => set(field, e.target.value)} hint={hint(field, s)} spellCheck={!field.includes("css")} />;
         }
         if (type === "integer" || type === "number") {
           return <TextField key={field} label={label(field, s)} mono inputMode="decimal" value={String(val(field) ?? "")} onChange={(e) => set(field, e.target.value === "" ? null : Number(e.target.value.replace(",", ".")))} hint={[hint(field, s), s.minimum != null && s.maximum != null ? `${s.minimum}–${s.maximum}` : null].filter(Boolean).join(" · ") + restart} />;

@@ -39,6 +39,12 @@ pub struct GeneralSettings {
     /// riattiva (0 = mai). Gli amministratori non si bloccano: restano solo rallentati.
     #[schemars(title = "Blocco dopo tentativi falliti", range(min = 0, max = 100))]
     pub lockout_after_failures: u32,
+    /// Testo mostrato sopra il modulo di accesso (avvisi, contatti). Testo semplice.
+    #[schemars(title = "Messaggio nella pagina di accesso")]
+    pub login_message: String,
+    /// CSS aggiunto alla web UI per tutti gli utenti.
+    #[schemars(title = "CSS personalizzato")]
+    pub custom_css: String,
 }
 
 impl Default for GeneralSettings {
@@ -52,6 +58,8 @@ impl Default for GeneralSettings {
             maintenance_hour: 4,
             quick_connect: true,
             lockout_after_failures: 0,
+            login_message: String::new(),
+            custom_css: String::new(),
         }
     }
 }
@@ -346,6 +354,9 @@ pub const SECRET_FIELDS: &[(&str, &str)] = &[("metadata", "tmdb_api_key")];
 /// Campi che richiedono un riavvio.
 pub const RESTART_FIELDS: &[(&str, &str)] = &[];
 
+/// Campi di testo lunghi: nella dashboard diventano aree di testo.
+pub const MULTILINE_FIELDS: &[(&str, &str)] = &[("general", "login_message"), ("general", "custom_css")];
+
 #[derive(Debug, Clone, Default)]
 pub struct AllSettings {
     pub general: GeneralSettings,
@@ -404,6 +415,11 @@ impl Settings {
         for (grp, field) in RESTART_FIELDS {
             if let Some(p) = out.get_mut(*grp).and_then(|s| s.pointer_mut(&format!("/properties/{field}"))) {
                 p["x-restart"] = Value::Bool(true);
+            }
+        }
+        for (grp, field) in MULTILINE_FIELDS {
+            if let Some(p) = out.get_mut(*grp).and_then(|s| s.pointer_mut(&format!("/properties/{field}"))) {
+                p["x-multiline"] = Value::Bool(true);
             }
         }
         Value::Object(out)
@@ -526,6 +542,12 @@ fn validate(s: &AllSettings) -> Result<(), String> {
         return Err("La soglia di associazione deve stare tra 0,5 e 1".into());
     }
     // max_sw_transcodes / max_hw_transcodes: 0 = illimitate, ogni valore è valido.
+    if s.general.login_message.chars().count() > 2000 {
+        return Err("Il messaggio della pagina di accesso può avere al massimo 2000 caratteri".into());
+    }
+    if s.general.custom_css.len() > 64 * 1024 {
+        return Err("Il CSS personalizzato può essere al massimo di 64 KB".into());
+    }
     if s.general.min_password_length < 4 {
         return Err("La lunghezza minima della password è 4".into());
     }

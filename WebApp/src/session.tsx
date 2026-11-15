@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { api, deviceId, deviceName, getToken, onUnauthorized, setToken } from "./api/client";
+import { api, deviceId, deviceName, getToken, onUnauthorized, setToken, serverUrl } from "./api/client";
 import { connectEvents, disconnectEvents, subscribe } from "./api/events";
 import type { Me, SystemInfo } from "./api/types";
 
@@ -48,6 +48,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     }
   }, []);
+
+  // CSS personalizzato dell'amministratore (Impostazioni › Generali): un <link> che cambia con la sua versione.
+  useEffect(() => {
+    const id = "platea-custom-css";
+    document.getElementById(id)?.remove();
+    if (!info?.custom_css) return;
+    const l = document.createElement("link");
+    l.id = id;
+    l.rel = "stylesheet";
+    l.href = `${serverUrl()}/api/v1/system/custom.css?v=${info.custom_css}`;
+    document.head.appendChild(l);
+  }, [info?.custom_css]);
 
   const refreshInfo = useCallback(async () => {
     try { setInfo(await api<SystemInfo>("/api/v1/system/info")); } catch { /* resta il nome precedente */ }

@@ -7,13 +7,19 @@ use axum::Json;
 use serde_json::{json, Value};
 
 pub fn routes(api: Api) -> Api {
-    api.get("/api/v1/system/info", "Sistema", Access::Public, "Nome, identificativo e versione del server; stato della configurazione iniziale", info).get(
-        "/api/v1/health",
-        "Sistema",
-        Access::Public,
-        "Stato di salute",
-        health,
-    )
+    api.get("/api/v1/system/info", "Sistema", Access::Public, "Nome, identificativo e versione del server; stato della configurazione iniziale", info)
+        .get("/api/v1/health", "Sistema", Access::Public, "Stato di salute", health)
+        .get("/api/v1/system/custom.css", "Sistema", Access::Public, "CSS personalizzato della web UI (Impostazioni › Generali)", custom_css)
+}
+
+async fn custom_css(State(state): State<Shared>) -> axum::response::Response {
+    let css = state.settings.get().general.custom_css.clone();
+    axum::response::Response::builder()
+        .header(axum::http::header::CONTENT_TYPE, "text/css; charset=utf-8")
+        .header(axum::http::header::CACHE_CONTROL, "public, max-age=86400")
+        .header("X-Content-Type-Options", "nosniff")
+        .body(axum::body::Body::from(css))
+        .unwrap()
 }
 
 async fn info(State(state): State<Shared>) -> Json<Value> {
@@ -27,6 +33,9 @@ async fn info(State(state): State<Shared>) -> Json<Value> {
         "api": "v1",
         "setup_required": setup_required,
         "quick_connect": s.general.quick_connect,
+        "login_message": Some(s.general.login_message.trim()).filter(|m| !m.is_empty()),
+        // Versione del CSS personalizzato (per la cache del browser); null = nessuno.
+        "custom_css": Some(&s.general.custom_css).filter(|c| !c.trim().is_empty()).map(|c| crate::util::sha256_hex(c)[..12].to_string()),
     }))
 }
 

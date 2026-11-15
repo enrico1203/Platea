@@ -45,6 +45,7 @@ export default function Login() {
         }}
       >
         <div className="row"><Mark size={40} /><div><div className="t-h2">{info?.name ?? "Platea"}</div><div className="t-small subtle">Open source media server</div></div></div>
+        {info?.login_message && <div className="login-message">{info.login_message}</div>}
         {error && <Alert tone="danger">{error}</Alert>}
         <TextField label={t("auth.username")} autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} autoFocus required />
         <TextField label={t("auth.password")} type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />

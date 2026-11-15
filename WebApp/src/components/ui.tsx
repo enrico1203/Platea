@@ -1,4 +1,5 @@
 import { createPortal } from "react-dom";
+import type React from "react";
 import { useEffect, useId, useRef, useState, type InputHTMLAttributes, type ReactNode } from "react";
 import { X, Check, AlertTriangle, Info, CircleAlert } from "lucide-react";
 import { Mark } from "./Logo";
@@ -34,6 +35,20 @@ export function TextField({ label, hint, error, mono, icon, ...rest }: FieldProp
         <input id={id} {...rest} />
       </span>
       {(error || hint) && <span className="pl-field__hint">{error || hint}</span>}
+    </label>
+  );
+}
+
+/** Area di testo con lo stile dei campi (testo lungo: messaggi, CSS). */
+export function TextAreaField({ label, hint, mono, ...rest }: { label: string; hint?: ReactNode; mono?: boolean } & React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  const id = useId();
+  return (
+    <label className="pl-field" htmlFor={id}>
+      <span className="pl-field__label">{label}</span>
+      <span className={`pl-field__control pl-field__control--area${mono ? " is-mono" : ""}`}>
+        <textarea id={id} rows={5} {...rest} />
+      </span>
+      {hint && <span className="pl-field__hint">{hint}</span>}
     </label>
   );
 }

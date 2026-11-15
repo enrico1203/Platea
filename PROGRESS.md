@@ -350,6 +350,9 @@ restano 321 "da verificare" e 328 non riconosciuti (da vedere a mano dall'utente
    data passata non coperti da file (anche multi-episodio), speciali esclusi; API `/items/{id}/missing` (serie o
    stagione); nella lista della stagione al loro posto, in grigio con "Mancante". Si aggiornano a ogni rinnovo della
    serie (anche quando arriva un episodio nuovo). Provato sulla copia: 9-1-1 S9 → episodi 5 e 6.
+4g. [x] Messaggio nella pagina di accesso (testo semplice, ≤ 2000 caratteri) e CSS personalizzato (≤ 64 KB, servito da
+   `/api/v1/system/custom.css`, versione nel system/info per la cache): campi multilinea nello schema
+   (`MULTILINE_FIELDS` → `x-multiline` → `TextAreaField`). Provato nel browser sulla copia.
 5. Fase 3: QSV/VA-API/NVENC/AMD, tone mapping in GPU, uscita HEVC/AV1 su hardware reale (qui non c'è GPU).
 6. Fase 5 (rilascio). [x] Revisione di sicurezza interna (15/11/2026), corretti:
    - download delle immagini: la risposta era letta tutta prima del controllo di dimensione (una risposta senza fine
