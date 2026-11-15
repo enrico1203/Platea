@@ -87,6 +87,8 @@ struct StreamRow {
 pub struct FileInfo {
     pub id: i64,
     pub abs: PathBuf,
+    /// Indirizzo http(s) di un file `.strm`: FFmpeg legge da lì, direct play e download rimandano lì.
+    pub url: Option<String>,
     pub root: PathBuf,
     pub size: i64,
     pub mtime: i64,
@@ -94,16 +96,23 @@ pub struct FileInfo {
     pub streams: Vec<(i64, String, Option<String>, Option<String>, bool, Option<String>, bool, bool)>,
 }
 
+impl FileInfo {
+    /// Ingresso per FFmpeg: il file, oppure l'indirizzo del `.strm`.
+    pub fn input(&self) -> PathBuf {
+        self.url.as_ref().map(PathBuf::from).unwrap_or_else(|| self.abs.clone())
+    }
+}
+
 /// Dati tecnici di un file dal database: lo storage non viene toccato.
 pub async fn load_file(state: &Shared, file_id: i64) -> ApiResult<FileInfo> {
-    let row: Option<(String, String, i64, i64, Option<String>, Option<i64>, Option<i64>, String)> = sqlx::query_as(
-        "SELECT p.path, f.relative_path, f.size, f.mtime, f.container, f.bitrate, f.duration_ms, f.state FROM media_files f
+    let row: Option<(String, String, i64, i64, Option<String>, Option<i64>, Option<i64>, String, Option<String>)> = sqlx::query_as(
+        "SELECT p.path, f.relative_path, f.size, f.mtime, f.container, f.bitrate, f.duration_ms, f.state, f.stream_url FROM media_files f
          JOIN library_paths p ON p.id = f.library_path_id WHERE f.id = ?",
     )
     .bind(file_id)
     .fetch_optional(&state.db.read)
     .await?;
-    let Some((root, rel, size, mtime, container, bitrate, duration, st)) = row else { return Err(ApiError::not_found("File")) };
+    let Some((root, rel, size, mtime, container, bitrate, duration, st, url)) = row else { return Err(ApiError::not_found("File")) };
     if st != "present" {
         return Err(ApiError::coded(StatusCode::CONFLICT, "FileMissing", "Il file non è disponibile: il mount potrebbe essere assente"));
     }
@@ -171,7 +180,7 @@ pub async fn load_file(state: &Shared, file_id: i64) -> ApiResult<FileInfo> {
         }
     }
     let root = PathBuf::from(root);
-    Ok(FileInfo { id: file_id, abs: root.join(&rel), root, size, mtime, media, streams: subs_meta })
+    Ok(FileInfo { id: file_id, abs: root.join(&rel), url, root, size, mtime, media, streams: subs_meta })
 }
 
 fn codec_label(c: &str) -> String {
@@ -427,7 +436,7 @@ pub async fn start(state: Shared, user: AuthUser, req: InfoReq) -> ApiResult<Val
         }
         let ts = s.transcode.clone();
         let spec = JobSpec {
-            input: file.abs.clone(),
+            input: file.input(),
             video: file.media.video.as_ref().map(|v| SourceVideo {
                 index: v.index,
                 codec: v.codec.clone(),
@@ -711,6 +720,9 @@ async fn direct(State(state): State<Shared>, Path(id): Path<String>, Query(q): Q
         return Err(ApiError::BadRequest("Questa sessione usa HLS".into()));
     }
     let info = load_file(&state, s.file_id).await?;
+    if let Some(url) = &info.url {
+        return crate::stream::proxy(&state.http, url, &method, &headers).await;
+    }
     // Descrittore aperto una volta per sessione.
     let existing = s.file.lock().unwrap().clone();
     let file = match existing {
@@ -826,7 +838,7 @@ async fn subtitle(State(state): State<Shared>, Path((id, name)): Path<(String, S
                 let rel = ext_path.ok_or_else(|| ApiError::not_found("Sottotitolo"))?;
                 external_subtitle_path(&state, &info.root, &rel)?
             } else {
-                info.abs.clone()
+                info.input()
             };
             // Nome temporaneo unico: due richieste dello stesso sottotitolo (due sessioni, un ripiego) non si pestano.
             let tmp = cache.with_extension(format!("{}.tmp.vtt", crate::util::random_hex(4)));

@@ -654,7 +654,7 @@ async fn chapters(State(state): State<Shared>, user: AuthUser, Path(id): Path<St
             let info = super::playback::load_file(&state, fid).await?;
             let ffprobe = state.ffmpeg.get().ffprobe.clone();
             let timeout = std::time::Duration::from_secs(state.settings.get().scanner.fs_timeout_seconds.max(5) as u64);
-            match crate::probe::read_chapters(&ffprobe, &info.abs, timeout).await {
+            match crate::probe::read_chapters(&ffprobe, &info.input(), timeout).await {
                 Ok(s) => {
                     sqlx::query("UPDATE media_files SET chapters = ? WHERE id = ?").bind(&s).bind(fid).execute(&state.db.write).await?;
                     s

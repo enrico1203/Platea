@@ -100,6 +100,9 @@ async fn serve(State(state): State<Shared>, Path((token, _name)): Path<(String, 
         return Err(ApiError::coded(axum::http::StatusCode::FORBIDDEN, "DownloadNotAllowed", "Download non consentito"));
     }
     let info = super::playback::load_file(&state, file_id).await?;
+    if let Some(url) = &info.url {
+        return crate::stream::proxy(&state.http, url, &method, &headers).await;
+    }
     let timeout = std::time::Duration::from_secs(state.settings.get().scanner.fs_timeout_seconds as u64);
     let file = crate::stream::open_library_file(file_id, &info.abs, &info.root, timeout).await?;
     let ct = crate::stream::content_type_for(&info.media.container, &info.abs);
@@ -118,6 +121,9 @@ pub async fn serve_for_user(state: &Shared, user: &AuthUser, item_id: i64, metho
     super::items::load_item(state, user, item_id).await?;
     let fid = choose_file(state, item_id, None).await?;
     let info = super::playback::load_file(state, fid).await?;
+    if let Some(url) = &info.url {
+        return crate::stream::proxy(&state.http, url, method, headers).await;
+    }
     let timeout = std::time::Duration::from_secs(state.settings.get().scanner.fs_timeout_seconds as u64);
     let file = crate::stream::open_library_file(fid, &info.abs, &info.root, timeout).await?;
     let ct = crate::stream::content_type_for(&info.media.container, &info.abs);

@@ -94,6 +94,7 @@ pub async fn generate_job(state: &Shared, file_id: i64) -> anyhow::Result<()> {
     }
     crate::probe::ensure_probed(state, file_id).await?;
     let Some((abs, rel, ..)) = crate::probe::file_abs_path(state, file_id).await? else { bail!("file non trovato") };
+    let abs = crate::probe::media_input(state, file_id, &abs).await?;
     let video: Option<(Option<String>,)> =
         sqlx::query_as("SELECT hdr FROM media_streams WHERE file_id = ? AND kind = 'video' AND is_external = 0 ORDER BY stream_index LIMIT 1")
             .bind(file_id)

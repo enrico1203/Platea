@@ -227,7 +227,20 @@ pub async fn probe_file_job(state: &Shared, file_id: i64) -> anyhow::Result<()> 
     let ffprobe = state.ffmpeg.get().ffprobe.clone();
     let timeout = Duration::from_secs(state.settings.get().scanner.probe_timeout_seconds.max(5) as u64);
     let t0 = std::time::Instant::now();
-    let out = match run_ffprobe(&ffprobe, &abs, timeout).await {
+    // .strm: si analizza l'indirizzo che contiene, e lo si salva per la riproduzione.
+    let input = match media_input(state, file_id, &abs).await {
+        Ok(i) => i,
+        Err(e) => {
+            sqlx::query("UPDATE media_files SET probe_state = 'failed', probe_error = ?, probed_at = ? WHERE id = ?")
+                .bind(format!("{e:#}"))
+                .bind(now_ms())
+                .bind(file_id)
+                .execute(&state.db.write)
+                .await?;
+            return Err(e);
+        }
+    };
+    let out = match run_ffprobe(&ffprobe, &input, timeout).await {
         Ok(o) => o,
         Err(e) => {
             sqlx::query("UPDATE media_files SET probe_state = 'failed', probe_error = ?, probed_at = ? WHERE id = ?")
@@ -330,6 +343,17 @@ pub async fn save_probe(state: &Shared, file_id: i64, rel: &str, out: &ProbeOutp
     Ok(())
 }
 
+/// Ingresso per FFmpeg/ffprobe: il file stesso, oppure per un `.strm` l'indirizzo che contiene (salvato nel database).
+pub async fn media_input(state: &Shared, file_id: i64, abs: &std::path::Path) -> anyhow::Result<PathBuf> {
+    if !crate::strm::is_strm(abs) {
+        return Ok(abs.to_path_buf());
+    }
+    let timeout = Duration::from_secs(state.settings.get().scanner.fs_timeout_seconds.max(2) as u64);
+    let url = crate::strm::read_url(abs, timeout).await?;
+    sqlx::query("UPDATE media_files SET stream_url = ? WHERE id = ?").bind(&url).bind(file_id).execute(&state.db.write).await?;
+    Ok(PathBuf::from(url))
+}
+
 /// Analisi immediata con priorità massima: per un file riprodotto prima della sua analisi in coda.
 pub async fn ensure_probed(state: &Shared, file_id: i64) -> anyhow::Result<()> {
     let st: Option<String> = sqlx::query_scalar("SELECT probe_state FROM media_files WHERE id = ?").bind(file_id).fetch_optional(&state.db.read).await?;
@@ -339,7 +363,8 @@ pub async fn ensure_probed(state: &Shared, file_id: i64) -> anyhow::Result<()> {
         _ => {
             let Some((abs, rel, ..)) = file_abs_path(state, file_id).await? else { bail!("file non trovato") };
             let ffprobe = state.ffmpeg.get().ffprobe.clone();
-            let out = run_ffprobe(&ffprobe, &abs, Duration::from_secs(60)).await?;
+            let input = media_input(state, file_id, &abs).await?;
+            let out = run_ffprobe(&ffprobe, &input, Duration::from_secs(60)).await?;
             save_probe(state, file_id, &rel, &out).await
         }
     }
@@ -357,6 +382,10 @@ pub async fn extract_keyframes_job(state: &Shared, file_id: i64) -> anyhow::Resu
     if let Some(times) = container_keyframes(state, &abs, &rel, size).await {
         save_keyframes(state, file_id, &times).await?;
         return Ok(times);
+    }
+    // Un .strm è un flusso in rete: leggerlo tutto per i keyframe non ha senso.
+    if crate::strm::is_strm(&abs) {
+        bail!("keyframe non disponibili per un .strm");
     }
     // Altrimenti si leggono i pacchetti, cioè tutto il file: solo sui dischi locali.
     let profile: Option<String> = sqlx::query_scalar("SELECT scan_profile FROM libraries WHERE id = ?").bind(library_id).fetch_optional(&state.db.read).await?;

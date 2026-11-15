@@ -206,6 +206,7 @@ Platea uses the same conventions as Jellyfin and Emby:
 - Shows: `Shows/Name/Season 01/Name S01E02.mkv`, multi-episode files `S01E01-E02`, date-based episodes, absolute numbering for anime
 - Explicit IDs in folder names: `[tmdbid-603]`, `[imdbid-tt0133093]`, `[tvdbid-…]`
 - External subtitles next to the video: `Title (Year).en.srt`, `Title (Year).en.forced.srt`
+- `.strm` files: a text file with an `http` or `https` address, named like a video (`Title (Year).strm`). Platea probes the stream, plays it through the server (so sources on your home network work from outside too) and can remux or transcode it. Local paths and other protocols in `.strm` files are refused.
 
 Local metadata is read once and never written:
 

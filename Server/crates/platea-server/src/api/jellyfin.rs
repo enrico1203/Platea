@@ -1792,6 +1792,10 @@ async fn do_stream(state: &Shared, user: &AuthUser, item: &str, uri: &Uri, metho
     });
     let fid = choose_file(state, id, source.as_deref()).await?;
     crate::probe::ensure_probed(state, fid).await.ok();
+    let info = crate::api::playback::load_file(state, fid).await?;
+    if let Some(url) = &info.url {
+        return crate::stream::proxy(&state.http, url, method, headers).await;
+    }
     let (file, info) = open_cached(state, fid).await?;
     let ct = crate::stream::content_type_for(&info.media.container, &info.abs);
     // Byte inviati alla sessione di questo dispositivo, se Infuse l'ha già aperta con un rapporto.

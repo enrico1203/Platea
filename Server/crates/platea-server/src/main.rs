@@ -30,6 +30,7 @@ mod sessions;
 mod settings;
 mod state;
 mod stream;
+mod strm;
 mod transcode;
 mod trickplay;
 mod util;

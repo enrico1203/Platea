@@ -58,6 +58,34 @@ pub fn open_files_count() -> usize {
     OPEN_FILES.lock().unwrap().len()
 }
 
+/// Video di un file `.strm`: il server lo legge dalla sorgente e lo passa al client, con le richieste Range.
+/// Così funziona anche quando la sorgente è raggiungibile solo dal server (rete di casa) o è in http e la pagina in https.
+pub async fn proxy(http: &reqwest::Client, url: &str, method: &Method, headers: &HeaderMap) -> crate::error::ApiResult<Response> {
+    use crate::error::ApiError;
+    let mut req = if *method == Method::HEAD { http.head(url) } else { http.get(url) };
+    for h in [header::RANGE, header::IF_RANGE] {
+        if let Some(v) = headers.get(&h) {
+            req = req.header(h.as_str(), v.as_bytes());
+        }
+    }
+    let resp =
+        req.send().await.map_err(|e| ApiError::coded(StatusCode::BAD_GATEWAY, "StrmUnreachable", format!("Sorgente del .strm non raggiungibile: {e}")))?;
+    let status = StatusCode::from_u16(resp.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+    if !(status.is_success() || status == StatusCode::RANGE_NOT_SATISFIABLE) {
+        return Err(ApiError::coded(StatusCode::BAD_GATEWAY, "StrmUnreachable", format!("La sorgente del .strm ha risposto {status}")));
+    }
+    let mut out = Response::builder().status(status).header(header::CACHE_CONTROL, "no-store");
+    for h in [header::CONTENT_TYPE, header::CONTENT_LENGTH, header::CONTENT_RANGE, header::ACCEPT_RANGES, header::LAST_MODIFIED, header::ETAG] {
+        if let Some(v) = resp.headers().get(h.as_str()) {
+            if let Ok(v) = HeaderValue::from_bytes(v.as_bytes()) {
+                out = out.header(h, v);
+            }
+        }
+    }
+    let body = if *method == Method::HEAD { Body::empty() } else { Body::from_stream(resp.bytes_stream()) };
+    Ok(out.body(body).unwrap())
+}
+
 pub fn content_type_for(container: &str, path: &Path) -> &'static str {
     match container {
         "mp4" | "m4v" => "video/mp4",

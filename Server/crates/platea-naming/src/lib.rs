@@ -14,7 +14,7 @@ use regex::Regex;
 use serde::Serialize;
 
 pub const VIDEO_EXTENSIONS: &[&str] =
-    &["mkv", "mp4", "m4v", "avi", "mov", "wmv", "ts", "m2ts", "mts", "webm", "mpg", "mpeg", "flv", "ogv", "3gp", "vob", "iso", "divx", "asf"];
+    &["mkv", "mp4", "m4v", "avi", "mov", "wmv", "ts", "m2ts", "mts", "webm", "mpg", "mpeg", "flv", "ogv", "3gp", "vob", "iso", "divx", "asf", "strm"];
 
 pub const SUBTITLE_EXTENSIONS: &[&str] = &["srt", "vtt", "ass", "ssa", "sub", "sup"];
 

@@ -409,6 +409,14 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
    ricerca, home, strato Jellyfin) e in `can_see_item` (dettaglio, riproduzione); stagioni ed episodi usano i generi
    della serie, collezioni sempre visibili. Scelta a pulsanti nel dialogo dell'utente. Provato sulla copia: horror
    nascosto ovunque (404 su dettaglio e riproduzione), "solo Animazione" → 28 film su 10.960 anche via Jellyfin.
+4s. [x] File `.strm` (migrazione 0021 `media_files.stream_url`, `strm.rs`): estensione video riconosciuta dalla
+   scansione; durante l'analisi si legge l'indirizzo (solo http/https, prima riga non commento, ≤ 16 KB; percorsi
+   locali, file://, concat: rifiutati) e lo si salva; ffprobe/FFmpeg leggono da lì (analisi, remux, transcodifica,
+   sottotitoli, capitoli, miniature) tramite `probe::media_input` e `FileInfo::input()`; direct play, download e
+   stream dello strato Jellyfin passano dal server (`stream::proxy`, con Range: funziona anche con sorgenti della rete
+   di casa usate da fuori, e con pagine https). Niente keyframe dai .strm (si transcodifica quando servirebbero).
+   Provato: sorgente nginx, analisi, direct play 206 con byte esatti, transcodifica HLS, .strm con percorso locale
+   rifiutato.
 5. Fase 3: QSV/VA-API/NVENC/AMD, tone mapping in GPU, uscita HEVC/AV1 su hardware reale (qui non c'è GPU).
 5b. [x] Apertura del progetto (15/11/2026, richiesta dell'utente): repository pubblica; README con licenza
    AGPL-3.0, progetti collegati con link e licenze verificate (Jellyfin GPL-2.0, Swiftfin MPL-2.0, Findroid GPL-3.0,
@@ -449,6 +457,8 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 - Nessuno in sospeso dai punti 1–4.
 
 ## Registro
+
+- 2026-11-15 — File .strm (indirizzi http/https), riprodotti attraverso il server.
 
 - 2026-11-15 — Rilascio: build native amd64 e arm64 (niente emulazione), immagini unite per digest.
 
