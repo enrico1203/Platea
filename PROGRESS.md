@@ -37,6 +37,9 @@ Se la sessione si interrompe, alla ripresa ("continua") si riparte da qui: legge
   (`/media/<nome>=http://host.docker.internal:<porta>`), uno per mount; ogni cartella di libreria usa il suo.
   Tunnel Cloudflare attivo (profilo `tunnel`, token in `.env`). Password dimenticata:
   `docker compose exec server platea reset-password <utente>`.
+- 15/11/2026: da telefono le sezioni admin non erano raggiungibili (menu laterale nascosto, la tab porta solo a
+  /admin). Ora sotto la barra in alto, nelle pagine /admin/*, c'è una barra di sezioni scorrevole (`.admin-subnav`,
+  solo ≤900px); l'elenco delle sezioni è uno solo (`ADMIN_LINKS` in `Layout.tsx`) per menu laterale e barra.
 - 15/11/2026 notte: Infuse completo (serie comprese: Fields in tutti gli elenchi), AirPlay e Google Cast nel player,
   pausa dei lavori, dispositivi per utente, soggetto leggibile dei lavori, manutenzione programmata del DB (PRAGMA
   optimize ogni ora, ANALYZE/WAL/VACUUM la notte), indice items(series_id), eventi raggruppati (client e server).

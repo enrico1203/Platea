@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Home, Search, Film, Tv, LayoutDashboard, FolderOpen, Users, ListChecks, SearchCheck, Cpu, Settings, ScrollText, Server, Terminal, User, Info, LogOut, Library as LibraryIcon, ListVideo, PanelLeftClose, PanelLeftOpen, ArrowUp } from "lucide-react";
 import { Logo, Mark } from "./Logo";
@@ -19,6 +19,37 @@ export function Avatar({ name, url, size = 28 }: { name: string; url: string | n
   const style = { width: size, height: size, fontSize: Math.round(size * 0.42) };
   if (url) return <img className="avatar" src={mediaUrl(url)} alt="" style={style} />;
   return <span className="avatar avatar--initials" style={{ ...style, background: `hsl(${h} 45% 32%)` }} aria-hidden>{name.slice(0, 1).toUpperCase()}</span>;
+}
+
+/** Sezioni dell'amministrazione: menu laterale su desktop, barra scorrevole su telefono. */
+const ADMIN_LINKS = [
+  { to: "/admin", end: true, icon: LayoutDashboard, label: "admin.overview.title" },
+  { to: "/admin/libraries", icon: FolderOpen, label: "admin.libraries.title" },
+  { to: "/admin/users", icon: Users, label: "admin.users.title" },
+  { to: "/admin/review", icon: SearchCheck, label: "admin.review.title" },
+  { to: "/admin/jobs", icon: ListChecks, label: "admin.jobs.title" },
+  { to: "/admin/transcode", icon: Cpu, label: "admin.transcode.title" },
+  { to: "/admin/settings", icon: Settings, label: "admin.settings.title" },
+  { to: "/admin/activity", icon: ScrollText, label: "admin.activity.title" },
+  { to: "/admin/logs", icon: Terminal, label: "admin.logs.title" },
+  { to: "/admin/system", icon: Server, label: "admin.system.title" },
+] as const;
+
+/** Su telefono il menu laterale non c'è: le sezioni admin stanno in una barra orizzontale. */
+function AdminSubnav() {
+  const t = useT();
+  const { pathname } = useLocation();
+  useEffect(() => {
+    // La sezione attiva resta visibile anche se la barra è scorsa.
+    document.querySelector(".admin-subnav a.active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [pathname]);
+  return (
+    <nav className="admin-subnav" aria-label={t("nav.admin")}>
+      {ADMIN_LINKS.map(({ to, icon: Icon, label, ...rest }) => (
+        <NavLink key={to} to={to} end={"end" in rest} className={({ isActive }) => (isActive ? "active" : undefined)}><Icon />{t(label)}</NavLink>
+      ))}
+    </nav>
+  );
 }
 
 const COLLAPSED_KEY = "platea.sidebar.collapsed";
@@ -63,6 +94,7 @@ export function Layout() {
   const { me, logout } = useSession();
   const nav = useNavigate();
   const { data: libs } = useLibraries();
+  const inAdmin = useLocation().pathname.startsWith("/admin");
   const [collapsed, toggleCollapsed] = useCollapsed();
   const link = ({ isActive }: { isActive: boolean }) => `nav__item${isActive ? " active" : ""}`;
   // Compresso: solo icone, il nome nel tooltip e per i lettori di schermo.
@@ -90,16 +122,9 @@ export function Layout() {
         {me?.is_admin && (
           <nav className="nav__group" aria-label={t("nav.admin")}>
             <span className="pl-eyebrow">{t("nav.admin")}</span>
-            <NavLink to="/admin" end className={link} {...tip(t("admin.overview.title"))}><LayoutDashboard /><span className="nav__label">{t("admin.overview.title")}</span></NavLink>
-            <NavLink to="/admin/libraries" className={link} {...tip(t("admin.libraries.title"))}><FolderOpen /><span className="nav__label">{t("admin.libraries.title")}</span></NavLink>
-            <NavLink to="/admin/users" className={link} {...tip(t("admin.users.title"))}><Users /><span className="nav__label">{t("admin.users.title")}</span></NavLink>
-            <NavLink to="/admin/review" className={link} {...tip(t("admin.review.title"))}><SearchCheck /><span className="nav__label">{t("admin.review.title")}</span></NavLink>
-            <NavLink to="/admin/jobs" className={link} {...tip(t("admin.jobs.title"))}><ListChecks /><span className="nav__label">{t("admin.jobs.title")}</span></NavLink>
-            <NavLink to="/admin/transcode" className={link} {...tip(t("admin.transcode.title"))}><Cpu /><span className="nav__label">{t("admin.transcode.title")}</span></NavLink>
-            <NavLink to="/admin/settings" className={link} {...tip(t("admin.settings.title"))}><Settings /><span className="nav__label">{t("admin.settings.title")}</span></NavLink>
-            <NavLink to="/admin/activity" className={link} {...tip(t("admin.activity.title"))}><ScrollText /><span className="nav__label">{t("admin.activity.title")}</span></NavLink>
-            <NavLink to="/admin/logs" className={link} {...tip(t("admin.logs.title"))}><Terminal /><span className="nav__label">{t("admin.logs.title")}</span></NavLink>
-            <NavLink to="/admin/system" className={link} {...tip(t("admin.system.title"))}><Server /><span className="nav__label">{t("admin.system.title")}</span></NavLink>
+            {ADMIN_LINKS.map(({ to, icon: Icon, label, ...rest }) => (
+              <NavLink key={to} to={to} end={"end" in rest} className={link} {...tip(t(label))}><Icon /><span className="nav__label">{t(label)}</span></NavLink>
+            ))}
           </nav>
         )}
         <div className="sidebar__foot">
@@ -115,6 +140,7 @@ export function Layout() {
           <Logo />
           <NavLink to="/account" className="icon-btn" aria-label={t("nav.account")}><Avatar name={me?.username ?? ""} url={me?.avatar ?? null} size={30} /></NavLink>
         </header>
+        {me?.is_admin && inAdmin && <AdminSubnav />}
         <main className="main">
           <Outlet />
         </main>
