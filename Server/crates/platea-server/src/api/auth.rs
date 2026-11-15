@@ -214,7 +214,7 @@ async fn put_avatar(State(state): State<Shared>, user: AuthUser, body: axum::bod
     let path = avatar_path(&state, user.user_id);
     let p = path.clone();
     tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
-        let img = image::load_from_memory(&body)?;
+        let img = crate::metadata::images::decode_limited(&body)?;
         let small = img.resize_to_fill(256, 256, image::imageops::FilterType::Lanczos3);
         if let Some(d) = p.parent() {
             std::fs::create_dir_all(d)?;

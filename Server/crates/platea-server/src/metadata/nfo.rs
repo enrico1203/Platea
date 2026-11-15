@@ -109,7 +109,7 @@ pub fn parse(raw: &str) -> Option<Nfo> {
     };
     // Entità HTML non dichiarate (&nbsp; ecc.) farebbero fallire il parser XML.
     let cleaned = raw[start..end].replace("&nbsp;", " ");
-    let doc = roxmltree::Document::parse_with_options(&cleaned, roxmltree::ParsingOptions { allow_dtd: true, ..Default::default() }).ok()?;
+    let doc = roxmltree::Document::parse_with_options(&cleaned, roxmltree::ParsingOptions { allow_dtd: true, nodes_limit: 200_000 }).ok()?;
     let root = doc.root_element();
     out.kind = root.tag_name().name().to_string();
     out.title = child_text(root, "title");

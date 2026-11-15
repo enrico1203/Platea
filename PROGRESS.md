@@ -342,7 +342,19 @@ restano 321 "da verificare" e 328 non riconosciuti (da vedere a mano dall'utente
    `server_state.jobs_paused_until`), server e web di prova separati. Attenzione: l'immagine ha già `platea` come
    entrypoint, quindi `docker run … platea-server:latest reset-password …` (senza ripetere `platea`).
 5. Fase 3: QSV/VA-API/NVENC/AMD, tone mapping in GPU, uscita HEVC/AV1 su hardware reale (qui non c'è GPU).
-6. Fase 5 (rilascio): revisione di sicurezza da fare.
+6. Fase 5 (rilascio). [x] Revisione di sicurezza interna (15/11/2026), corretti:
+   - download delle immagini: la risposta era letta tutta prima del controllo di dimensione (una risposta senza fine
+     riempiva la RAM) → lettura a pezzi, tetto 20 MB, Content-Length controllato;
+   - SSRF dagli indirizzi delle immagini negli NFO (un NFO arrivato con un download poteva far chiamare al server il
+     router o servizi interni, anche via redirect) → per gli indirizzi non TMDB solo http/https, nome risolto e IP
+     privati/loopback/link-local/CGNAT rifiutati, nessun redirect (`images::check_external_url`, test);
+   - bombe di decompressione: immagini e avatar decodificati con limiti (16384 px, 256 MB) (`images::decode_limited`);
+   - XML degli NFO: tetto di 200.000 nodi (le entità ricorsive erano già bloccate da roxmltree).
+   Verificati senza problemi: IP del client da X-Forwarded-For (da destra, solo proxy fidati: non falsificabile
+   attraverso il tunnel), percorsi di HLS/miniature/sottotitoli esterni/download, nessun nome di file nei filtri FFmpeg,
+   endpoint Jellyfin pubblici (solo info, login, Quick Connect, immagini), codice di primo avvio rallentato.
+   Resta (accettato): il WebSocket porta il token nella query (può finire nei log di un proxy esterno); una revisione
+   esterna resta nel piano.
    [x] Aggiornamento provato: DB creato dalla prima versione compilabile (`4000486`, solo migrazione 0001, girava
    come root) aperto dalla versione attuale: 14 migrazioni con copia di sicurezza, integrity_check ok, token, utenti,
    visto/preferito intatti, funzioni nuove ok. Trovato: i file creati da root non sono apribili dall'uid 1000 → ora
