@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ListVideo, Play, Plus, Pencil, Trash2, ArrowUp, ArrowDown, X } from "lucide-react";
 import { api, imageUrl } from "../api/client";
 import type { PlaylistDetail, PlaylistSummary } from "../api/types";
-import { Confirm, Dialog, Empty, TextField, toast } from "../components/ui";
+import { Confirm, Dialog, Empty, TextField, toast, Switch } from "../components/ui";
 import { useI18n } from "../i18n";
 
 export function usePlaylists() {
@@ -51,7 +51,7 @@ export default function Playlists() {
                 {p.poster ? <img src={imageUrl(p.poster, 300)} alt="" loading="lazy" /> : <ListVideo />}
               </div>
               <div className="pl-poster__title">{p.name}</div>
-              <div className="pl-poster__meta">{[t("playlist.count", { count: p.count }), p.runtime_ms ? duration(p.runtime_ms) : null].filter(Boolean).join(" · ")}</div>
+              <div className="pl-poster__meta">{[p.mine === false ? t("playlist.by", { owner: p.owner ?? "" }) : p.shared ? t("playlist.sharedShort") : null, t("playlist.count", { count: p.count }), p.runtime_ms ? duration(p.runtime_ms) : null].filter(Boolean).join(" · ")}</div>
             </Link>
           ))}
         </div>
@@ -81,14 +81,19 @@ export function PlaylistPage() {
       <div className="page-head" style={{ marginBottom: 0 }}>
         <div>
           <h1 className="t-h1">{data.name}</h1>
-          <div className="page-head__sub t-small subtle">{[t("playlist.count", { count: data.items.length }), data.runtime_ms ? duration(data.runtime_ms) : null].filter(Boolean).join(" · ")}</div>
+          <div className="page-head__sub t-small subtle">{[data.mine === false ? t("playlist.by", { owner: data.owner ?? "" }) : null, t("playlist.count", { count: data.items.length }), data.runtime_ms ? duration(data.runtime_ms) : null].filter(Boolean).join(" · ")}</div>
         </div>
         <div className="row">
           {data.items.length > 0 && <button className="pl-btn pl-btn--primary" onClick={() => nav(playlistPlayUrl(data.id, 0, data.items[0].id))}><Play fill="currentColor" />{t("playlist.playAll")}</button>}
-          <button className="icon-btn" onClick={() => setDialog("rename")} aria-label={t("playlist.rename")} title={t("playlist.rename")}><Pencil /></button>
-          <button className="icon-btn" onClick={() => setDialog("delete")} aria-label={t("common.delete")} title={t("common.delete")}><Trash2 /></button>
+          {data.mine !== false && <>
+            <button className="icon-btn" onClick={() => setDialog("rename")} aria-label={t("playlist.rename")} title={t("playlist.rename")}><Pencil /></button>
+            <button className="icon-btn" onClick={() => setDialog("delete")} aria-label={t("common.delete")} title={t("common.delete")}><Trash2 /></button>
+          </>}
         </div>
       </div>
+      {data.mine !== false && (
+        <Switch checked={!!data.shared} onChange={async (v) => { await api(`/api/v1/playlists/${id}`, { method: "PATCH", body: { shared: v } }); refresh(); }} label={t("playlist.share")} hint={t("playlist.shareHint")} />
+      )}
       {data.items.length === 0 && <Empty>{t("playlist.empty")}</Empty>}
       <div className="episodes">
         {data.items.map((e, i) => {
@@ -104,9 +109,11 @@ export function PlaylistPage() {
               </div>
               <div className="row" style={{ gap: 4, flexWrap: "nowrap" }} onClick={(ev) => ev.stopPropagation()}>
                 <button className="icon-btn" onClick={() => nav(playlistPlayUrl(data.id, i, e.id))} aria-label={t("player.play")}><Play /></button>
-                <button className="icon-btn" disabled={i === 0} onClick={() => move(e.entry_id, i - 1)} aria-label={t("playlist.up")}><ArrowUp /></button>
-                <button className="icon-btn" disabled={i === data.items.length - 1} onClick={() => move(e.entry_id, i + 1)} aria-label={t("playlist.down")}><ArrowDown /></button>
-                <button className="icon-btn" onClick={async () => { await api(`/api/v1/playlists/${id}/items/${e.entry_id}`, { method: "DELETE" }); refresh(); }} aria-label={t("playlist.remove")}><X /></button>
+                {data.mine !== false && <>
+                  <button className="icon-btn" disabled={i === 0} onClick={() => move(e.entry_id, i - 1)} aria-label={t("playlist.up")}><ArrowUp /></button>
+                  <button className="icon-btn" disabled={i === data.items.length - 1} onClick={() => move(e.entry_id, i + 1)} aria-label={t("playlist.down")}><ArrowDown /></button>
+                  <button className="icon-btn" onClick={async () => { await api(`/api/v1/playlists/${id}/items/${e.entry_id}`, { method: "DELETE" }); refresh(); }} aria-label={t("playlist.remove")}><X /></button>
+                </>}
               </div>
             </div>
           );
@@ -138,7 +145,7 @@ export function AddToPlaylist({ itemId, onClose }: { itemId: string; onClose: ()
     <Dialog title={t("playlist.addTo")} onClose={onClose} footer={<button className="pl-btn pl-btn--ghost" onClick={onClose}>{t("common.cancel")}</button>}>
       {data && data.length > 0 && (
         <div className="pl-panel">
-          {data.map((p) => (
+          {data.filter((p) => p.mine !== false).map((p) => (
             <button key={p.id} className="list-row" style={{ width: "100%", textAlign: "left", background: "none", border: 0, color: "inherit", cursor: "pointer" }} onClick={async () => {
               const r = await api<{ added: number }>(`/api/v1/playlists/${p.id}/items`, { body: { item_ids: [itemId] } });
               done(r.added, p.name);

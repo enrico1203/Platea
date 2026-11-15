@@ -20,7 +20,7 @@ pub fn routes(api: Api) -> Api {
     api.get("/api/v1/playlists", "Playlist", Access::User, "Le playlist dell'utente", list)
         .post("/api/v1/playlists", "Playlist", Access::User, "Crea una playlist, anche con le prime voci", create)
         .get("/api/v1/playlists/{id}", "Playlist", Access::User, "Una playlist con le sue voci in ordine", detail)
-        .patch("/api/v1/playlists/{id}", "Playlist", Access::User, "Rinomina una playlist", rename)
+        .patch("/api/v1/playlists/{id}", "Playlist", Access::User, "Rinomina una playlist o la condivide con gli altri utenti", rename)
         .delete("/api/v1/playlists/{id}", "Playlist", Access::User, "Cancella una playlist", remove)
         .post("/api/v1/playlists/{id}/items", "Playlist", Access::User, "Aggiunge film ed episodi (serie e stagioni diventano i loro episodi)", add_items)
         .delete("/api/v1/playlists/{id}/items/{entry}", "Playlist", Access::User, "Toglie una voce", remove_entry)
@@ -37,14 +37,29 @@ async fn own(state: &Shared, user: &AuthUser, id: &str) -> ApiResult<i64> {
     }
 }
 
+/// La playlist è dell'utente o condivisa: (id, è sua).
+async fn viewable(state: &Shared, user: &AuthUser, id: &str) -> ApiResult<(i64, bool)> {
+    let pid = state.ids.decode(id).ok_or_else(|| ApiError::not_found("Playlist"))?;
+    let row: Option<(i64, i64)> = sqlx::query_as("SELECT user_id, shared FROM playlists WHERE id = ?").bind(pid).fetch_optional(&state.db.read).await?;
+    match row {
+        Some((u, _)) if u == user.user_id => Ok((pid, true)),
+        Some((_, 1)) => Ok((pid, false)),
+        _ => Err(ApiError::not_found("Playlist")),
+    }
+}
+
 async fn list(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<Value>> {
-    let rows: Vec<(i64, String, i64)> = sqlx::query_as("SELECT id, name, created_at FROM playlists WHERE user_id = ? ORDER BY name COLLATE NOCASE")
-        .bind(user.user_id)
-        .fetch_all(&state.db.read)
-        .await?;
+    // Le proprie prima, poi quelle condivise dagli altri.
+    let rows: Vec<(i64, String, i64, i64, i64, String)> = sqlx::query_as(
+        "SELECT p.id, p.name, p.created_at, p.shared, p.user_id, u.username FROM playlists p JOIN users u ON u.id = p.user_id
+         WHERE p.user_id = ?1 OR p.shared = 1 ORDER BY p.user_id <> ?1, p.name COLLATE NOCASE",
+    )
+    .bind(user.user_id)
+    .fetch_all(&state.db.read)
+    .await?;
     let lf = user.library_filter("i.library_id");
     let mut out = Vec::with_capacity(rows.len());
-    for (id, name, created) in rows {
+    for (id, name, created, shared, owner_id, owner) in rows {
         // Conteggio, durata e locandina contano solo le voci visibili all'utente.
         let (count, runtime): (i64, Option<i64>) =
             sqlx::query_as(&format!("SELECT COUNT(*), SUM(i.runtime_ms) FROM playlist_items p JOIN items i ON i.id = p.item_id WHERE p.playlist_id = ? {lf}"))
@@ -66,6 +81,9 @@ async fn list(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<Val
             "count": count,
             "runtime_ms": runtime,
             "poster": super::items::image_url(&state, poster),
+            "shared": shared != 0,
+            "mine": owner_id == user.user_id,
+            "owner": owner,
         }));
     }
     Ok(Json(json!({ "items": out })))
@@ -95,8 +113,12 @@ async fn create(State(state): State<Shared>, user: AuthUser, Json(req): Json<Cre
 }
 
 async fn detail(State(state): State<Shared>, user: AuthUser, Path(id): Path<String>) -> ApiResult<Json<Value>> {
-    let pid = own(&state, &user, &id).await?;
-    let (name, created): (String, i64) = sqlx::query_as("SELECT name, created_at FROM playlists WHERE id = ?").bind(pid).fetch_one(&state.db.read).await?;
+    let (pid, mine) = viewable(&state, &user, &id).await?;
+    let (name, created, shared, owner): (String, i64, i64, String) =
+        sqlx::query_as("SELECT p.name, p.created_at, p.shared, u.username FROM playlists p JOIN users u ON u.id = p.user_id WHERE p.id = ?")
+            .bind(pid)
+            .fetch_one(&state.db.read)
+            .await?;
     let entries: Vec<(i64, i64)> =
         sqlx::query_as("SELECT id, item_id FROM playlist_items WHERE playlist_id = ? ORDER BY sort_order, id").bind(pid).fetch_all(&state.db.read).await?;
     let sql = format!("{ITEM_SELECT} WHERE i.id IN (SELECT item_id FROM playlist_items WHERE playlist_id = ?2) {}", user.library_filter("i.library_id"));
@@ -112,22 +134,33 @@ async fn detail(State(state): State<Shared>, user: AuthUser, Path(id): Path<Stri
         })
         .collect();
     let runtime: i64 = rows.iter().filter_map(|r| r.runtime_ms).sum();
-    Ok(Json(json!({ "id": id, "name": name, "created_at": created, "runtime_ms": runtime, "items": items })))
+    Ok(Json(
+        json!({ "id": id, "name": name, "created_at": created, "runtime_ms": runtime, "items": items, "shared": shared != 0, "mine": mine, "owner": owner }),
+    ))
 }
 
 #[derive(Deserialize)]
 struct RenameReq {
-    name: String,
+    #[serde(default)]
+    name: Option<String>,
+    /// Visibile (in sola lettura) a tutti gli utenti.
+    #[serde(default)]
+    shared: Option<bool>,
 }
 
 async fn rename(State(state): State<Shared>, user: AuthUser, Path(id): Path<String>, Json(req): Json<RenameReq>) -> ApiResult<Json<Value>> {
     let pid = own(&state, &user, &id).await?;
-    let name = req.name.trim();
-    if name.is_empty() || name.chars().count() > 200 {
-        return Err(ApiError::BadRequest("Nome della playlist non valido".into()));
+    if let Some(name) = req.name.as_deref().map(str::trim) {
+        if name.is_empty() || name.chars().count() > 200 {
+            return Err(ApiError::BadRequest("Nome della playlist non valido".into()));
+        }
+        sqlx::query("UPDATE playlists SET name = ? WHERE id = ?").bind(name).bind(pid).execute(&state.db.write).await?;
     }
-    sqlx::query("UPDATE playlists SET name = ? WHERE id = ?").bind(name).bind(pid).execute(&state.db.write).await?;
-    Ok(Json(json!({ "id": id, "name": name })))
+    if let Some(shared) = req.shared {
+        sqlx::query("UPDATE playlists SET shared = ? WHERE id = ?").bind(shared as i64).bind(pid).execute(&state.db.write).await?;
+    }
+    let (name, shared): (String, i64) = sqlx::query_as("SELECT name, shared FROM playlists WHERE id = ?").bind(pid).fetch_one(&state.db.read).await?;
+    Ok(Json(json!({ "id": id, "name": name, "shared": shared != 0 })))
 }
 
 async fn remove(State(state): State<Shared>, user: AuthUser, Path(id): Path<String>) -> ApiResult<Json<Value>> {

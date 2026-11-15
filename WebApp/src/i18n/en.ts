@@ -142,6 +142,10 @@ const en = {
     remoteHint: "Scan every 6 hours, one analysis at a time, no automatic extraction: no file is opened without a reason.",
   },
   playlist: {
+    by: "by {owner}",
+    sharedShort: "Shared",
+    share: "Shared with other users",
+    shareHint: "Everyone can see and play it, only you can edit it. Each person only sees the titles their permissions allow.",
     name: "Name",
     new: "New playlist",
     newName: "New playlist",

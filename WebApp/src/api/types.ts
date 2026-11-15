@@ -81,8 +81,8 @@ export interface Device { id: string; device_id: string; device_name: string; cl
 export interface Job { id: number; kind: string; payload: Record<string, unknown>; priority: number; state: string; attempts: number; run_after: number; created_at: number; started_at: number | null; finished_at: number | null; error: string | null; subject?: { title: string; detail: string | null; item_id: string | null } }
 export interface Candidate { provider_id: string; title: string; year: number | null; score: number; overview?: string | null; poster: string | null }
 export interface ReviewItem { id: string; kind: string; title: string; year: number | null; match_state: string; match_score: number | null; library: string; path: string | null; candidates: Candidate[] }
-export interface PlaylistSummary { id: string; name: string; created_at: number; count: number; runtime_ms: number | null; poster: string | null }
-export interface PlaylistDetail { id: string; name: string; created_at: number; runtime_ms: number; items: (Item & { entry_id: string })[] }
+export interface PlaylistSummary { id: string; name: string; created_at: number; count: number; runtime_ms: number | null; poster: string | null; shared?: boolean; mine?: boolean; owner?: string }
+export interface PlaylistDetail { id: string; name: string; created_at: number; runtime_ms: number; items: (Item & { entry_id: string })[]; shared?: boolean; mine?: boolean; owner?: string }
 
 export interface ScheduleSlot { days: number[]; start: number; end: number }
 export type SubtitleMode = "default" | "always" | "only_forced" | "none" | "smart";

@@ -58,7 +58,7 @@ La colonna **Priorità** indica l'ordine di lavoro: **A** subito, **B** dopo, **
 | Pagine per genere e studio | ✅ | ✅ (`/browse`, da tutte le librerie) | — |
 | Collezioni | ✅ (manuali) | ✅ (automatiche da NFO e TMDB) | — |
 | Playlist | ✅ | ✅ | — |
-| Playlist condivise con altri utenti | ✅ (10.10) | ❌ | C |
+| Playlist condivise con altri utenti | ✅ (10.10) | ✅ (con tutti, in sola lettura) | — |
 | Versioni multiple dello stesso film | ✅ | ✅ | — |
 | Trailer | ✅ | ✅ (YouTube da TMDB e dagli NFO; anche `RemoteTrailers` per Infuse) | — |
 | Extra (dietro le quinte) | ✅ | ❌ (ignorati dallo scanner) | C |

@@ -143,6 +143,10 @@ const it = {
     remoteHint: "Scansione ogni 6 ore, un'analisi alla volta, niente estrazioni automatiche: nessun file aperto senza motivo.",
   },
   playlist: {
+    by: "di {owner}",
+    sharedShort: "Condivisa",
+    share: "Condivisa con gli altri utenti",
+    shareHint: "Tutti la vedono e la riproducono, ma solo tu puoi modificarla. Ognuno vede solo i titoli che i suoi permessi consentono.",
     name: "Nome",
     new: "Nuova playlist",
     newName: "Nuova playlist",
