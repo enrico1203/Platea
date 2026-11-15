@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../../api/client";
 import { Alert, SelectField, Switch, TextField, toast } from "../../components/ui";
 import { useI18n, type MessageKey } from "../../i18n";
+import { useSession } from "../../session";
 
 type Schema = { title?: string; description?: string; type?: string | string[]; enum?: string[]; items?: Schema; minimum?: number; maximum?: number; format?: string; $ref?: string; allOf?: Schema[]; writeOnly?: boolean; "x-restart"?: boolean; properties?: Record<string, Schema>; definitions?: Record<string, Schema> };
 interface SettingsData { schema: Record<string, Schema>; values: Record<string, Record<string, unknown>>; groups: string[] }
@@ -94,6 +95,7 @@ export default function Settings() {
   const { group } = useParams();
   const nav = useNavigate();
   const qc = useQueryClient();
+  const { refreshInfo } = useSession();
   const { data } = useQuery({ queryKey: ["admin", "settings"], queryFn: () => api<SettingsData>("/api/v1/admin/settings") });
   if (!data) return null;
   const g = group && data.groups.includes(group) ? group : data.groups[0];
@@ -108,7 +110,7 @@ export default function Settings() {
         })}
       </div>
       <section className="pl-panel panel-pad">
-        <GroupForm group={g} schema={data.schema[g]} values={data.values[g]} onSaved={() => qc.invalidateQueries({ queryKey: ["admin", "settings"] })} />
+        <GroupForm group={g} schema={data.schema[g]} values={data.values[g]} onSaved={() => { qc.invalidateQueries({ queryKey: ["admin", "settings"] }); if (g === "general") refreshInfo(); }} />
       </section>
     </div>
   );

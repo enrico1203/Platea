@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { useSession } from "../session";
 
 const P = "M14 10h28a10 10 0 0 1 10 10v5.5a10 10 0 0 1-10 10H22V52a2 2 0 0 1-2 2h-6a2 2 0 0 1-2-2V12a2 2 0 0 1 2-2Zm8 6v13.5h20a4 4 0 0 0 4-4V20a4 4 0 0 0-4-4H22Z";
 
@@ -12,12 +13,20 @@ export function Mark({ size = 28, mono = false }: { size?: number; mono?: boolea
   );
 }
 
-/** Lockup: marchio e wordmark minuscolo. */
+/** Nome scelto dall'amministratore in Impostazioni › Generali; "Platea" se non è stato cambiato. */
+export function useServerName(): string {
+  const name = useSession().info?.name.trim();
+  return name || "Platea";
+}
+
+/** Lockup: marchio e nome del server. Col nome predefinito resta il wordmark minuscolo del brand. */
 export function Logo({ to = "/" }: { to?: string }) {
+  const name = useServerName();
+  const isDefault = name.toLowerCase() === "platea";
   return (
-    <Link to={to} className="logo" aria-label="Platea">
+    <Link to={to} className="logo" aria-label={name} title={isDefault ? undefined : name}>
       <Mark />
-      <span className="logo__word">platea</span>
+      <span className={`logo__word${isDefault ? "" : " logo__word--custom"}`}>{isDefault ? "platea" : name}</span>
     </Link>
   );
 }

@@ -13,6 +13,8 @@ interface SessionCtx {
   acceptToken: (token: string) => Promise<void>;
   logout: () => Promise<void>;
   reload: () => Promise<void>;
+  /** Rilegge solo le informazioni del server (nome…), senza schermata di caricamento. */
+  refreshInfo: () => Promise<void>;
 }
 
 const Ctx = createContext<SessionCtx | null>(null);
@@ -46,6 +48,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     }
   }, []);
+
+  const refreshInfo = useCallback(async () => {
+    try { setInfo(await api<SystemInfo>("/api/v1/system/info")); } catch { /* resta il nome precedente */ }
+  }, []);
+
+  // Il nome del server anche nel titolo della scheda del browser.
+  useEffect(() => {
+    if (info?.name.trim()) document.title = info.name.trim();
+  }, [info?.name]);
 
   useEffect(() => {
     reload();
@@ -110,7 +121,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     qc.clear();
   }, [qc]);
 
-  return <Ctx.Provider value={{ info, me, loading, error, login, acceptToken, logout, reload }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ info, me, loading, error, login, acceptToken, logout, reload, refreshInfo }}>{children}</Ctx.Provider>;
 }
 
 export function useSession() {

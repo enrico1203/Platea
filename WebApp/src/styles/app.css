@@ -90,10 +90,12 @@ img { display: block; }
 }
 
 /* Logo */
-.logo { display: inline-flex; align-items: center; gap: 8px; color: var(--ink); text-decoration: none; }
+.logo { display: inline-flex; align-items: center; gap: 8px; min-width: 0; color: var(--ink); text-decoration: none; }
 .logo:hover { text-decoration: none; }
 .logo__word { font: 600 24px/1 var(--font-sans); letter-spacing: -0.045em; }
 .logo svg { width: 28px; height: 28px; flex: none; }
+/* Nome scelto dall'amministratore: com'è scritto (niente minuscolo forzato), più piccolo, e tagliato se lungo. */
+.logo__word--custom { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 20px; letter-spacing: -0.02em; line-height: 1.2; }
 
 /* Pagine */
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-6); }

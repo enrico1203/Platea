@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Home, Search, Film, Tv, LayoutDashboard, FolderOpen, Users, ListChecks, SearchCheck, Cpu, Settings, ScrollText, Server, Terminal, User, Info, LogOut, Library as LibraryIcon, ListVideo, PanelLeftClose, PanelLeftOpen, ArrowUp } from "lucide-react";
-import { Logo, Mark } from "./Logo";
+import { Logo, Mark, useServerName } from "./Logo";
 import { api, mediaUrl } from "../api/client";
 import type { Library, Page } from "../api/types";
 import { useSession } from "../session";
@@ -95,6 +95,7 @@ export function Layout() {
   const nav = useNavigate();
   const { data: libs } = useLibraries();
   const inAdmin = useLocation().pathname.startsWith("/admin");
+  const serverName = useServerName();
   const [collapsed, toggleCollapsed] = useCollapsed();
   const link = ({ isActive }: { isActive: boolean }) => `nav__item${isActive ? " active" : ""}`;
   // Compresso: solo icone, il nome nel tooltip e per i lettori di schermo.
@@ -103,7 +104,7 @@ export function Layout() {
     <div className={`app${collapsed ? " app--collapsed" : ""}`}>
       <aside className="sidebar">
         <div className="sidebar__logo">
-          {collapsed ? <Link to="/" className="logo" aria-label="Platea"><Mark /></Link> : <Logo />}
+          {collapsed ? <Link to="/" className="logo" aria-label={serverName} title={serverName}><Mark /></Link> : <Logo />}
           <button className="sidebar__toggle" onClick={toggleCollapsed} aria-expanded={!collapsed} title={t(collapsed ? "nav.expand" : "nav.collapse")} aria-label={t(collapsed ? "nav.expand" : "nav.collapse")}>
             {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
           </button>
