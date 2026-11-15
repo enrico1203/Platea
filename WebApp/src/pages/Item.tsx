@@ -105,12 +105,44 @@ function EditDialog({ item, onClose }: { item: ItemDetail; onClose: () => void }
   );
 }
 
+/** Griglia delle alternative di TMDB: un clic sceglie l'immagine (e la blocca ai prossimi aggiornamenti). */
+function RemoteImagePicker({ item, kind, onClose }: { item: ItemDetail; kind: "poster" | "backdrop" | "logo"; onClose: () => void }) {
+  const { t } = useI18n();
+  const qc = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ["remote-images", item.id, kind],
+    queryFn: () => api<{ items: { path: string; preview: string; width: number; height: number; lang: string | null }[] }>(`/api/v1/items/${item.id}/remote-images/${kind}`).then((r) => r.items),
+  });
+  return (
+    <Dialog wide title={t("item.chooseImageTitle", { kind: t(`item.imageKind.${kind}` as "item.imageKind.poster").toLowerCase() })} onClose={onClose}>
+      {!data && <div className="t-small subtle">…</div>}
+      {data && data.length === 0 && <div className="t-small subtle">{t("item.noRemoteImages")}</div>}
+      {data && data.length > 0 && (
+        <div className={`remote-images remote-images--${kind}`}>
+          {data.map((im) => (
+            <button key={im.path} type="button" className="remote-images__item" onClick={async () => {
+              await api(`/api/v1/items/${item.id}/remote-images/${kind}`, { body: { path: im.path } });
+              toast(t("item.imageChosen"));
+              onClose();
+              window.setTimeout(() => qc.invalidateQueries(), 1500);
+            }}>
+              <img src={im.preview} alt="" loading="lazy" referrerPolicy="no-referrer" />
+              <span className="t-small subtle">{[im.lang?.toUpperCase(), `${im.width}×${im.height}`].filter(Boolean).join(" · ")}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </Dialog>
+  );
+}
+
 /** Una delle immagini dell'elemento: si sostituisce caricando un file, si torna a quella dei metadati. */
 function ImageSlot({ item, kind }: { item: ItemDetail; kind: "poster" | "backdrop" | "logo" }) {
   const { t } = useI18n();
   const qc = useQueryClient();
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
+  const [picking, setPicking] = useState(false);
   const src = kind === "poster" ? item.images.poster : kind === "backdrop" ? item.images.backdrop : item.images.logo;
   const custom = item.locked_fields?.includes(kind);
   return (
@@ -119,12 +151,14 @@ function ImageSlot({ item, kind }: { item: ItemDetail; kind: "poster" | "backdro
       <div className="t-label">{t(`item.imageKind.${kind}` as "item.imageKind.poster")}</div>
       <div className="row" style={{ gap: 4 }}>
         <button type="button" className="pl-btn pl-btn--secondary pl-btn--sm" disabled={busy} onClick={() => input.current?.click()}><Upload />{t("item.uploadImage")}</button>
+        {(item.kind === "movie" || item.kind === "series") && <button type="button" className="pl-btn pl-btn--secondary pl-btn--sm" disabled={busy} onClick={() => setPicking(true)}>{t("item.chooseImage")}</button>}
         {custom && <button type="button" className="pl-btn pl-btn--ghost pl-btn--sm" disabled={busy} onClick={async () => {
           await api(`/api/v1/items/${item.id}/images/${kind}`, { method: "DELETE" });
           qc.invalidateQueries();
           toast(t("item.imageReset"));
         }}>{t("item.resetImage")}</button>}
       </div>
+      {picking && <RemoteImagePicker item={item} kind={kind} onClose={() => setPicking(false)} />}
       <input ref={input} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={async (e) => {
         const f = e.target.files?.[0];
         e.target.value = "";

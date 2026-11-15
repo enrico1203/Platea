@@ -23,6 +23,14 @@ pub fn routes(api: Api) -> Api {
         .get("/api/v1/items/{id}/next", "Libreria", Access::User, "Episodio successivo", next_episode)
         .post("/api/v1/items/{id}/images/{kind}", "Metadati", Access::Admin, "Carica locandina, sfondo o logo (il campo resta bloccato)", upload_image)
         .delete("/api/v1/items/{id}/images/{kind}", "Metadati", Access::Admin, "Torna all'immagine dei metadati", reset_image)
+        .get("/api/v1/items/{id}/remote-images/{kind}", "Metadati", Access::Admin, "Alternative di TMDB per locandina, sfondo o logo", remote_images)
+        .post(
+            "/api/v1/items/{id}/remote-images/{kind}",
+            "Metadati",
+            Access::Admin,
+            "Sceglie un'alternativa di TMDB (il campo resta bloccato)",
+            choose_remote_image,
+        )
         .get("/api/v1/items/{id}/chapters", "Libreria", Access::User, "Capitoli del file (letti dall'intestazione la prima volta)", chapters)
         .get("/api/v1/items/{id}/similar", "Libreria", Access::User, "Titoli simili: stesso tipo, generi in comune, poi voto", similar)
         .get("/api/v1/people/{id}", "Libreria", Access::User, "Una persona con i titoli della libreria in cui compare", person)
@@ -537,6 +545,53 @@ async fn upload_image(State(state): State<Shared>, _a: AdminUser, Path((id, kind
     set_locked(&state, iid, kind, true).await?;
     state.events.publish("item.updated", json!({ "item_id": state.ids.encode(iid) }));
     Ok(Json(json!({ "image": image_url(&state, Some(img)) })))
+}
+
+async fn remote_images(State(state): State<Shared>, _a: AdminUser, Path((id, kind)): Path<(String, String)>) -> ApiResult<Json<Value>> {
+    let iid = decode(&state, &id)?;
+    let kind = image_kind(&kind)?;
+    let list = crate::metadata::remote_images(&state, iid, kind).await.map_err(ApiError::Internal)?;
+    let base = crate::metadata::tmdb::IMAGE_BASE.as_str();
+    let preview = if kind == "poster" { "w342" } else { "w500" };
+    let items: Vec<Value> = list
+        .into_iter()
+        .map(|mut v| {
+            let p = v["path"].as_str().unwrap_or("").to_string();
+            v["preview"] = json!(format!("{base}/{preview}{p}"));
+            v
+        })
+        .collect();
+    Ok(Json(json!({ "items": items })))
+}
+
+#[derive(Deserialize)]
+struct ChooseReq {
+    path: String,
+}
+
+async fn choose_remote_image(
+    State(state): State<Shared>,
+    _a: AdminUser,
+    Path((id, kind)): Path<(String, String)>,
+    Json(req): Json<ChooseReq>,
+) -> ApiResult<Json<Value>> {
+    let iid = decode(&state, &id)?;
+    let kind = image_kind(&kind)?;
+    // Solo un percorso di TMDB ("/abc123.jpg"): niente indirizzi arbitrari.
+    let ok = req.path.starts_with('/')
+        && req.path.len() < 80
+        && req.path[1..].chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.')
+        && [".jpg", ".png", ".svg"].iter().any(|e| req.path.ends_with(e));
+    if !ok {
+        return Err(ApiError::BadRequest("Percorso d'immagine TMDB non valido".into()));
+    }
+    let lib: i64 = sqlx::query_scalar("SELECT library_id FROM items WHERE id = ?").bind(iid).fetch_one(&state.db.read).await?;
+    if let Some(img) = crate::metadata::choose_remote_image(&state, iid, kind, &req.path).await.map_err(ApiError::Internal)? {
+        jobs::enqueue(&state, JobKind::DownloadImage { image_id: img }, priority::INTERACTIVE, Some(lib)).await?;
+    }
+    set_locked(&state, iid, kind, true).await?;
+    state.events.publish("item.updated", json!({ "item_id": state.ids.encode(iid) }));
+    Ok(Json(json!({ "ok": true })))
 }
 
 async fn reset_image(State(state): State<Shared>, _a: AdminUser, Path((id, kind)): Path<(String, String)>) -> ApiResult<Json<Value>> {

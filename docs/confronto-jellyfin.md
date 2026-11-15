@@ -89,7 +89,7 @@ La colonna **Priorità** indica l'ordine di lavoro: **A** subito, **B** dopo, **
 | Notifiche dei file locali | ✅ | ✅ | — |
 | NFO locali | ✅ | ✅ (+ .plexmatch) | — |
 | Modifica dei metadati, identifica | ✅ | ✅ | — |
-| Scelta o caricamento delle immagini | ✅ | 🟡 (caricamento sì; scelta tra le alternative di TMDB no) | C |
+| Scelta o caricamento delle immagini | ✅ | ✅ (caricamento e scelta tra le alternative di TMDB) | — |
 | Accesso con codice da un altro dispositivo (Quick Connect) | ✅ | ✅ (anche API Jellyfin) | — |
 | Messaggio o avviso sulla pagina di accesso, CSS personalizzato | ✅ | ✅ (Impostazioni › Generali) | — |
 | Webhook e notifiche esterne | 🟡 (plugin) | ✅ (JSON, Discord, ntfy: riproduzioni, titoli nuovi, accessi, problemi) | — |

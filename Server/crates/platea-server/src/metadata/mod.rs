@@ -740,6 +740,64 @@ async fn upsert_person(
 }
 
 /// Imposta l'immagine di un tipo da un percorso TMDB. Restituisce l'id se va scaricata.
+/// Alternative di TMDB per un tipo d'immagine di un film o di una serie: (percorso, larghezza, altezza, lingua, voto).
+pub async fn remote_images(state: &Shared, item_id: i64, kind: &str) -> anyhow::Result<Vec<serde_json::Value>> {
+    let (item_kind, library_id): (String, i64) =
+        sqlx::query_as("SELECT kind, library_id FROM items WHERE id = ?").bind(item_id).fetch_one(&state.db.read).await?;
+    let tmdb: Option<String> =
+        sqlx::query_scalar("SELECT value FROM external_ids WHERE item_id = ? AND provider = 'tmdb'").bind(item_id).fetch_optional(&state.db.read).await?;
+    let Some(tmdb) = tmdb.and_then(|t| t.parse::<i64>().ok()) else { return Ok(vec![]) };
+    let s = state.settings.get();
+    let key = s.metadata.tmdb_api_key.clone();
+    if key.trim().is_empty() {
+        return Ok(vec![]);
+    }
+    let rps = s.metadata.tmdb_requests_per_second;
+    drop(s);
+    let (language, _) = library_language(state, library_id).await;
+    let lang = language.split('-').next().unwrap_or("en").to_string();
+    let path = match item_kind.as_str() {
+        "movie" => format!("/movie/{tmdb}/images"),
+        "series" => format!("/tv/{tmdb}/images"),
+        _ => return Ok(vec![]),
+    };
+    let d = state.tmdb.get(&key, rps, &path, &[("include_image_language", format!("{lang},en,null"))], "", DAY).await?;
+    let list = match kind {
+        "poster" => &d["posters"],
+        "backdrop" => &d["backdrops"],
+        _ => &d["logos"],
+    };
+    let mut v: Vec<&serde_json::Value> = list.as_array().map(|a| a.iter().collect()).unwrap_or_default();
+    // Prima la lingua della libreria, poi le immagini senza testo, poi l'inglese; dentro, le più votate.
+    v.sort_by(|a, b| {
+        let rank = |x: &serde_json::Value| match x["iso_639_1"].as_str() {
+            Some(l) if l == lang => 0,
+            None => 1,
+            Some("en") => 2,
+            _ => 3,
+        };
+        rank(a).cmp(&rank(b)).then(b["vote_average"].as_f64().unwrap_or(0.0).total_cmp(&a["vote_average"].as_f64().unwrap_or(0.0)))
+    });
+    Ok(v.into_iter()
+        .filter(|x| x["file_path"].as_str().is_some())
+        .take(60)
+        .map(|x| serde_json::json!({ "path": x["file_path"], "width": x["width"], "height": x["height"], "lang": x["iso_639_1"], "vote": x["vote_average"] }))
+        .collect())
+}
+
+/// Sceglie un'immagine di TMDB per un elemento; restituisce l'immagine nuova da scaricare.
+pub async fn choose_remote_image(state: &Shared, item_id: i64, kind: &str, path: &str) -> anyhow::Result<Option<i64>> {
+    let size = match kind {
+        "poster" => "w780",
+        "backdrop" => "w1280",
+        _ => "w500",
+    };
+    let mut tx = state.db.write.begin().await?;
+    let id = set_image(&mut tx, Some(item_id), None, kind, Some(path), size).await?;
+    tx.commit().await?;
+    Ok(id)
+}
+
 async fn set_image(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     item_id: Option<i64>,
