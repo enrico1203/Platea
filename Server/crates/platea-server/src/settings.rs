@@ -263,6 +263,14 @@ pub struct MetadataSettings {
     /// Legge i file .plexmatch (formato di Plex) nelle cartelle di film e serie: titolo, anno e identificativi scelti dall'utente.
     #[schemars(title = "Leggi i file .plexmatch")]
     pub read_plexmatch: bool,
+    /// Chiave API di opensubtitles.com (gratuita, da "API consumers" nel proprio profilo): abilita la ricerca dei sottotitoli.
+    #[schemars(title = "Chiave API OpenSubtitles")]
+    pub opensubtitles_api_key: String,
+    /// Account opensubtitles.com (facoltativo): più download al giorno.
+    #[schemars(title = "Utente OpenSubtitles")]
+    pub opensubtitles_username: String,
+    #[schemars(title = "Password OpenSubtitles")]
+    pub opensubtitles_password: String,
 }
 
 impl Default for MetadataSettings {
@@ -277,6 +285,9 @@ impl Default for MetadataSettings {
             poster_download_width: 780,
             read_nfo: true,
             read_plexmatch: true,
+            opensubtitles_api_key: String::new(),
+            opensubtitles_username: String::new(),
+            opensubtitles_password: String::new(),
         }
     }
 }
@@ -349,7 +360,7 @@ impl Default for ScannerSettings {
 }
 
 /// Campi segreti: si scrivono ma l'API non li restituisce.
-pub const SECRET_FIELDS: &[(&str, &str)] = &[("metadata", "tmdb_api_key")];
+pub const SECRET_FIELDS: &[(&str, &str)] = &[("metadata", "tmdb_api_key"), ("metadata", "opensubtitles_api_key"), ("metadata", "opensubtitles_password")];
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]

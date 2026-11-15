@@ -366,6 +366,11 @@ restano 321 "da verificare" e 328 non riconosciuti (da vedere a mano dall'utente
 4k. [x] Controllo remoto delle sessioni web (`POST /admin/sessions/{id}/command`: pause, resume, message): evento
    `session.command` sul WebSocket dell'utente; il player esegue o mostra il messaggio; interrotta dall'admin → avviso.
    Pulsanti nel pannello riproduzioni (solo client Platea). Provato: messaggio mostrato sul player.
+4l. [x] Sottotitoli aggiunti (`api/subtitles.rs`): caricamento (SRT/VTT/ASS, ≤ 2 MB, Latin-1 convertito in UTF-8) e
+   OpenSubtitles (chiave, utente e password in Metadati; ricerca per TMDB/IMDb, serie+stagione+episodio, hash del file
+   da 128 KB; download con token se c'è l'account). Salvati in `cache/subtitles/added/`, registrati come esterni con
+   percorso `@platea/…` e indice ≥ 2000: la scansione li lascia, web e Infuse li servono dalla cache. Provato con un
+   finto OpenSubtitles (`PLATEA_OPENSUBTITLES_BASE`): ricerca con hash, login, download, VTT corretto, scansione.
 5. Fase 3: QSV/VA-API/NVENC/AMD, tone mapping in GPU, uscita HEVC/AV1 su hardware reale (qui non c'è GPU).
 6. Fase 5 (rilascio). [x] Revisione di sicurezza interna (15/11/2026), corretti:
    - download delle immagini: la risposta era letta tutta prima del controllo di dimensione (una risposta senza fine

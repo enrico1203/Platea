@@ -1695,10 +1695,8 @@ async fn serve_subtitle(state: &Shared, user: &AuthUser, item: &str, source: &st
     let fid = choose_file(state, id, Some(source)).await?;
     let info = crate::api::playback::load_file(state, fid).await?;
     let ext = info.streams.iter().find(|s| s.0 == index && s.4).and_then(|s| s.5.clone()).ok_or_else(|| ApiError::not_found("Sottotitolo"))?;
-    if ext.split('/').any(|p| p == "..") {
-        return Err(ApiError::Forbidden("Percorso non valido".into()));
-    }
-    let bytes = tokio::fs::read(info.root.join(&ext)).await.map_err(|_| ApiError::not_found("Sottotitolo"))?;
+    let path = crate::api::playback::external_subtitle_path(state, &info.root, &ext)?;
+    let bytes = tokio::fs::read(path).await.map_err(|_| ApiError::not_found("Sottotitolo"))?;
     let ct = match platea_naming::extension(&ext).as_deref() {
         Some("vtt") => "text/vtt",
         Some("ass") | Some("ssa") => "text/x-ssa",

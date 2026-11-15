@@ -23,7 +23,7 @@ La colonna **Priorità** indica l'ordine di lavoro: **A** subito, **B** dopo, **
 | Blocco dopo N tentativi di accesso falliti | ✅ | ✅ (facoltativo, spento di default; sempre il rallentamento) | — |
 | Gestione dei propri dispositivi | ✅ | ✅ (anche "scollega tutti gli altri") | — |
 | Cancellare contenuti dal disco | ✅ | ➖ (Platea non scrive mai nelle cartelle dei media) | — |
-| Gestire collezioni e sottotitoli | ✅ | ❌ | C |
+| Gestire collezioni e sottotitoli | ✅ | 🟡 (sottotitoli sì: caricamento, OpenSubtitles, rimozione; collezioni manuali no) | C |
 | Controllo remoto di altre sessioni | ✅ | ✅ (dalla dashboard: pausa, ripresa, messaggio, interruzione; player web) | — |
 | Utente nascosto dalla schermata di accesso | ✅ | ➖ (Platea non elenca gli utenti all'accesso) | — |
 
@@ -75,7 +75,7 @@ La colonna **Priorità** indica l'ordine di lavoro: **A** subito, **B** dopo, **
 | Miniature sulla barra di avanzamento (trickplay) | ✅ | ✅ (per libreria, spente sulle remote) | — |
 | Salto della sigla e dei titoli di coda | 🟡 (plugin, segmenti 10.10) | ❌ | C |
 | Sottotitoli esterni e interni, conversione in WebVTT | ✅ | ✅ | — |
-| Ricerca e download di sottotitoli (OpenSubtitles) | 🟡 (plugin) | ❌ | C |
+| Ricerca e download di sottotitoli (OpenSubtitles) | 🟡 (plugin) | ✅ (con hash del file; salvati in cache) | — |
 | Visione di gruppo (SyncPlay) | ✅ | ❌ | C |
 | Chromecast, DLNA | 🟡 | ➖ | — |
 

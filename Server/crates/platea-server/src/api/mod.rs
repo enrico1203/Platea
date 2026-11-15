@@ -13,6 +13,7 @@ pub mod playback;
 pub mod playlists;
 pub mod quickconnect;
 pub mod setup;
+pub mod subtitles;
 pub mod system;
 pub mod users;
 
@@ -149,6 +150,7 @@ pub fn router(state: Shared) -> Router {
     let api = playback::routes(api);
     let api = playlists::routes(api);
     let api = quickconnect::routes(api);
+    let api = subtitles::routes(api);
     let api = download::routes(api);
     let api = admin::routes(api);
     let api = events::routes(api);

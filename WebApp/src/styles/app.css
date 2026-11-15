@@ -472,3 +472,7 @@ a.person:focus-visible .person__img { outline: 2px solid var(--focus); outline-o
 .remote-images--logo .remote-images__item img { background: #2a2f37; padding: var(--space-2); object-fit: contain; aspect-ratio: 16 / 9; }
 .remote-images__item:hover img, .remote-images__item:focus-visible img { border-color: var(--blue); }
 .player__notice { position: absolute; top: 72px; left: 50%; transform: translateX(-50%); max-width: min(560px, calc(100vw - 32px)); padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: rgba(12,14,17,.92); border: 1px solid #2f343c; color: #f3f5f7; font: 500 15px/22px var(--font-sans); z-index: 5; }
+.chip-removable { display: inline-flex; align-items: center; gap: 2px; }
+.chip-removable .icon-btn { width: 24px; height: 24px; }
+.os-result { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-3); align-items: center; padding: var(--space-3) 0; border-bottom: 1px solid var(--line); }
+.subtitles-langs .pl-field { min-width: 110px; }

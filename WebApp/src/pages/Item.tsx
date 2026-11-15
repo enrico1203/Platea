@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Play, Check, Heart, SearchCheck, RefreshCw, Pencil, ListPlus, Download, Upload, Clapperboard } from "lucide-react";
+import { Play, Check, Heart, SearchCheck, RefreshCw, Pencil, ListPlus, Download, Upload, Clapperboard, X } from "lucide-react";
 import { AddToPlaylist } from "./Playlists";
 import { api, ApiError, getToken, imageUrl, mediaUrl, serverUrl } from "../api/client";
 import type { Candidate, Item as ItemT, ItemDetail, MediaFile, MissingEpisode, Page } from "../api/types";
 import { PosterCard } from "../components/PosterCard";
-import { Alert, Badge, Dialog, TextField, toast } from "../components/ui";
+import { Alert, Badge, Dialog, TextField, toast, SelectField } from "../components/ui";
 import { useSession } from "../session";
 import { useI18n } from "../i18n";
 
@@ -14,6 +14,76 @@ function channels(n: number | null) {
   if (!n) return "";
   return n > 2 ? `${n - 1}.1` : `${n}.0`;
 }
+
+const SUB_LANGS = ["it", "en", "fr", "de", "es", "pt", "nl", "ja"];
+
+/** Sottotitoli aggiunti da Platea (in cache, mai nella cartella del film): caricati o scaricati da OpenSubtitles. */
+function SubtitleTools({ item, file }: { item: ItemDetail; file: MediaFile }) {
+  const { t, num } = useI18n();
+  const qc = useQueryClient();
+  const input = useRef<HTMLInputElement>(null);
+  const [lang, setLang] = useState("it");
+  const [busy, setBusy] = useState(false);
+  const [results, setResults] = useState<OsResult[] | null>(null);
+  const added = file.subtitles.filter((s) => s.index >= 2000);
+  const done = (msg: string) => { toast(msg); qc.invalidateQueries({ queryKey: ["item", item.id] }); qc.invalidateQueries({ queryKey: ["files", item.id] }); qc.invalidateQueries(); };
+  return (
+    <div className="stack" style={{ gap: 8 }}>
+      <div className="row" style={{ gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+        <SelectField label={t("item.subLanguage")} value={lang} onChange={setLang} options={SUB_LANGS.map((l) => ({ value: l, label: l.toUpperCase() }))} />
+        <button type="button" className="pl-btn pl-btn--secondary pl-btn--sm" disabled={busy} onClick={() => input.current?.click()}><Upload />{t("item.uploadSubtitle")}</button>
+        <button type="button" className="pl-btn pl-btn--secondary pl-btn--sm" disabled={busy} onClick={async () => {
+          setBusy(true);
+          try { setResults((await api<{ items: OsResult[] }>(`/api/v1/items/${item.id}/subtitles/search?language=${lang}&file_id=${file.id}`)).items); }
+          catch (e) { toast((e as ApiError).message); } finally { setBusy(false); }
+        }}><SearchCheck />{t("item.searchSubtitles")}</button>
+      </div>
+      {added.length > 0 && (
+        <div className="chips">{added.map((s) => (
+          <span key={s.index} className="chip-removable"><Badge tone="codec">{[s.language?.toUpperCase() ?? "?", s.title ?? ""].filter(Boolean).join(" · ")}</Badge>
+            <button type="button" className="icon-btn" aria-label={t("common.remove")} onClick={async () => { await api(`/api/v1/items/${item.id}/subtitles/${s.index}`, { method: "DELETE" }); done(t("item.subtitleRemoved")); }}><X size={14} /></button>
+          </span>
+        ))}</div>
+      )}
+      <input ref={input} type="file" accept=".srt,.vtt,.ass,.ssa,text/plain" hidden onChange={async (e) => {
+        const f = e.target.files?.[0];
+        e.target.value = "";
+        if (!f) return;
+        setBusy(true);
+        try {
+          const res = await fetch(serverUrl() + `/api/v1/items/${item.id}/subtitles?language=${lang}&file_id=${file.id}&name=${encodeURIComponent(f.name)}`, { method: "POST", headers: { Authorization: `Bearer ${getToken() ?? ""}` }, body: f });
+          if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { message?: string }).message ?? res.statusText);
+          done(t("item.subtitleAdded"));
+        } catch (err) { toast((err as Error).message); } finally { setBusy(false); }
+      }} />
+      {results && (
+        <Dialog wide title={t("item.searchSubtitles")} onClose={() => setResults(null)}>
+          {results.length === 0 && <div className="t-small subtle">{t("item.noSubtitlesFound")}</div>}
+          <div className="episodes">
+            {results.map((r) => (
+              <div key={r.file_id} className="os-result">
+                <div style={{ minWidth: 0 }}>
+                  <div className="t-label" style={{ overflowWrap: "anywhere" }}>{r.release || r.file_name}</div>
+                  <div className="t-small subtle">{[r.language?.toUpperCase(), r.hash_match ? t("item.hashMatch") : null, r.forced ? t("item.forced") : null, r.hearing_impaired ? "SDH" : null, r.downloads != null ? t("item.downloads", { n: num(r.downloads) }) : null, r.uploader].filter(Boolean).join(" · ")}</div>
+                </div>
+                <button type="button" className="pl-btn pl-btn--primary pl-btn--sm" disabled={busy} onClick={async () => {
+                  setBusy(true);
+                  try {
+                    await api(`/api/v1/items/${item.id}/subtitles/download`, { body: { subtitle_file_id: r.file_id, language: r.language ?? lang, forced: !!r.forced, name: r.release ?? r.file_name, file_id: file.id } });
+                    setResults(null);
+                    done(t("item.subtitleAdded"));
+                  } catch (e) { toast((e as ApiError).message); } finally { setBusy(false); }
+                }}><Download />{t("item.getSubtitle")}</button>
+              </div>
+            ))}
+          </div>
+        </Dialog>
+      )}
+    </div>
+  );
+}
+
+interface OsResult { file_id: number; file_name: string | null; release: string | null; language: string | null; downloads: number | null; hearing_impaired: boolean | null; forced: boolean | null; hash_match: boolean | null; uploader: string | null }
 
 function TechInfo({ file }: { file: MediaFile }) {
   const { t, bytes, bitrate, duration } = useI18n();
@@ -360,6 +430,7 @@ export default function ItemPage() {
               )}
             </div>
             {file && <TechInfo file={file} />}
+            {file && me?.is_admin && (item.kind === "movie" || item.kind === "episode") && <SubtitleTools item={item} file={file} />}
           </section>
         )}
 

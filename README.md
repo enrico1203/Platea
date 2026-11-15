@@ -20,6 +20,7 @@ Platea serve il file originale quando il client lo regge, fa remux o transcodifi
 - **Generi e studi.** Dal dettaglio di un titolo si apre la pagina di un genere o di uno studio (HBO, Pixar…) con i titoli di tutte le librerie.
 - **Trailer.** Dai metadati di TMDB e dagli NFO di Kodi, nel dettaglio del titolo e in Infuse.
 - **Notifiche.** Webhook verso Discord, ntfy, Home Assistant o uno script: riproduzioni, titoli nuovi, accessi, mount che non risponde (Impostazioni › Notifiche).
+- **Sottotitoli in più.** L'amministratore carica un SRT/VTT/ASS o lo cerca su OpenSubtitles (con l'hash del file, per la versione giusta): finisce nella cache di Platea, non nella cartella del film.
 - **Tutto dalla dashboard.** Nessun file di configurazione da modificare dopo il primo avvio.
 
 ## Avvio rapido

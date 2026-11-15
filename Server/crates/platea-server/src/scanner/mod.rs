@@ -803,7 +803,7 @@ async fn sync_external_subtitles(state: &Shared, path_id: i64, subs: &HashMap<St
     // Sidecar attuali nel database (una query sola).
     let rows: Vec<(i64, String, Option<String>)> = sqlx::query_as(
         "SELECT f.id, f.relative_path, s.external_path FROM media_files f
-         LEFT JOIN media_streams s ON s.file_id = f.id AND s.is_external = 1
+         LEFT JOIN media_streams s ON s.file_id = f.id AND s.is_external = 1 AND s.external_path NOT LIKE '@platea/%'
          WHERE f.library_path_id = ?",
     )
     .bind(path_id)
@@ -825,7 +825,11 @@ async fn sync_external_subtitles(state: &Shared, path_id: i64, subs: &HashMap<St
             continue;
         }
         writes += 1;
-        sqlx::query("DELETE FROM media_streams WHERE file_id = ? AND is_external = 1").bind(file_id).execute(&mut *tx).await?;
+        // I sottotitoli aggiunti da Platea (caricati o scaricati, in cache) non dipendono dalla cartella: restano.
+        sqlx::query("DELETE FROM media_streams WHERE file_id = ? AND is_external = 1 AND external_path NOT LIKE '@platea/%'")
+            .bind(file_id)
+            .execute(&mut *tx)
+            .await?;
         for (i, p) in want.iter().enumerate() {
             let name = p.rsplit('/').next().unwrap_or(p);
             let (lang, forced, _sdh) = naming::subtitle_language(name);

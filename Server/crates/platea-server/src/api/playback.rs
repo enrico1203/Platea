@@ -784,6 +784,20 @@ async fn hls(State(state): State<Shared>, Path((id, name)): Path<(String, String
 }
 
 /// Sottotitoli di testo in WebVTT: estratti al primo utilizzo, poi in cache.
+/// Prefisso dei sottotitoli aggiunti da Platea (caricati o scaricati): stanno in `cache/subtitles/added/`, mai nei media.
+pub const ADDED_PREFIX: &str = "@platea/";
+
+/// Percorso di un sottotitolo esterno: accanto al video, oppure nella cache se aggiunto da Platea.
+pub fn external_subtitle_path(state: &Shared, root: &std::path::Path, rel: &str) -> ApiResult<PathBuf> {
+    if rel.split('/').any(|p| p == "..") {
+        return Err(ApiError::Forbidden("Percorso non valido".into()));
+    }
+    Ok(match rel.strip_prefix(ADDED_PREFIX) {
+        Some(name) => state.boot.subtitles_dir().join("added").join(name),
+        None => root.join(rel),
+    })
+}
+
 async fn subtitle(State(state): State<Shared>, Path((id, name)): Path<(String, String)>, Query(q): Query<TokenQuery>) -> ApiResult<Response> {
     let s = session_by_token(&state, &id, q.t.as_deref())?;
     let idx: i64 = name.strip_suffix(".vtt").and_then(|n| n.parse().ok()).ok_or_else(|| ApiError::not_found("Sottotitolo"))?;
@@ -800,10 +814,7 @@ async fn subtitle(State(state): State<Shared>, Path((id, name)): Path<(String, S
         if !cache.exists() {
             let input = if external {
                 let rel = ext_path.ok_or_else(|| ApiError::not_found("Sottotitolo"))?;
-                if rel.split('/').any(|p| p == "..") {
-                    return Err(ApiError::Forbidden("Percorso non valido".into()));
-                }
-                info.root.join(rel)
+                external_subtitle_path(&state, &info.root, &rel)?
             } else {
                 info.abs.clone()
             };
