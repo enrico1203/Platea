@@ -31,6 +31,10 @@ pub struct Listing {
     pub errors: Vec<String>,
     /// Cartelle (relative) che non si sono potute leggere: i file noti lì sotto non contano come spariti.
     pub error_dirs: Vec<String>,
+    /// File `.plexmatch` (percorsi relativi): nelle serie possono indicare gli episodi con le righe `ep:`.
+    pub plexmatch: Vec<String>,
+    /// NFO visti, come percorso relativo senza estensione: un video con lo stesso nome ha il suo NFO.
+    pub nfos: HashSet<String>,
 }
 
 #[derive(Debug, Default, serde::Serialize)]
@@ -84,6 +88,8 @@ pub fn list_tree(root: &Path, start_rel: &str, workers: usize) -> Listing {
             out.dirs += l.dirs;
             out.errors.extend(l.errors);
             out.error_dirs.extend(l.error_dirs);
+            out.plexmatch.extend(l.plexmatch);
+            out.nfos.extend(l.nfos);
             frontier.extend(sub);
         }
     }
@@ -111,6 +117,10 @@ fn list_dir(root: &Path, rel_dir: &str, out: &mut Listing, sub: &mut Vec<String>
         if name == ".plateaignore" {
             return;
         }
+        if name.eq_ignore_ascii_case(".plexmatch") {
+            out.plexmatch.push(if rel_dir.is_empty() { name.clone() } else { format!("{rel_dir}/{name}") });
+            continue;
+        }
         if naming::is_ignored_entry(&name) {
             continue;
         }
@@ -119,6 +129,10 @@ fn list_dir(root: &Path, rel_dir: &str, out: &mut Listing, sub: &mut Vec<String>
         let Ok(ft) = entry.file_type() else { continue };
         if ft.is_dir() {
             dirs.push(rel);
+            continue;
+        }
+        if let Some(stem) = name.strip_suffix(".nfo").or_else(|| name.strip_suffix(".NFO")) {
+            out.nfos.insert(if rel_dir.is_empty() { stem.to_string() } else { format!("{rel_dir}/{stem}") });
             continue;
         }
         let is_video = naming::is_video_file(&name);
@@ -171,6 +185,7 @@ struct DbFile {
     mtime: i64,
     state: String,
     item_id: Option<i64>,
+    has_nfo: i64,
 }
 
 #[derive(sqlx::FromRow)]
@@ -240,7 +255,7 @@ pub async fn scan_library(state: &Shared, library_id: i64, subpath: Option<Strin
         if !listing.errors.is_empty() {
             tracing::warn!(library = %lib_name, errors = listing.errors.len(), first = %listing.errors[0], "cartelle non leggibili durante l'elenco");
         }
-        let stats = apply_listing(state, library_id, &kind, path_id, &start_rel, listing).await?;
+        let stats = apply_listing(state, library_id, &kind, path_id, &root_path, &start_rel, listing).await?;
         total.listed += stats.listed;
         total.added += stats.added;
         total.changed += stats.changed;
@@ -346,11 +361,37 @@ fn parent_dir(rel: &str) -> &str {
     rel.rsplit_once('/').map(|(d, _)| d).unwrap_or("")
 }
 
-async fn apply_listing(state: &Shared, library_id: i64, kind: &str, path_id: i64, start_rel: &str, listing: Listing) -> anyhow::Result<ScanStats> {
+/// Percorso relativo senza estensione: la chiave con cui un video ritrova il suo NFO.
+fn stem_rel(rel: &str) -> &str {
+    match rel.rsplit_once('.') {
+        Some((stem, ext)) if !ext.contains('/') => stem,
+        _ => rel,
+    }
+}
+
+/// Righe `ep:` dei `.plexmatch` delle serie: percorso del file (relativo alla libreria) → percorso equivalente con un nome standard.
+async fn episode_hints(state: &Shared, root: &Path, plexmatch: &[String]) -> HashMap<String, String> {
+    let mut out = HashMap::new();
+    let timeout = crate::metadata::nfo::fs_timeout(state);
+    for rel in plexmatch {
+        let Some(raw) = crate::metadata::nfo::read_small(root.join(rel), timeout).await else { continue };
+        let dir = parent_dir(rel);
+        for h in crate::metadata::plexmatch::parse_episode_hints(&raw) {
+            let file = if dir.is_empty() { h.path.clone() } else { format!("{dir}/{}", h.path) };
+            out.insert(file, h.synthetic_rel(dir));
+        }
+    }
+    if !out.is_empty() {
+        tracing::debug!(hints = out.len(), "episodi indicati dai .plexmatch");
+    }
+    out
+}
+
+async fn apply_listing(state: &Shared, library_id: i64, kind: &str, path_id: i64, root: &Path, start_rel: &str, listing: Listing) -> anyhow::Result<ScanStats> {
     let mut stats = ScanStats { listed: listing.videos.len(), dirs: listing.dirs, ..Default::default() };
     let in_scope = |rel: &str| start_rel.is_empty() || rel == start_rel || rel.starts_with(&format!("{start_rel}/"));
 
-    let db_files: Vec<DbFile> = sqlx::query_as("SELECT id, relative_path, size, mtime, state, item_id FROM media_files WHERE library_path_id = ?")
+    let db_files: Vec<DbFile> = sqlx::query_as("SELECT id, relative_path, size, mtime, state, item_id, has_nfo FROM media_files WHERE library_path_id = ?")
         .bind(path_id)
         .fetch_all(&state.db.read)
         .await?;
@@ -385,6 +426,13 @@ async fn apply_listing(state: &Shared, library_id: i64, kind: &str, path_id: i64
         }
     }
 
+    let hints = if kind == "shows" && state.settings.get().metadata.read_plexmatch && !listing.plexmatch.is_empty() {
+        episode_hints(state, root, &listing.plexmatch).await
+    } else {
+        HashMap::new()
+    };
+    // Serie già note che ricevono episodi nuovi (o un NFO nuovo): i metadati degli episodi vanno aggiornati.
+    let mut refresh_series: HashSet<i64> = HashSet::new();
     let mut idx = load_index(state, library_id).await?;
     let now = now_ms();
     let mut probe_ids: Vec<i64> = Vec::new();
@@ -421,15 +469,16 @@ async fn apply_listing(state: &Shared, library_id: i64, kind: &str, path_id: i64
                     continue;
                 }
             }
-            let item = identify(&mut tx, &mut idx, library_id, kind, &e.rel, now, &mut match_ids).await?;
+            let ident_rel = hints.get(&e.rel).map(String::as_str).unwrap_or(&e.rel);
+            let item = identify(&mut tx, &mut idx, library_id, kind, ident_rel, now, &mut match_ids, &mut refresh_series).await?;
             let Some((item_id, version)) = item else {
                 stats.unrecognized += 1;
                 tracing::debug!(path = %e.rel, "nome non riconosciuto");
                 continue;
             };
             let id = sqlx::query(
-                "INSERT INTO media_files (item_id, library_path_id, relative_path, size, mtime, version_label, state, probe_state, added_at)
-                 VALUES (?, ?, ?, ?, ?, ?, 'present', 'pending', ?)",
+                "INSERT INTO media_files (item_id, library_path_id, relative_path, size, mtime, version_label, state, probe_state, added_at, has_nfo)
+                 VALUES (?, ?, ?, ?, ?, ?, 'present', 'pending', ?, ?)",
             )
             .bind(item_id)
             .bind(path_id)
@@ -438,6 +487,7 @@ async fn apply_listing(state: &Shared, library_id: i64, kind: &str, path_id: i64
             .bind(e.mtime)
             .bind(version)
             .bind(now)
+            .bind(listing.nfos.contains(stem_rel(&e.rel)) as i64)
             .execute(&mut *tx)
             .await?
             .last_insert_rowid();
@@ -506,6 +556,34 @@ async fn apply_listing(state: &Shared, library_id: i64, kind: &str, path_id: i64
         }
     }
 
+    // NFO comparsi o spariti accanto a file già noti.
+    let nfo_changes: Vec<(i64, bool, Option<i64>)> = listing
+        .videos
+        .iter()
+        .filter_map(|e| {
+            let f = by_path.get(&e.rel)?;
+            let want = listing.nfos.contains(stem_rel(&e.rel));
+            (want != (f.has_nfo != 0)).then_some((f.id, want, f.item_id))
+        })
+        .collect();
+    if !nfo_changes.is_empty() {
+        let mut tx = state.db.write.begin().await?;
+        for (id, want, item) in &nfo_changes {
+            sqlx::query("UPDATE media_files SET has_nfo = ? WHERE id = ?").bind(*want as i64).bind(id).execute(&mut *tx).await?;
+            if let (true, Some(item)) = (*want, item) {
+                if let Some(series) = sqlx::query_scalar::<_, Option<i64>>("SELECT series_id FROM items WHERE id = ? AND kind = 'episode'")
+                    .bind(item)
+                    .fetch_optional(&mut *tx)
+                    .await?
+                    .flatten()
+                {
+                    refresh_series.insert(series);
+                }
+            }
+        }
+        tx.commit().await?;
+    }
+
     // Disponibilità degli elementi toccati, risalendo a stagioni e serie.
     if !touched_items.is_empty() {
         update_availability(state, &touched_items).await?;
@@ -514,14 +592,23 @@ async fn apply_listing(state: &Shared, library_id: i64, kind: &str, path_id: i64
     // Sottotitoli esterni accanto ai video.
     sync_external_subtitles(state, path_id, &listing.subtitles, &listing.videos).await?;
 
+    let refresh: Vec<i64> = refresh_series.difference(&match_ids).copied().collect();
     let mut batch: Vec<(JobKind, i64, Option<i64>)> = Vec::with_capacity(probe_ids.len() + match_ids.len());
     batch.extend(match_ids.into_iter().map(|id| (JobKind::MatchItem { item_id: id }, priority::METADATA, Some(library_id))));
     batch.extend(probe_ids.into_iter().map(|id| (JobKind::ProbeFile { file_id: id }, priority::PROBE, Some(library_id))));
+    // Solo serie già associate: per le altre ci pensa l'associazione (e una serie "da verificare" resta com'è).
+    for sid in &refresh {
+        let st: Option<String> = sqlx::query_scalar("SELECT match_state FROM items WHERE id = ?").bind(sid).fetch_optional(&state.db.read).await?;
+        if matches!(st.as_deref(), Some("matched" | "manual")) {
+            batch.push((JobKind::RefreshMetadata { item_id: *sid }, priority::METADATA, Some(library_id)));
+        }
+    }
     jobs::enqueue_batch(state, batch).await?;
     Ok(stats)
 }
 
 /// Crea o trova l'elemento logico per un file. Restituisce (item_id, etichetta versione).
+#[allow(clippy::too_many_arguments)]
 async fn identify(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     idx: &mut ItemIndex,
@@ -530,6 +617,7 @@ async fn identify(
     rel: &str,
     now: i64,
     match_ids: &mut HashSet<i64>,
+    refresh_series: &mut HashSet<i64>,
 ) -> anyhow::Result<Option<(i64, Option<String>)>> {
     if kind == "movies" {
         let m = naming::parse_movie(rel);
@@ -577,6 +665,7 @@ async fn identify(
     if let Some(id) = idx.episodes.get(&(season_id, ep_no)) {
         return Ok(Some((*id, None)));
     }
+    refresh_series.insert(series_id);
     let title = format!("Episodio {ep_no}");
     let id = insert_item(tx, library_id, "episode", Some(season_id), Some(series_id), &title, None, Some(ep_no), None, now).await?;
     let end = e.episodes.last().copied().map(|x| x as i64).filter(|x| *x != ep_no);

@@ -45,6 +45,9 @@ pub struct Nfo {
     pub backdrop: Option<String>,
     pub logo: Option<String>,
     pub set_name: Option<String>,
+    /// Solo negli NFO degli episodi.
+    pub season: Option<i64>,
+    pub episode: Option<i64>,
 }
 
 impl Nfo {
@@ -113,6 +116,8 @@ pub fn parse(raw: &str) -> Option<Nfo> {
     out.original_title = child_text(root, "originaltitle");
     out.plot = child_text(root, "plot").or_else(|| child_text(root, "outline"));
     out.tagline = child_text(root, "tagline");
+    out.season = child_text(root, "season").and_then(|v| v.parse().ok());
+    out.episode = child_text(root, "episode").and_then(|v| v.parse().ok());
     out.runtime_min = child_text(root, "runtime").and_then(|r| r.split_whitespace().next()?.parse::<f64>().ok()).map(|m| m.round() as i64).filter(|m| *m > 0);
     out.status = child_text(root, "status");
     out.premiered = child_text(root, "premiered").or_else(|| child_text(root, "aired")).or_else(|| child_text(root, "releasedate"));
@@ -226,7 +231,78 @@ fn tmdb_path(url: &str) -> Option<String> {
     rest.split_once('/').map(|(_, p)| format!("/{p}"))
 }
 
-pub(super) async fn read_small(path: PathBuf, timeout: Duration) -> Option<String> {
+/// NFO di un episodio: uno o più `<episodedetails>` (un file con più episodi ne ha uno per episodio, uno dopo l'altro).
+pub fn parse_episodes(raw: &str) -> Vec<Nfo> {
+    let mut out = Vec::new();
+    let mut rest = raw;
+    while let Some(start) = rest.find("<episodedetails") {
+        let block = &rest[start..];
+        let Some(end) = block.find("</episodedetails>") else { break };
+        let end = end + "</episodedetails>".len();
+        if let Some(n) = parse(&block[..end]) {
+            out.push(n);
+        }
+        rest = &block[end..];
+    }
+    out
+}
+
+/// Applica gli NFO degli episodi di una serie (solo i file con un NFO visto durante la scansione).
+/// L'NFO è la scelta locale dell'utente: vince sui metadati di TMDB, ma non sui campi bloccati.
+pub async fn apply_episodes(state: &Shared, series_id: i64) -> anyhow::Result<usize> {
+    if !state.settings.get().metadata.read_nfo {
+        return Ok(0);
+    }
+    let rows: Vec<(i64, i64, Option<i64>, Option<i64>, String)> = sqlx::query_as(
+        "SELECT e.id, f.id, e.parent_index_number, e.index_number, e.locked_fields FROM items e JOIN media_files f ON f.item_id = e.id
+         WHERE e.series_id = ? AND e.kind = 'episode' AND f.has_nfo = 1 AND f.state = 'present'",
+    )
+    .bind(series_id)
+    .fetch_all(&state.db.read)
+    .await?;
+    let timeout = fs_timeout(state);
+    let mut applied = 0;
+    for (ep_id, file_id, season, number, lf) in rows {
+        let Some((abs, ..)) = crate::probe::file_abs_path(state, file_id).await? else { continue };
+        let Some(raw) = read_small(abs.with_extension("nfo"), timeout).await else { continue };
+        let blocks = parse_episodes(&raw);
+        // Il blocco del proprio episodio; altrimenti il primo (NFO senza numeri).
+        let Some(n) = blocks.iter().find(|n| n.episode == number && n.season.is_none_or(|s| Some(s) == season)).or(blocks.first()) else { continue };
+        if n.title.is_none() && n.plot.is_none() && n.premiered.is_none() {
+            continue;
+        }
+        sqlx::query(
+            "UPDATE items SET
+               title = CASE WHEN ?2 OR ?3 IS NULL THEN title ELSE ?3 END,
+               sort_title = CASE WHEN ?2 OR ?3 IS NULL THEN sort_title ELSE ?4 END,
+               overview = CASE WHEN ?5 OR ?6 IS NULL THEN overview ELSE ?6 END,
+               premiere_date = COALESCE(?7, premiere_date), year = COALESCE(?8, year),
+               community_rating = COALESCE(?9, community_rating), runtime_ms = COALESCE(?10, runtime_ms),
+               match_state = 'matched', updated_at = ?11
+             WHERE id = ?1",
+        )
+        .bind(ep_id)
+        .bind(locked(&lf, "title"))
+        .bind(&n.title)
+        .bind(n.title.as_deref().map(platea_naming::sort_title))
+        .bind(locked(&lf, "overview"))
+        .bind(&n.plot)
+        .bind(&n.premiered)
+        .bind(year_of(n.premiered.as_deref()))
+        .bind(n.rating)
+        .bind(n.runtime_min.map(|m| m * 60_000))
+        .bind(now_ms())
+        .execute(&state.db.write)
+        .await?;
+        applied += 1;
+    }
+    if applied > 0 {
+        tracing::debug!(series = series_id, episodes = applied, "NFO degli episodi applicati");
+    }
+    Ok(applied)
+}
+
+pub(crate) async fn read_small(path: PathBuf, timeout: Duration) -> Option<String> {
     let fut = async {
         let meta = tokio::fs::metadata(&path).await.ok()?;
         if !meta.is_file() || meta.len() > MAX_BYTES {
@@ -479,6 +555,18 @@ async fn add_person(tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>, item_id: i64, 
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn episode_nfo_blocks() {
+        let raw = "<?xml version=\"1.0\"?>\n<episodedetails><title>Il pilota</title><season>1</season><episode>1</episode><plot>Inizio.</plot><aired>2020-01-05</aired></episodedetails>\n<episodedetails><title>Seconda parte</title><season>1</season><episode>2</episode></episodedetails>\nhttps://example.org";
+        let v = parse_episodes(raw);
+        assert_eq!(v.len(), 2);
+        assert_eq!((v[0].title.as_deref(), v[0].season, v[0].episode), (Some("Il pilota"), Some(1), Some(1)));
+        assert_eq!(v[0].premiered.as_deref(), Some("2020-01-05"));
+        assert_eq!((v[1].title.as_deref(), v[1].episode), (Some("Seconda parte"), Some(2)));
+        assert!(parse_episodes("<movie><title>X</title></movie>").is_empty());
+    }
+
     use super::*;
 
     const KODI: &str = r#"<?xml version="1.0" encoding="utf-8" standalone="yes"?>

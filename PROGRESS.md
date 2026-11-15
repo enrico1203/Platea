@@ -316,7 +316,17 @@ restano 321 "da verificare" e 328 non riconosciuti (da vedere a mano dall'utente
    Authorize e /Users/AuthenticateWithQuickConnect. Web: "Accedi con un codice" nel login, "Collega un dispositivo" in
    Account e su `/link`. Impostazione `general.quick_connect` (attiva). Provato su server separato: flusso nativo e
    Jellyfin via curl; nel browser il dispositivo entra da solo dopo la conferma, campo del codice a 16 px, zero errori.
-4. `.plexmatch` righe `ep:` e NFO dei singoli episodi.
+4. [x] `.plexmatch` righe `ep:`/`episode:` (S01E02, S01E02-E03, 2x04, assoluto, data; percorso relativo alla serie): lo
+   scanner vede i `.plexmatch` durante l'elenco, li legge solo nelle librerie di serie e riconosce il file come un nome
+   standard nella cartella della serie (stessa serie degli altri episodi). Vale per i file nuovi o mai riconosciuti.
+   NFO degli episodi (`<episodio>.nfo`, anche con più `<episodedetails>`): lo scanner segna `media_files.has_nfo`
+   (migrazione 0014) vedendo l'NFO nell'elenco, senza aprire nulla; dopo i metadati della serie (TMDB o NFO, anche
+   senza chiave) gli NFO degli episodi vincono sui testi di TMDB, campi bloccati esclusi.
+   **Corretto:** un episodio nuovo in una serie già associata restava "Episodio N" fino all'aggiornamento periodico
+   (fino a `refresh_days`): ora la scansione mette in coda l'aggiornamento della serie. Sulla libreria dell'utente:
+   nessun NFO di episodio, pochi `.plexmatch` senza righe `ep:`; 8.435 episodi "in attesa" sono numeri che TMDB non ha.
+   Provato su server separato: ep: → episodi 1 e 2-3 della stessa serie, NFO dell'episodio applicato, episodio aggiunto
+   dopo → serie aggiornata da sola con l'NFO nuovo.
 5. Fase 3: QSV/VA-API/NVENC/AMD, tone mapping in GPU, uscita HEVC/AV1 su hardware reale (qui non c'è GPU).
 6. Fase 5 (rilascio): documentazione completa, aggiornamento tra versioni, revisione di sicurezza.
    **Decisione dell'utente (15/11/2026): solo Docker. Niente binari per Windows/macOS/Linux per ora.**
@@ -325,9 +335,11 @@ restano 321 "da verificare" e 328 non riconosciuti (da vedere a mano dall'utente
 
 ## Debito tecnico noto (da fare dopo)
 
-- Vedi il punto 4 dei Prossimi passi.
+- Nessuno in sospeso dai punti 1–4.
 
 ## Registro
+
+- 2026-11-15 — .plexmatch ep:, NFO degli episodi, aggiornamento della serie quando arrivano episodi nuovi.
 
 - 2026-11-15 — Quick Connect (web, API nativa e Jellyfin).
 

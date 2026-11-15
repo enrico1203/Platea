@@ -284,12 +284,20 @@ pub async fn match_item(state: &Shared, item_id: i64) -> anyhow::Result<()> {
                 _ => true,
             };
             if let Some(n) = n.filter(|n| !has_key && agrees && n.complete()) {
-                return nfo::apply(state, item_id, item.library_id, &item.title, item.year, &item.locked_fields, &n).await;
+                nfo::apply(state, item_id, item.library_id, &item.title, item.year, &item.locked_fields, &n).await?;
+                if item.kind == "series" {
+                    nfo::apply_episodes(state, item_id).await?;
+                }
+                return Ok(());
             }
         }
     }
     if !has_key {
         // Senza chiave l'elemento resta "in attesa": si associa quando la chiave viene impostata.
+        // Gli NFO dei singoli episodi però valgono già.
+        if item.kind == "series" {
+            nfo::apply_episodes(state, item_id).await?;
+        }
         return Ok(());
     }
     let (language, _) = library_language(state, item.library_id).await;
@@ -612,6 +620,8 @@ pub async fn apply_tmdb(state: &Shared, item_id: i64, tmdb_id: i64, score: f64, 
 
     if !movie {
         apply_seasons(state, item_id, tmdb_id, &key, rps, &language).await?;
+        // Gli NFO degli episodi, scelti dall'utente, vincono sui testi di TMDB.
+        nfo::apply_episodes(state, item_id).await?;
     }
     state.events.publish("item.updated", serde_json::json!({ "item_id": state.ids.encode(item_id) }));
     Ok(())
