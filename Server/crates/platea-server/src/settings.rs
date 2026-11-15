@@ -351,6 +351,34 @@ impl Default for ScannerSettings {
 /// Campi segreti: si scrivono ma l'API non li restituisce.
 pub const SECRET_FIELDS: &[(&str, &str)] = &[("metadata", "tmdb_api_key")];
 
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(default)]
+#[schemars(title = "Notifiche")]
+pub struct NotificationSettings {
+    /// Indirizzi a cui inviare gli eventi con una richiesta POST in JSON. Un indirizzo di Discord riceve un messaggio
+    /// già formattato; per ntfy usa l'indirizzo dell'argomento (es. https://ntfy.sh/mio-argomento).
+    #[schemars(title = "Webhook")]
+    pub webhook_urls: Vec<String>,
+    /// Inizio e fine delle riproduzioni.
+    #[schemars(title = "Riproduzioni")]
+    pub on_playback: bool,
+    /// Film e serie nuovi in libreria (alla prima associazione).
+    #[schemars(title = "Titoli nuovi")]
+    pub on_item_added: bool,
+    /// Accessi, accessi non riusciti, account bloccati.
+    #[schemars(title = "Accessi")]
+    pub on_login: bool,
+    /// Mount assente, sparizione di massa in attesa di conferma, scansioni non riuscite.
+    #[schemars(title = "Problemi")]
+    pub on_problem: bool,
+}
+
+impl Default for NotificationSettings {
+    fn default() -> Self {
+        NotificationSettings { webhook_urls: vec![], on_playback: false, on_item_added: true, on_login: false, on_problem: true }
+    }
+}
+
 /// Campi che richiedono un riavvio.
 pub const RESTART_FIELDS: &[(&str, &str)] = &[];
 
@@ -365,9 +393,10 @@ pub struct AllSettings {
     pub transcode: TranscodeSettings,
     pub metadata: MetadataSettings,
     pub scanner: ScannerSettings,
+    pub notifications: NotificationSettings,
 }
 
-pub const GROUPS: &[&str] = &["general", "network", "playback", "transcode", "metadata", "scanner"];
+pub const GROUPS: &[&str] = &["general", "network", "playback", "transcode", "metadata", "scanner", "notifications"];
 
 #[derive(Clone)]
 pub struct Settings {
@@ -389,6 +418,7 @@ impl Settings {
             transcode: load_group(&rows, "transcode"),
             metadata: load_group(&rows, "metadata"),
             scanner: load_group(&rows, "scanner"),
+            notifications: load_group(&rows, "notifications"),
         };
         Ok(Settings { inner: Arc::new(RwLock::new(Arc::new(all))), db })
     }
@@ -406,6 +436,7 @@ impl Settings {
         out.insert("transcode".into(), serde_json::to_value(schemars::schema_for!(TranscodeSettings)).unwrap());
         out.insert("metadata".into(), serde_json::to_value(schemars::schema_for!(MetadataSettings)).unwrap());
         out.insert("scanner".into(), serde_json::to_value(schemars::schema_for!(ScannerSettings)).unwrap());
+        out.insert("notifications".into(), serde_json::to_value(schemars::schema_for!(NotificationSettings)).unwrap());
         // Segna i segreti e i campi che richiedono riavvio.
         for (grp, field) in SECRET_FIELDS {
             if let Some(p) = out.get_mut(*grp).and_then(|s| s.pointer_mut(&format!("/properties/{field}"))) {
@@ -435,6 +466,7 @@ impl Settings {
             "transcode": all.transcode,
             "metadata": all.metadata,
             "scanner": all.scanner,
+            "notifications": all.notifications,
         });
         for (grp, field) in SECRET_FIELDS {
             if let Some(g) = v.get_mut(*grp).and_then(|g| g.as_object_mut()) {
@@ -454,6 +486,7 @@ impl Settings {
             "transcode" => serde_json::to_value(&all.transcode).ok()?,
             "metadata" => serde_json::to_value(&all.metadata).ok()?,
             "scanner" => serde_json::to_value(&all.scanner).ok()?,
+            "notifications" => serde_json::to_value(&all.notifications).ok()?,
             _ => return None,
         })
     }
@@ -490,6 +523,7 @@ impl Settings {
             "transcode" => next.transcode = serde_json::from_value(merged.clone()).map_err(parse_err)?,
             "metadata" => next.metadata = serde_json::from_value(merged.clone()).map_err(parse_err)?,
             "scanner" => next.scanner = serde_json::from_value(merged.clone()).map_err(parse_err)?,
+            "notifications" => next.notifications = serde_json::from_value(merged.clone()).map_err(parse_err)?,
             _ => unreachable!(),
         }
         validate(&next)?;
@@ -542,6 +576,14 @@ fn validate(s: &AllSettings) -> Result<(), String> {
         return Err("La soglia di associazione deve stare tra 0,5 e 1".into());
     }
     // max_sw_transcodes / max_hw_transcodes: 0 = illimitate, ogni valore è valido.
+    for u in &s.notifications.webhook_urls {
+        if !(u.starts_with("http://") || u.starts_with("https://")) {
+            return Err(format!("Webhook non valido (serve http:// o https://): {u}"));
+        }
+    }
+    if s.notifications.webhook_urls.len() > 10 {
+        return Err("Al massimo 10 webhook".into());
+    }
     if s.general.login_message.chars().count() > 2000 {
         return Err("Il messaggio della pagina di accesso può avere al massimo 2000 caratteri".into());
     }

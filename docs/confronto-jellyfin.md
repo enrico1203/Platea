@@ -92,7 +92,7 @@ La colonna **Priorità** indica l'ordine di lavoro: **A** subito, **B** dopo, **
 | Scelta o caricamento delle immagini | ✅ | 🟡 (caricamento sì; scelta tra le alternative di TMDB no) | C |
 | Accesso con codice da un altro dispositivo (Quick Connect) | ✅ | ✅ (anche API Jellyfin) | — |
 | Messaggio o avviso sulla pagina di accesso, CSS personalizzato | ✅ | ✅ (Impostazioni › Generali) | — |
-| Webhook e notifiche esterne | 🟡 (plugin) | ❌ | C |
+| Webhook e notifiche esterne | 🟡 (plugin) | ✅ (JSON, Discord, ntfy: riproduzioni, titoli nuovi, accessi, problemi) | — |
 | TV in diretta, DVR, musica, libri, foto | ✅ | ➖ (fase 7) | — |
 
 ## Stato della priorità A (14 novembre 2026)

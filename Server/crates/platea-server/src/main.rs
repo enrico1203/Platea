@@ -34,6 +34,7 @@ mod transcode;
 mod trickplay;
 mod util;
 mod watch;
+mod webhooks;
 
 use crate::state::{AppState, Shared};
 use std::net::SocketAddr;

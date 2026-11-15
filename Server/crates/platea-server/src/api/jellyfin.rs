@@ -1791,6 +1791,7 @@ async fn ensure_session(state: &Shared, user: &AuthUser, item: i64, source: Opti
         extra,
     ));
     state.sessions.insert(s.clone());
+    crate::webhooks::playback_started(state, &s);
     COMPAT_SESSIONS.lock().unwrap().insert(key, sid);
     state.events.admin("sessions.changed", json!({}));
     Ok(s)

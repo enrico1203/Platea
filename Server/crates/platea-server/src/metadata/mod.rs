@@ -290,6 +290,9 @@ pub async fn match_item(state: &Shared, item_id: i64) -> anyhow::Result<()> {
             };
             if let Some(n) = n.filter(|n| !has_key && agrees && n.complete()) {
                 nfo::apply(state, item_id, item.library_id, &item.title, item.year, &item.locked_fields, &n).await?;
+                if item.match_state == "pending" {
+                    crate::webhooks::item_added(state, item_id).await;
+                }
                 if item.kind == "series" {
                     nfo::apply_episodes(state, item_id).await?;
                 }
@@ -671,6 +674,9 @@ pub async fn apply_tmdb(state: &Shared, item_id: i64, tmdb_id: i64, score: f64, 
         }
     }
     tx.commit().await?;
+    if item.match_state == "pending" {
+        crate::webhooks::item_added(state, item_id).await;
+    }
 
     for id in new_images {
         jobs::enqueue(state, JobKind::DownloadImage { image_id: id }, priority::IMAGES, Some(item.library_id)).await?;

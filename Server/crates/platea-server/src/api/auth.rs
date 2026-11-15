@@ -70,6 +70,13 @@ pub async fn do_login(state: &Shared, req: &LoginReq, ip: Option<std::net::IpAdd
             lockout_check(state, id, &username, is_admin != 0, ip).await;
         }
         state.db.activity(None, "login_failed", &format!("Accesso non riuscito per {}", req.username.trim()), ip.map(|i| i.to_string()).as_deref()).await;
+        crate::webhooks::emit(
+            state,
+            crate::webhooks::Kind::Login,
+            "login.failed",
+            format!("⚠ Accesso non riuscito per {} da {}", req.username.trim(), ip.map(|i| i.to_string()).unwrap_or_default()),
+            serde_json::json!({ "user": req.username.trim(), "ip": ip.map(|i| i.to_string()) }),
+        );
         return Err(ApiError::coded(axum::http::StatusCode::UNAUTHORIZED, "InvalidCredentials", "Nome utente o password non corretti"));
     }
     state.login_limiter.success(&keys);
@@ -96,6 +103,13 @@ pub async fn do_login(state: &Shared, req: &LoginReq, ip: Option<std::net::IpAdd
             ip.map(|i| i.to_string()).as_deref(),
         )
         .await;
+    crate::webhooks::emit(
+        state,
+        crate::webhooks::Kind::Login,
+        "login",
+        format!("🔑 {username} ha fatto l'accesso da {}", req.device_name.as_deref().unwrap_or("un dispositivo")),
+        serde_json::json!({ "user": username, "device": req.device_name, "client": req.client, "ip": ip.map(|i| i.to_string()) }),
+    );
     Ok(LoginOk { user_id: id, username, is_admin: is_admin != 0, token: t.token })
 }
 
@@ -125,6 +139,13 @@ async fn lockout_check(state: &Shared, id: i64, username: &str, is_admin: bool, 
             .activity(Some(id), "user_locked", &format!("{username} bloccato dopo {n} password sbagliate di fila"), ip.map(|i| i.to_string()).as_deref())
             .await;
         state.events.admin("users.changed", serde_json::json!({ "locked": state.ids.encode(id) }));
+        crate::webhooks::emit(
+            state,
+            crate::webhooks::Kind::Login,
+            "user.locked",
+            format!("🔒 {username} bloccato dopo {n} password sbagliate"),
+            serde_json::json!({ "user": username, "attempts": n }),
+        );
     }
 }
 

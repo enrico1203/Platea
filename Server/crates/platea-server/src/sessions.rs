@@ -376,6 +376,7 @@ pub async fn stop_session(state: &Shared, id: &str) -> Option<Arc<PlaySession>> 
         state.sessions.record_progress(s.user_id, s.item_id, pos, s.duration_ms);
     }
     let watched = (now_ms() - s.started_at).max(0);
+    crate::webhooks::playback_stopped(state, &s, watched);
     let _ = sqlx::query("UPDATE playback_history SET ended_at = ?, watched_ms = ? WHERE id = ?")
         .bind(now_ms())
         .bind(watched)

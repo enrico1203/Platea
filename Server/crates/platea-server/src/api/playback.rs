@@ -517,6 +517,7 @@ async fn info(State(state): State<Shared>, user: AuthUser, Json(req): Json<InfoR
         extra,
     ));
     state.sessions.insert(sess.clone());
+    crate::webhooks::playback_started(&state, &sess);
     state.events.admin("sessions.changed", json!({ "started": session_id }));
     tracing::info!(user = %user.username, method = decision.method.as_str(), reason = %reason, chain = %chain, "riproduzione avviata");
 

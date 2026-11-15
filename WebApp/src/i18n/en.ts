@@ -639,6 +639,7 @@ const en = {
       transcode: "Transcoding",
       metadata: "Metadata",
       scanner: "Scanning",
+      notifications: "Notifications",
     },
     enum: {
       auto: "Automatic",
@@ -717,6 +718,18 @@ const en = {
       read_plexmatch: "Read .plexmatch files",
       read_plexmatch_hint: "Plex's format: title, year and IDs you set in the movie or show folder. They win over NFO files.",
       read_nfo_hint: "Uses .nfo files next to videos (Kodi, Jellyfin, Radarr): exact ID and, without a TMDB key, the metadata itself. Read once, never written.",
+    },
+    notifications: {
+      webhook_urls: "Webhooks",
+      webhook_urls_hint: "Addresses that receive events as a JSON POST. Discord gets a ready-made message; for ntfy use the topic address (https://ntfy.sh/…).",
+      on_playback: "Playback",
+      on_playback_hint: "Start and end (after at least one minute) of every viewing, Infuse included.",
+      on_item_added: "New titles",
+      on_item_added_hint: "Movies and shows added to the library, once recognized. Not during the first import.",
+      on_login: "Sign-ins",
+      on_login_hint: "Sign-ins, wrong passwords, locked accounts.",
+      on_problem: "Problems",
+      on_problem_hint: "Mount unavailable or too many files gone at once (only when it happens, not on every scan).",
     },
     scanner: {
       missing_grace_days: "Missing files grace period (days)",

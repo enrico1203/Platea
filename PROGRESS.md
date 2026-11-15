@@ -353,6 +353,11 @@ restano 321 "da verificare" e 328 non riconosciuti (da vedere a mano dall'utente
 4g. [x] Messaggio nella pagina di accesso (testo semplice, ≤ 2000 caratteri) e CSS personalizzato (≤ 64 KB, servito da
    `/api/v1/system/custom.css`, versione nel system/info per la cache): campi multilinea nello schema
    (`MULTILINE_FIELDS` → `x-multiline` → `TextAreaField`). Provato nel browser sulla copia.
+4h. [x] Webhook (`webhooks.rs`, gruppo di impostazioni `notifications`): fino a 10 indirizzi, JSON generico, Discord
+   (`content`) e ntfy (testo). Eventi: inizio riproduzione (web e Infuse, al massimo uno ogni 10 min per utente e
+   titolo, così un ripiego non duplica), fine dopo almeno 1 minuto, titolo nuovo (alla prima associazione, non nella
+   prima importazione né per elementi più vecchi di 24 h), accessi/password sbagliate/blocchi, problemi di scansione
+   (solo al cambio di stato). Invii in task con timeout 10 s, al massimo 32 in corso. Provato con un ricevitore.
 5. Fase 3: QSV/VA-API/NVENC/AMD, tone mapping in GPU, uscita HEVC/AV1 su hardware reale (qui non c'è GPU).
 6. Fase 5 (rilascio). [x] Revisione di sicurezza interna (15/11/2026), corretti:
    - download delle immagini: la risposta era letta tutta prima del controllo di dimensione (una risposta senza fine

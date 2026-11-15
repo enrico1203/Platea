@@ -297,6 +297,25 @@ pub async fn scan_library(state: &Shared, library_id: i64, subpath: Option<Strin
     } else {
         problems.join("; ")
     };
+    // Avviso esterno solo al passaggio da "ok" a un problema, non a ogni scansione.
+    if status != "ok" {
+        let before: Option<String> =
+            sqlx::query_scalar("SELECT last_scan_status FROM libraries WHERE id = ?").bind(library_id).fetch_optional(&state.db.read).await?.flatten();
+        if before.as_deref() != Some(status) {
+            let text = if status == "mount_missing" {
+                format!("❗ {lib_name}: mount non disponibile, scansione fermata ({message})")
+            } else {
+                format!("❗ {lib_name}: {message}")
+            };
+            crate::webhooks::emit(
+                state,
+                crate::webhooks::Kind::Problem,
+                &format!("library.{status}"),
+                text,
+                serde_json::json!({ "library": lib_name, "status": status, "message": message }),
+            );
+        }
+    }
     // La conferma vale per una sola scansione completa.
     sqlx::query("UPDATE libraries SET last_scan_at = ?, last_scan_status = ?, last_scan_message = ?, missing_held = ?, confirm_missing = CASE WHEN ? THEN confirm_missing ELSE 0 END WHERE id = ?")
         .bind(now_ms())
