@@ -458,6 +458,7 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-15 — Release v0.1.1 (prima con immagini native amd64+arm64; la build di v0.1.0 in emulazione è stata annullata, tag e release v0.1.0 restano senza immagine del server).
 - 2026-11-15 — File .strm (indirizzi http/https), riprodotti attraverso il server.
 
 - 2026-11-15 — Rilascio: build native amd64 e arm64 (niente emulazione), immagini unite per digest.
