@@ -1,7 +1,9 @@
-# Pubblica le immagini Docker di server e web UI.
-# - Su GitHub Container Registry (ghcr.io/<proprietario>/platea-server|platea-web): sempre, con il token del workflow.
-# - Su Docker Hub (docker.io/<utente>/platea-server|platea-web): se nel repository ci sono i segreti
-#   DOCKERHUB_USERNAME e DOCKERHUB_TOKEN (Settings › Secrets and variables › Actions).
+# Pubblica le immagini Docker di server e web UI, per amd64 e arm64.
+# Ogni architettura si compila su una macchina nativa (ubuntu-24.04 e ubuntu-24.04-arm, gratuite per i repository
+# pubblici): niente emulazione, la build arm64 dura come quella amd64. Le immagini si caricano per digest e un passo
+# finale le unisce in un'unica immagine multi-architettura con i suoi tag.
+# - GitHub Container Registry (ghcr.io/<proprietario>/platea-server|platea-web): sempre.
+# - Docker Hub (docker.io/<utente>/…): se nel repository ci sono i segreti DOCKERHUB_USERNAME e DOCKERHUB_TOKEN.
 # Un tag vX.Y.Z pubblica X.Y.Z, X.Y e latest; un push su main pubblica "edge"; si può avviare anche a mano.
 name: Release
 
@@ -15,26 +17,94 @@ permissions:
   contents: read
   packages: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref == 'refs/heads/main' }}
+
+env:
+  # Vuoto se il segreto non c'è: Docker Hub si salta.
+  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+
 jobs:
-  images:
-    name: Immagine ${{ matrix.image }}
-    runs-on: ubuntu-latest
-    env:
-      # Vuoto se il segreto non c'è: Docker Hub si salta.
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+  build:
+    name: ${{ matrix.image }} (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
+        image: [platea-server, platea-web]
+        arch: [amd64, arm64]
         include:
           - image: platea-server
             context: ./Server
           - image: platea-web
             context: ./WebApp
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
-
-      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
+
+      - name: Nome dell'immagine
+        id: name
+        run: echo "repo=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${{ matrix.image }}" >> "$GITHUB_OUTPUT"
+
+      - name: Accesso a GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build e caricamento per digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          platforms: linux/${{ matrix.arch }}
+          labels: |
+            org.opencontainers.image.title=${{ matrix.image }}
+            org.opencontainers.image.description=Platea, open source media server
+            org.opencontainers.image.licenses=AGPL-3.0-only
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          outputs: type=image,name=${{ steps.name.outputs.repo }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.image }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}-${{ matrix.arch }}
+
+      - name: Salva il digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.image }}-${{ matrix.arch }}
+          path: /tmp/digests/*
+          retention-days: 1
+
+  publish:
+    name: Pubblica ${{ matrix.image }}
+    needs: build
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [platea-server, platea-web]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-${{ matrix.image }}-*
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Nome dell'immagine
+        id: name
+        run: echo "repo=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${{ matrix.image }}" >> "$GITHUB_OUTPUT"
 
       - name: Accesso a GitHub Container Registry
         uses: docker/login-action@v3
@@ -44,7 +114,6 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Accesso a Docker Hub (se configurato)
-        id: dockerhub
         if: ${{ env.DOCKERHUB_USERNAME != '' }}
         uses: docker/login-action@v3
         with:
@@ -56,26 +125,22 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-            ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+            ${{ steps.name.outputs.repo }}
             name=docker.io/${{ env.DOCKERHUB_USERNAME }}/${{ matrix.image }},enable=${{ env.DOCKERHUB_USERNAME != '' }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=raw,value=edge,enable=${{ github.ref == 'refs/heads/main' }}
-          labels: |
-            org.opencontainers.image.title=${{ matrix.image }}
-            org.opencontainers.image.description=Platea, open source media server
-            org.opencontainers.image.licenses=AGPL-3.0-only
 
-      # Il server (Rust) si compila per arm64 solo nelle versioni con tag: in emulazione richiede molto tempo.
-      - name: Build e pubblicazione
-        uses: docker/build-push-action@v6
-        with:
-          context: ${{ matrix.context }}
-          platforms: ${{ startsWith(github.ref, 'refs/tags/v') && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.image }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+      # Un'immagine multi-architettura con tutti i tag, fatta dai digest delle build native.
+      - name: Unione amd64 + arm64 e tag
+        working-directory: /tmp/digests
+        run: |
+          # shellcheck disable=SC2046 # la divisione in parole è voluta: un argomento per tag e per digest
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ steps.name.outputs.repo }}@sha256:%s ' *)
+
+      - name: Controllo
+        run: docker buildx imagetools inspect "${{ steps.name.outputs.repo }}:${{ steps.meta.outputs.version }}"

@@ -450,6 +450,8 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-15 — Rilascio: build native amd64 e arm64 (niente emulazione), immagini unite per digest.
+
 - 2026-11-15 — Trailer, revisione di sicurezza, aggiornamento tra versioni provato.
 
 - 2026-11-15 — Pagine per genere e studio, blocco account facoltativo, corretto il salvataggio delle impostazioni.
