@@ -431,7 +431,8 @@ async fn detail(State(state): State<Shared>, user: AuthUser, Path(id): Path<Stri
     let iid = decode(&state, &id)?;
     let row = load_item(&state, &user, iid).await?;
     let mut v = item_json(&state, &row);
-    let (tagline,): (Option<String>,) = sqlx::query_as("SELECT tagline FROM items WHERE id = ?").bind(iid).fetch_one(&state.db.read).await?;
+    let (tagline, trailers): (Option<String>, Option<String>) =
+        sqlx::query_as("SELECT tagline, trailers FROM items WHERE id = ?").bind(iid).fetch_one(&state.db.read).await?;
     let genres: Vec<String> = sqlx::query_scalar("SELECT g.name FROM item_genres ig JOIN genres g ON g.id = ig.genre_id WHERE ig.item_id = ? ORDER BY g.name")
         .bind(row.series_id.filter(|_| row.kind != "movie" && row.kind != "series").unwrap_or(iid))
         .fetch_all(&state.db.read)
@@ -454,6 +455,7 @@ async fn detail(State(state): State<Shared>, user: AuthUser, Path(id): Path<Stri
         .await?;
     let o = v.as_object_mut().unwrap();
     o.insert("tagline".into(), json!(tagline));
+    o.insert("trailers".into(), trailers.and_then(|t| serde_json::from_str::<Value>(&t).ok()).unwrap_or_else(|| json!([])));
     o.insert("genres".into(), json!(genres));
     o.insert("studios".into(), json!(studios));
     o.insert(

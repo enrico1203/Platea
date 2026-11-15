@@ -60,7 +60,7 @@ La colonna **Priorità** indica l'ordine di lavoro: **A** subito, **B** dopo, **
 | Playlist | ✅ | ✅ | — |
 | Playlist condivise con altri utenti | ✅ (10.10) | ❌ | C |
 | Versioni multiple dello stesso film | ✅ | ✅ | — |
-| Trailer | ✅ | ❌ | C |
+| Trailer | ✅ | ✅ (YouTube da TMDB e dagli NFO; anche `RemoteTrailers` per Infuse) | — |
 | Extra (dietro le quinte) | ✅ | ❌ (ignorati dallo scanner) | C |
 | Episodi mancanti nelle stagioni | ✅ | ❌ | C |
 

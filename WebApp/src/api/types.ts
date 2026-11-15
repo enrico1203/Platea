@@ -21,7 +21,7 @@ export interface AudioStream { index: number; codec: string; channels: number | 
 export interface SubtitleStream { index: number; codec: string; language: string | null; title: string | null; default: boolean; forced: boolean; external: boolean; image: boolean }
 export interface MediaFile { id: string; name: string; version_label: string | null; container: string | null; size: number; duration_ms: number | null; bitrate: number | null; state: string; probe_state: string; probe_error: string | null; video: VideoStream[]; audio: AudioStream[]; subtitles: SubtitleStream[] }
 export interface Person { id: string; name: string; role: string; character: string | null; image: string | null }
-export interface ItemDetail extends Item { tagline: string | null; genres: string[]; studios: string[]; people: Person[]; external_ids: Record<string, string>; files?: MediaFile[]; locked_fields?: string[]; collections?: { id: string; title: string }[] }
+export interface ItemDetail extends Item { tagline: string | null; trailers?: { key: string; name: string | null; lang: string | null }[]; genres: string[]; studios: string[]; people: Person[]; external_ids: Record<string, string>; files?: MediaFile[]; locked_fields?: string[]; collections?: { id: string; title: string }[] }
 export interface Page<T> { items: T[]; next_cursor?: string | null }
 export interface Library {
   id: string; name: string; kind: "movies" | "shows"; item_count: number;

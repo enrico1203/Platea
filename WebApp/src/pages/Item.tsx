@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Play, Check, Heart, SearchCheck, RefreshCw, Pencil, ListPlus, Download, Upload } from "lucide-react";
+import { Play, Check, Heart, SearchCheck, RefreshCw, Pencil, ListPlus, Download, Upload, Clapperboard } from "lucide-react";
 import { AddToPlaylist } from "./Playlists";
 import { api, ApiError, getToken, imageUrl, mediaUrl, serverUrl } from "../api/client";
 import type { Candidate, Item as ItemT, ItemDetail, MediaFile, Page } from "../api/types";
@@ -147,6 +147,7 @@ export default function ItemPage() {
   const { me } = useSession();
   const { t, duration, date, num } = useI18n();
   const [season, setSeason] = useState<string | null>(null);
+  const [trailer, setTrailer] = useState<{ key: string; name: string | null } | null>(null);
   const [fileIdx, setFileIdx] = useState(0);
   const [dialog, setDialog] = useState<"identify" | "edit" | "playlist" | null>(null);
   const { data: item, error } = useQuery({ queryKey: ["item", id], queryFn: () => api<ItemDetail>(`/api/v1/items/${id}`) });
@@ -204,6 +205,14 @@ export default function ItemPage() {
             <div className="t-small muted">{t("item.partOf")} {item.collections.map((c, i) => <span key={c.id}>{i > 0 && ", "}<Link to={`/item/${c.id}`}>{c.title}</Link></span>)}</div>
           )}
           {me?.permissions.expired && <Alert tone="warning">{t("item.expired")}</Alert>}
+          {trailer && (
+            <Dialog wide title={trailer.name ?? t("item.trailer")} onClose={() => setTrailer(null)}
+              footer={item.trailers!.length > 1 ? <>{item.trailers!.map((tr, i) => <button key={tr.key} className={`pl-btn pl-btn--sm ${tr.key === trailer.key ? "pl-btn--primary" : "pl-btn--ghost"}`} onClick={() => setTrailer(tr)}>{tr.name ?? `${t("item.trailer")} ${i + 1}`}</button>)}</> : undefined}>
+              <div className="trailer-frame">
+                <iframe src={`https://www.youtube-nocookie.com/embed/${encodeURIComponent(trailer.key)}?autoplay=1&rel=0`} title={trailer.name ?? t("item.trailer")} allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" />
+              </div>
+            </Dialog>
+          )}
           <div className="detail__actions">
             {(isPlayable || nextEpisode) && !me?.permissions.expired && (
               <>
@@ -212,6 +221,9 @@ export default function ItemPage() {
                   {resume ? t("item.resumeFrom", { time: duration(item.user_data.position_ms) }) : isPlayable ? t("player.play") : nextEpisode ? `${t("player.play")} S${nextEpisode.parent_index_number} · E${nextEpisode.index_number}` : ""}
                 </span>
               </>
+            )}
+            {item.trailers && item.trailers.length > 0 && (
+              <button className="pl-btn pl-btn--secondary" onClick={() => setTrailer(item.trailers![0])}><Clapperboard size={18} /> {t("item.trailer")}</button>
             )}
             <span className="spacer" />
             {item.kind !== "collection" && <>

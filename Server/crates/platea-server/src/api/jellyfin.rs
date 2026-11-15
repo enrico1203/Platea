@@ -1096,11 +1096,21 @@ async fn detail_dto(state: &Shared, user: &AuthUser, id: i64) -> ApiResult<Value
     .fetch_all(&state.db.read)
     .await?;
     let ext: Vec<(String, String)> = sqlx::query_as("SELECT provider, value FROM external_ids WHERE item_id = ?").bind(id).fetch_all(&state.db.read).await?;
-    let tagline: Option<String> = sqlx::query_scalar("SELECT tagline FROM items WHERE id = ?").bind(id).fetch_one(&state.db.read).await?;
+    let (tagline, trailers): (Option<String>, Option<String>) =
+        sqlx::query_as("SELECT tagline, trailers FROM items WHERE id = ?").bind(id).fetch_one(&state.db.read).await?;
+    let trailers: Vec<Value> = trailers.and_then(|t| serde_json::from_str::<Vec<Value>>(&t).ok()).unwrap_or_default();
     let o = v.as_object_mut().unwrap();
     o.insert("Genres".into(), json!(genres));
     o.insert("Studios".into(), json!(studios.iter().map(|s| json!({ "Name": s })).collect::<Vec<_>>()));
     o.insert("Taglines".into(), json!(tagline.into_iter().collect::<Vec<_>>()));
+    // Trailer YouTube: Infuse e le app Jellyfin li mostrano come "Trailer".
+    o.insert(
+        "RemoteTrailers".into(),
+        json!(trailers
+            .iter()
+            .filter_map(|t| t["key"].as_str().map(|k| json!({ "Url": format!("https://www.youtube.com/watch?v={k}"), "Name": t["name"] })))
+            .collect::<Vec<_>>()),
+    );
     o.insert(
         "People".into(),
         json!(people

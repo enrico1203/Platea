@@ -45,6 +45,8 @@ pub struct Nfo {
     pub backdrop: Option<String>,
     pub logo: Option<String>,
     pub set_name: Option<String>,
+    /// Identificativo YouTube dal tag `<trailer>`.
+    pub trailer: Option<String>,
     /// Solo negli NFO degli episodi.
     pub season: Option<i64>,
     pub episode: Option<i64>,
@@ -116,6 +118,7 @@ pub fn parse(raw: &str) -> Option<Nfo> {
     out.original_title = child_text(root, "originaltitle");
     out.plot = child_text(root, "plot").or_else(|| child_text(root, "outline"));
     out.tagline = child_text(root, "tagline");
+    out.trailer = child_text(root, "trailer").and_then(|t| super::youtube_id(&t));
     out.season = child_text(root, "season").and_then(|v| v.parse().ok());
     out.episode = child_text(root, "episode").and_then(|v| v.parse().ok());
     out.runtime_min = child_text(root, "runtime").and_then(|r| r.split_whitespace().next()?.parse::<f64>().ok()).map(|m| m.round() as i64).filter(|m| *m > 0);

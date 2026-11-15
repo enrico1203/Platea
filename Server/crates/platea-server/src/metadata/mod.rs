@@ -270,6 +270,11 @@ pub async fn match_item(state: &Shared, item_id: i64) -> anyhow::Result<()> {
             let n = if s.metadata.read_nfo { nfo::find(state, &loc, &item.kind).await } else { None };
             if let Some(n) = &n {
                 nfo::store_ids(state, item_id, n).await?;
+                // Trailer dell'NFO: vale finché TMDB non ne fornisce uno.
+                if let Some(t) = &n.trailer {
+                    let j = serde_json::json!([{ "key": t, "name": "Trailer", "lang": null }]).to_string();
+                    sqlx::query("UPDATE items SET trailers = ? WHERE id = ? AND trailers IS NULL").bind(j).bind(item_id).execute(&state.db.write).await?;
+                }
             }
             if let Some(p) = &pm {
                 plexmatch::store_ids(state, item_id, p).await?;
@@ -394,6 +399,43 @@ pub async fn refresh_item(state: &Shared, item_id: i64) -> anyhow::Result<()> {
     }
 }
 
+/// Fino a tre trailer YouTube da TMDB: prima nella lingua della libreria, poi in inglese; ufficiali e "Trailer"
+/// prima dei teaser. JSON `[{"key","name","lang"}]`, `None` se non ce n'è nessuno.
+pub fn pick_trailers(videos: &serde_json::Value, lang: &str) -> Option<String> {
+    let mut v: Vec<&serde_json::Value> = videos
+        .as_array()?
+        .iter()
+        .filter(|x| x["site"].as_str() == Some("YouTube") && matches!(x["type"].as_str(), Some("Trailer" | "Teaser")))
+        .filter(|x| x["key"].as_str().is_some_and(|k| !k.is_empty() && k.len() <= 32 && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')))
+        .collect();
+    v.sort_by_key(|x| {
+        (
+            x["iso_639_1"].as_str() != Some(lang),
+            x["type"].as_str() != Some("Trailer"),
+            x["official"].as_bool() != Some(true),
+            std::cmp::Reverse(x["published_at"].as_str().unwrap_or("").to_string()),
+        )
+    });
+    let out: Vec<serde_json::Value> =
+        v.into_iter().take(3).map(|x| serde_json::json!({ "key": x["key"], "name": x["name"], "lang": x["iso_639_1"] })).collect();
+    (!out.is_empty()).then(|| serde_json::to_string(&out).unwrap_or_default())
+}
+
+/// Identificativo YouTube da un `<trailer>` di Kodi (`plugin://plugin.video.youtube/?…videoid=ID`) o da un link YouTube.
+pub fn youtube_id(s: &str) -> Option<String> {
+    let s = s.trim();
+    let id = if let Some(i) = s.find("videoid=").or_else(|| s.find("video_id=")) {
+        s[i..].split_once('=')?.1
+    } else if let Some(i) = s.find("youtube.com/watch?v=") {
+        &s[i + "youtube.com/watch?v=".len()..]
+    } else {
+        let i = s.find("youtu.be/")?;
+        &s[i + "youtu.be/".len()..]
+    };
+    let id: String = id.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').collect();
+    (id.len() >= 6 && id.len() <= 32).then_some(id)
+}
+
 fn locked(fields: &str, name: &str) -> bool {
     fields.split(',').any(|f| f.trim() == name)
 }
@@ -438,11 +480,23 @@ pub async fn apply_tmdb(state: &Shared, item_id: i64, tmdb_id: i64, score: f64, 
     let movie = item.kind == "movie";
     let lang_short = language.split('-').next().unwrap_or("en").to_string();
     // Una sola richiesta porta con sé cast, immagini, identificativi esterni e classificazioni.
-    let append = if movie { "credits,images,external_ids,release_dates" } else { "aggregate_credits,credits,images,external_ids,content_ratings" };
+    let append =
+        if movie { "credits,images,external_ids,release_dates,videos" } else { "aggregate_credits,credits,images,external_ids,content_ratings,videos" };
     let path = if movie { format!("/movie/{tmdb_id}") } else { format!("/tv/{tmdb_id}") };
     let d = state
         .tmdb
-        .get(&key, rps, &path, &[("append_to_response", append.to_string()), ("include_image_language", format!("{lang_short},en,null"))], &language, DAY)
+        .get(
+            &key,
+            rps,
+            &path,
+            &[
+                ("append_to_response", append.to_string()),
+                ("include_image_language", format!("{lang_short},en,null")),
+                ("include_video_language", format!("{lang_short},en")),
+            ],
+            &language,
+            DAY,
+        )
         .await?;
     if d["id"].as_i64().is_none() {
         bail!("risposta TMDB senza identificativo");
@@ -504,6 +558,10 @@ pub async fn apply_tmdb(state: &Shared, item_id: i64, tmdb_id: i64, score: f64, 
     .execute(&mut *tx)
     .await?;
 
+    // Trailer: se TMDB non ne ha, restano quelli che c'erano (per esempio da un NFO).
+    if let Some(t) = pick_trailers(&d["videos"]["results"], &lang_short) {
+        sqlx::query("UPDATE items SET trailers = ? WHERE id = ?").bind(t).bind(item_id).execute(&mut *tx).await?;
+    }
     sqlx::query("DELETE FROM match_candidates WHERE item_id = ?").bind(item_id).execute(&mut *tx).await?;
     sqlx::query("INSERT OR REPLACE INTO external_ids (item_id, provider, value) VALUES (?, 'tmdb', ?)")
         .bind(item_id)
@@ -837,6 +895,27 @@ pub async fn enqueue_pending(state: &Shared) -> anyhow::Result<usize> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn trailers_from_tmdb_and_kodi() {
+        let v = serde_json::json!([
+            { "site": "YouTube", "type": "Teaser", "key": "teaserEN1", "name": "Teaser", "iso_639_1": "en", "official": true },
+            { "site": "YouTube", "type": "Trailer", "key": "trailerEN", "name": "Trailer", "iso_639_1": "en", "official": true },
+            { "site": "YouTube", "type": "Trailer", "key": "trailerIT", "name": "Trailer italiano", "iso_639_1": "it", "official": true },
+            { "site": "Vimeo", "type": "Trailer", "key": "123", "name": "x", "iso_639_1": "it" },
+            { "site": "YouTube", "type": "Featurette", "key": "feat", "name": "x", "iso_639_1": "it" },
+            { "site": "YouTube", "type": "Trailer", "key": "bad key\"<", "name": "x", "iso_639_1": "it" }
+        ]);
+        let t: Vec<serde_json::Value> = serde_json::from_str(&pick_trailers(&v, "it").unwrap()).unwrap();
+        let keys: Vec<&str> = t.iter().map(|x| x["key"].as_str().unwrap()).collect();
+        assert_eq!(keys, vec!["trailerIT", "trailerEN", "teaserEN1"]);
+        assert!(pick_trailers(&serde_json::json!([]), "it").is_none());
+        assert_eq!(youtube_id("plugin://plugin.video.youtube/?action=play_video&videoid=dQw4w9WgXcQ").as_deref(), Some("dQw4w9WgXcQ"));
+        assert_eq!(youtube_id("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=3").as_deref(), Some("dQw4w9WgXcQ"));
+        assert_eq!(youtube_id("https://youtu.be/dQw4w9WgXcQ").as_deref(), Some("dQw4w9WgXcQ"));
+        assert_eq!(youtube_id("http://example.org/trailer.mp4"), None);
+    }
+
     use super::*;
     #[test]
     fn scoring_prefers_exact_title_and_year() {

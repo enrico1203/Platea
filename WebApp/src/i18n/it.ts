@@ -177,6 +177,7 @@ const it = {
     collectionCount: { one: "{count} film", other: "{count} film" },
     collectionMovies: "Film della collezione",
     studios: "Studio:",
+    trailer: "Trailer",
     partOf: "Fa parte di",
     seasons: { one: "{count} stagione", other: "{count} stagioni" },
     episodes: { one: "{count} episodio", other: "{count} episodi" },

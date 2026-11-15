@@ -341,6 +341,11 @@ restano 321 "da verificare" e 328 non riconosciuti (da vedere a mano dall'utente
    Prove con dati veri: copia del DB in scratchpad (`reset-password` sulla copia, coda in pausa con
    `server_state.jobs_paused_until`), server e web di prova separati. Attenzione: l'immagine ha già `platea` come
    entrypoint, quindi `docker run … platea-server:latest reset-password …` (senza ripetere `platea`).
+4e. [x] Trailer (migrazione 0016 `items.trailers`): fino a 3 YouTube da TMDB (`videos`, lingua della libreria poi
+   inglese, Trailer ufficiali prima dei Teaser) e dal `<trailer>` degli NFO di Kodi (finché TMDB non ne ha). Pulsante
+   "Trailer" nel dettaglio con video youtube-nocookie; `RemoteTrailers` nello strato Jellyfin. I titoli già associati
+   li ricevono al prossimo aggiornamento dei metadati. Provato sulla copia: Dune (1984) → 3 trailer.
+   Corretto: `Dialog` ora si apre in un portal su `body` (dentro il dettaglio veniva tagliata e coperta).
 5. Fase 3: QSV/VA-API/NVENC/AMD, tone mapping in GPU, uscita HEVC/AV1 su hardware reale (qui non c'è GPU).
 6. Fase 5 (rilascio). [x] Revisione di sicurezza interna (15/11/2026), corretti:
    - download delle immagini: la risposta era letta tutta prima del controllo di dimensione (una risposta senza fine
@@ -369,6 +374,8 @@ restano 321 "da verificare" e 328 non riconosciuti (da vedere a mano dall'utente
 - Nessuno in sospeso dai punti 1–4.
 
 ## Registro
+
+- 2026-11-15 — Trailer, revisione di sicurezza, aggiornamento tra versioni provato.
 
 - 2026-11-15 — Pagine per genere e studio, blocco account facoltativo, corretto il salvataggio delle impostazioni.
 

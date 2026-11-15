@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { useEffect, useId, useRef, useState, type InputHTMLAttributes, type ReactNode } from "react";
 import { X, Check, AlertTriangle, Info, CircleAlert } from "lucide-react";
 import { Mark } from "./Logo";
@@ -81,7 +82,7 @@ export function Switch({ checked, onChange, label, hint, disabled }: { checked: 
   );
 }
 
-export function Dialog({ title, onClose, children, footer }: { title: ReactNode; onClose: () => void; children: ReactNode; footer?: ReactNode }) {
+export function Dialog({ title, onClose, children, footer, wide }: { title: ReactNode; onClose: () => void; children: ReactNode; footer?: ReactNode; wide?: boolean }) {
   const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   // onClose arriva spesso come funzione nuova a ogni render: in un ref, così l'effetto gira una volta sola
@@ -94,9 +95,10 @@ export function Dialog({ title, onClose, children, footer }: { title: ReactNode;
     ref.current?.focus();
     return () => window.removeEventListener("keydown", k);
   }, []);
-  return (
+  // Sempre sopra tutta la pagina: dentro un contenitore con overflow o trasformazioni verrebbe tagliata.
+  return createPortal(
     <div className="dialog-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="dialog" role="dialog" aria-modal="true" tabIndex={-1} ref={ref}>
+      <div className={`dialog${wide ? " dialog--wide" : ""}`} role="dialog" aria-modal="true" tabIndex={-1} ref={ref}>
         <div className="row row--between">
           <h2 className="t-h3">{title}</h2>
           <button className="icon-btn" onClick={onClose} aria-label={t("common.close")}><X /></button>
@@ -104,7 +106,8 @@ export function Dialog({ title, onClose, children, footer }: { title: ReactNode;
         {children}
         {footer && <div className="row" style={{ justifyContent: "flex-end" }}>{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

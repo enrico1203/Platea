@@ -18,6 +18,7 @@ Platea serve il file originale quando il client lo regge, fa remux o transcodifi
 - **Quick Connect.** Sul televisore o in un'app si sceglie "Accedi con un codice": si conferma il codice di 6 cifre da un dispositivo già collegato (Account › Collega un dispositivo, oppure `/link`). Funziona anche con le app Jellyfin che lo supportano. Si spegne in Impostazioni › Generali.
 - **Qualità predefinita.** Ogni utente sceglie una qualità per la rete di casa e una per fuori casa; nel player si cambia per il singolo video.
 - **Generi e studi.** Dal dettaglio di un titolo si apre la pagina di un genere o di uno studio (HBO, Pixar…) con i titoli di tutte le librerie.
+- **Trailer.** Dai metadati di TMDB e dagli NFO di Kodi, nel dettaglio del titolo e in Infuse.
 - **Tutto dalla dashboard.** Nessun file di configurazione da modificare dopo il primo avvio.
 
 ## Avvio rapido
