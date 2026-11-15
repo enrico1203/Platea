@@ -116,15 +116,87 @@ A node is another machine running the same image with `platea node`. The server 
 - Transcoding. The node gets the file from the server, transcodes it (on its GPU if it has one) and sends the segments back. Clients only ever talk to the server.
 - File copies. The node holds a copy of some library folders (a real copy or a second rclone mount). Direct play, downloads and apps read the file from there, with load balancing and failover between copies. When the node also transcodes, it reads the file locally.
 
-On the node machine:
+The node has no database and no settings of its own. Everything is set and checked from the server.
+
+#### 1. Start the node
+
+On the node machine, with Docker installed, create a folder and a `docker-compose.yml` like this one (or copy [`docker-compose.node.yml`](docker-compose.node.yml)):
+
+```yaml
+services:
+  node:
+    image: ghcr.io/enrico1203/platea-server:latest
+    container_name: platea-node
+    command: ["node"]
+    restart: unless-stopped
+    ports:
+      - "8097:8097"
+    environment:
+      PLATEA_ROLE: node
+      PLATEA_NODE_NAME: gpu-node
+    volumes:
+      - ./node-data:/data
+      # Only for file copies, always read-only, same layout as the folder on the server:
+      # - /mnt/movies:/media/movies:ro,rslave
+    tmpfs:
+      - /transcode:size=4g,uid=1000,gid=1000
+      - /cache:size=256m,uid=1000,gid=1000
+    # Intel or AMD GPU (group: stat -c %g /dev/dri/renderD128 on the host):
+    # devices:
+    #   - /dev/dri:/dev/dri
+    # group_add:
+    #   - "993"
+```
+
+Then start it and read its key:
 
 ```sh
 mkdir node-data && sudo chown 1000:1000 node-data
-docker compose -f docker-compose.node.yml up -d
-docker compose -f docker-compose.node.yml exec node platea node key
+docker compose up -d
+docker compose exec node platea node key
 ```
 
-Then on the server go to Administration › Nodes › Add node and enter the node address (port 8097) and that key. Each executor, this server included, has a priority, a weight (90 and 10 split sessions 90/10), a session limit and rules (4K only, HDR only, codecs, libraries, only if the GPU can do it). Offline nodes are skipped, and a session whose node dies moves to the next one from the same segment. Keep port 8097 on the LAN or Tailscale. The full guide is in [docs/nodi.md](docs/nodi.md) (Italian).
+The key is created on first start and kept in `node-data/node.key`. To choose it yourself, set `PLATEA_NODE_KEY` (at least 16 characters).
+
+Keep port 8097 on the LAN or Tailscale, never open it to the Internet. To accept requests only from some networks, add for example `PLATEA_NODE_ALLOW: 100.64.0.0/10,192.168.1.0/24`. The node and the server must run the same Platea version.
+
+#### 2. Add it to the server
+
+In Administration › Nodes › Add node, enter a name, the node address (for example `100.64.0.2`, port 8097 is added for you) and the key. The card turns Online within a few seconds and shows the node GPU, load, memory and running jobs.
+
+For a GPU node, press GPU test › Test now on its card. It encodes and decodes real video and shows what works. The GPU backend, device, limits and preset of the node are set in its Edit dialog and sent to the node automatically.
+
+The node reads files from the server at the address it sees the server coming from, on port 8096. If that's not reachable (another port, a reverse proxy), set it in Settings › Nodes › Server address for nodes, for example `http://100.64.0.1:8096`.
+
+#### 3. Folder copies (optional)
+
+Mount the copies read-only under `/media` in the node, as in the commented line above. Then open the node's Edit dialog and, for each library folder, pick its copy with Browse. The server checks that a few files have the same size on both sides and shows the folder as verified. A copy that is missing or different is never used: the file comes from another copy. Scans always run on the server, so the server must still see every library.
+
+#### 4. Load balancing
+
+This server is listed with the nodes and has the same settings, so you can also decide that it only transcodes when the nodes can't.
+
+- Priority: 1 is the first choice. Higher numbers are used only when every executor with a lower one is off, full or refuses the job.
+- Weight: executors with the same priority share the work in proportion. 90 and 10 split sessions 90/10. 0 means never.
+- Max at once: a limit on concurrent sessions.
+- Accept only: source resolution (4K only, up to 1080p, custom), HDR or SDR, source codecs, libraries, transcodes and/or remuxes, only if the GPU can decode and encode the job.
+- Drain: the node finishes current playbacks and takes no new ones, useful before maintenance.
+
+Some setups:
+
+| Goal | Node | This server |
+| --- | --- | --- |
+| GPU node for everything, server as backup | priority 1 | priority 2 |
+| 90% on the node, 10% on the server | priority 1, weight 90 | priority 1, weight 10 |
+| Only 4K movies on the node | priority 1, Accept only 4K | priority 1 |
+
+Settings › Nodes also has: the balancing strategy (by weight, least loaded, in order), whether to prefer a node that has the file locally, whether the server transcodes when no one else can (when off, playback is refused), and direct delivery (direct play and downloads through a signed link to nodes that have a public address).
+
+#### Failover
+
+The server checks each node every 5 seconds. After 3 failed checks the node is offline and gets no work, and it comes back on its own. If a node dies during a movie, the next segment is produced by another executor from the same point, and the player keeps going. A transcode with HEVC or AV1 output can't switch encoder mid-stream: the session ends and the web player reopens it at the same position. If the server disappears, the node stops its transcodes after 60 seconds. Node outages show up in Activity and, with Problems enabled in Settings › Notifications, in your webhooks.
+
+The full guide is in [docs/nodi.md](docs/nodi.md) (Italian).
 
 ### Cloud storage with rclone
 
