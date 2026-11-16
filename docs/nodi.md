@@ -52,6 +52,8 @@ solo quando i nodi non possono.
 
 - **Priorità**: 1 è la prima scelta. I livelli successivi lavorano solo quando nessuno del livello precedente può.
 - **Peso**: tra chi ha la stessa priorità il lavoro si divide in proporzione. 90 e 10 → 90% e 10% delle sessioni.
+  A parità completa (stessa priorità, stesso peso, stesso carico) vince un nodo sul server: con server e nodo alla
+  pari la prima sessione va al nodo, poi si alternano.
   Peso 0 = mai.
 - **Massimo contemporanee**: oltre il limite il nodo è "pieno" e il lavoro va avanti nell'elenco.
 - **Accetta solo**: risoluzione della sorgente (solo 4K, fino a 1080p, personalizzata), HDR o SDR, codec della

@@ -105,6 +105,8 @@ pub struct Candidate {
     pub limit: usize,
     /// Il file è in una cartella dell'esecutore (non deve riceverlo da un altro).
     pub has_local: bool,
+    /// È il server stesso: a parità con un nodo lascia il lavoro al nodo (i nodi esistono per alleggerirlo).
+    pub is_server: bool,
 }
 
 impl Candidate {
@@ -136,6 +138,7 @@ pub fn order(mut cands: Vec<Candidate>, strategy: NodeStrategy, prefer_local: bo
             .then_with(|| if prefer_local { b.has_local.cmp(&a.has_local) } else { std::cmp::Ordering::Equal })
             .then_with(|| key(a).partial_cmp(&key(b)).unwrap_or(std::cmp::Ordering::Equal))
             .then_with(|| b.weight.cmp(&a.weight))
+            .then_with(|| a.is_server.cmp(&b.is_server))
             .then_with(|| a.id.cmp(&b.id))
     });
     cands.into_iter().map(|c| c.id).collect()
@@ -146,7 +149,7 @@ mod tests {
     use super::*;
 
     fn c(id: i64, priority: i64, weight: u32) -> Candidate {
-        Candidate { id, priority, weight, active: 0, limit: 0, has_local: false }
+        Candidate { id, priority, weight, active: 0, limit: 0, has_local: false, is_server: false }
     }
 
     /// Assegna `n` sessioni una alla volta (ognuna resta aperta) e conta dove finiscono.
@@ -185,6 +188,18 @@ mod tests {
         b.has_local = true;
         assert_eq!(order(vec![c(1, 1, 90), b.clone()], NodeStrategy::Weighted, true), vec![2, 1]);
         assert_eq!(order(vec![c(1, 1, 90), b], NodeStrategy::Weighted, false), vec![1, 2]);
+    }
+
+    #[test]
+    fn tie_goes_to_the_node() {
+        // Server (id 1) e nodo con stessa priorità e peso, nessuna sessione: la prima va al nodo, poi si alternano.
+        let mut server = c(1, 1, 100);
+        server.is_server = true;
+        assert_eq!(order(vec![server.clone(), c(2, 1, 100)], NodeStrategy::Weighted, true), vec![2, 1]);
+        assert_eq!(order(vec![server.clone(), c(2, 1, 100)], NodeStrategy::LeastLoaded, false), vec![2, 1]);
+        assert_eq!(simulate(vec![server.clone(), c(2, 1, 100)], 3, NodeStrategy::Weighted), vec![(1, 1), (2, 2)]);
+        // Il peso conta prima del pareggio.
+        assert_eq!(order(vec![server, c(2, 1, 50)], NodeStrategy::Weighted, true), vec![1, 2]);
     }
 
     #[test]

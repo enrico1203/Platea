@@ -372,6 +372,7 @@ pub fn transcode_order(state: &Shared, job: &Job, library_path_id: i64, file_id:
             active: active.get(&r.id).copied().unwrap_or(0),
             limit: r.tc_max_sessions as usize,
             has_local: has_local && !r.is_local,
+            is_server: r.is_local,
         });
     }
     route::order(cands, s.nodes.strategy, s.nodes.prefer_local_copy)
@@ -404,6 +405,7 @@ pub fn copy_order(state: &Shared, library_path_id: i64, file_id: i64, sticky: Op
             active: active.get(&r.id).copied().unwrap_or(0),
             limit: r.cdn_max_streams as usize,
             has_local: false,
+            is_server: r.is_local,
         });
     }
     let mut order = route::order(cands, s.nodes.strategy, false);
