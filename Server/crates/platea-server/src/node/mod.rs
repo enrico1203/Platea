@@ -7,6 +7,7 @@
 //! dei media. Va esposto solo su una rete fidata (Tailscale, LAN).
 
 mod api;
+pub mod fetch;
 
 use crate::nodes::proto::{NodeConfig, NodeStatus, RemoteSessionStatus, Slots, PROTOCOL};
 use crate::transcode::command::Backend;
@@ -46,6 +47,10 @@ pub struct NodeState {
     pub last_heartbeat: AtomicI64,
     pub detecting: AtomicBool,
     pub started_at: i64,
+    /// Lettura a blocchi dei file ricevuti dal server.
+    pub fetcher: Arc<fetch::Fetcher>,
+    /// Indirizzo con cui FFmpeg (sulla stessa macchina) raggiunge il nodo.
+    pub local_base: String,
 }
 
 pub type NodeShared = Arc<NodeState>;
@@ -150,13 +155,16 @@ async fn run(data_dir: PathBuf) -> anyhow::Result<()> {
         tokio::task::spawn_blocking(move || f.resolve("", "")).await?;
     }
     let cfg = NodeConfig::default();
+    let addr: std::net::SocketAddr = bind_addr().parse()?;
+    let local_ip = if addr.ip().is_unspecified() { std::net::IpAddr::from([127, 0, 0, 1]) } else { addr.ip() };
+    let local_base = format!("http://{}", std::net::SocketAddr::new(local_ip, addr.port()));
     let state: NodeShared = Arc::new(NodeState {
         name,
         key,
         allow,
         roots,
         transcode_dir,
-        cache_dir,
+        cache_dir: cache_dir.clone(),
         ffmpeg,
         transcoder: Arc::new(TranscodeManager::new(cfg.max_hw_transcodes, cfg.max_sw_transcodes)),
         config: RwLock::new((0, cfg)),
@@ -164,6 +172,9 @@ async fn run(data_dir: PathBuf) -> anyhow::Result<()> {
         last_heartbeat: AtomicI64::new(0),
         detecting: AtomicBool::new(false),
         started_at: crate::util::now_ms(),
+        // Su disco (in `/data`, non nella /cache in RAM del compose): i film non ci starebbero.
+        fetcher: Arc::new(fetch::Fetcher::new(&env("PLATEA_NODE_SOURCE_DIR").map(PathBuf::from).unwrap_or_else(|| data_dir.join("sources")))),
+        local_base,
     });
     {
         let st = state.clone();
@@ -171,7 +182,6 @@ async fn run(data_dir: PathBuf) -> anyhow::Result<()> {
     }
     tokio::spawn(maintenance(state.clone()));
 
-    let addr: std::net::SocketAddr = bind_addr().parse()?;
     let listener = tokio::net::TcpListener::bind(addr).await?;
     tracing::info!(%addr, version = crate::state::VERSION, protocol = PROTOCOL, roots = ?state.roots, "nodo Platea in ascolto");
     let app = api::router(state.clone());
@@ -217,6 +227,7 @@ async fn maintenance(state: NodeShared) {
     let mut tick = tokio::time::interval(Duration::from_secs(2));
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     let mut orphan_warned = false;
+    let mut evict_tick = 0u32;
     loop {
         tick.tick().await;
         let now = crate::util::now_ms();
@@ -234,6 +245,12 @@ async fn maintenance(state: NodeShared) {
             }
             s.rt.maintain(s.ahead, s.keep).await;
         }
+        // Pulizia della cache dei file ricevuti: ogni ~30 s (15 giri da 2 s).
+        evict_tick += 1;
+        if evict_tick.is_multiple_of(15) {
+            let cfg = state.config.read().unwrap().1.clone();
+            state.fetcher.evict(&cfg, None);
+        }
     }
 }
 
@@ -242,6 +259,8 @@ pub async fn stop_session(state: &NodeShared, id: &str) -> bool {
     match s {
         Some(s) => {
             s.rt.stop().await;
+            let cfg = state.config.read().unwrap().1.clone();
+            state.fetcher.detach(id, &cfg);
             tracing::info!(session = id, "sessione chiusa");
             true
         }
@@ -277,6 +296,8 @@ pub async fn status(state: &NodeShared, peer: Option<std::net::IpAddr>) -> NodeS
         memory_available: mem_avail,
         rss: crate::sysinfo::rss(),
         transcode_free_bytes: crate::sysinfo::free_bytes(&state.transcode_dir),
+        source_cache_bytes: state.fetcher.usage().0,
+        source_cache_files: state.fetcher.usage().1,
         sessions,
         config_rev: rev,
         config: Some(cfg),

@@ -25,15 +25,18 @@ services:
       # PLATEA_NODE_ALLOW: 100.64.0.0/10,192.168.1.0/24
       # Radici dei media da cui il nodo può leggere (predefinito /media).
       # PLATEA_NODE_MEDIA: /media
+      # Cache dei file ricevuti dal server (lettura a blocchi): predefinita /data/sources, su disco.
+      # Tetto e modalità nel dialogo del nodo. Per un altro disco: montarlo e indicarlo qui.
+      # PLATEA_NODE_SOURCE_DIR: /sources
       PLATEA_LOG: ${PLATEA_LOG:-info}
       TZ: ${TZ:-Europe/Rome}
     volumes:
-      # Chiave del nodo. uid 1000: sudo chown -R 1000:1000 node-data
+      # Chiave del nodo e cache dei file ricevuti dal server (sources/). uid 1000: sudo chown -R 1000:1000 node-data
       - ./node-data:/data
       # Copie delle cartelle (ruolo CDN, e transcodifica dal file locale), sempre in sola lettura.
       # Stessa struttura della cartella sul server, anche un secondo mount rclone.
       # - /mnt/film:/media/film:ro,rslave
-    # Segmenti in RAM: il nodo non tiene niente su disco.
+    # Segmenti in RAM. Su disco solo la cache dei file ricevuti dal server (node-data/sources).
     tmpfs:
       - /transcode:size=4g,uid=1000,gid=1000
       - /cache:size=256m,uid=1000,gid=1000

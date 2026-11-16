@@ -135,7 +135,8 @@ def start(image, work):
     shutil.copytree(os.path.join(work, "media"), copia)
     sh("docker", "run", "--rm", "--user", "0", "--entrypoint", "chown", "-v", f"{work}:/w", image, "-R", "1000:1000",
        "/w/srv-data", "/w/srv-cache", "/w/srv-transcode", "/w/n1-data", "/w/n2-data")
-    sh("docker", "network", "create", NET)
+    # Sottorete esplicita: quella scelta da Docker può cadere su una LAN raggiunta via VPN (es. 192.168.0.0/24 da Tailscale).
+    sh("docker", "network", "create", "--subnet", os.environ.get("PLATEA_NT_SUBNET", "10.201.77.0/24"), NET)
     sh("docker", "run", "-d", "--name", SRV, "--network", NET, "-p", f"127.0.0.1:{SRV_PORT}:8096",
        "-v", f"{work}/srv-data:/data", "-v", f"{work}/srv-cache:/cache", "-v", f"{work}/srv-transcode:/transcode",
        "-v", f"{work}/media:/media:ro", "-e", "PLATEA_LOG=info", image)
@@ -284,6 +285,42 @@ def main():
     check("il nodo senza copia legge dal server", "node-source" in logs_n1, logs_n1[-800:])
     stop_all(api, infos)
 
+    # --- lettura dal server a blocchi (il nodo uno non ha copie)
+    print("== lettura dal server a blocchi", flush=True)
+    check("predefinita: lettura anticipata con cache", "lettura anticipata" in logs_n1, logs_n1[-800:])
+    cfg = node_by_name(api, "uno")["config"]
+    check("impostazioni predefinite della lettura", cfg.get("source_mode") == "readahead" and cfg.get("readahead_mb") == 1024, cfg)
+    sr = play(api, login(api, 120), uno)
+    st, body, _ = segment(api, sr, 4)
+    ex = sessions(api)[sr["session_id"]].get("executor")
+    check("salto avanti con la lettura anticipata, sempre sul nodo", st == 200 and body[:1] == b"\x47" and ex == "uno", (st, ex))
+    stop_all(api, [sr])
+    stn = node_by_name(api, "uno")["status"]
+    check("il file resta nella cache del nodo", stn.get("source_cache_files", 0) >= 1 and stn.get("source_cache_bytes", 0) > 0, stn.get("source_cache_files"))
+    patch_node(api, "uno", {"config": {**cfg, "source_mode": "full"}})
+    wait(lambda: node_by_name(api, "uno")["config_synced"], 20, what="config full")
+    fc = play(api, login(api, 121), due)
+    check("copia completa sul nodo uno", sessions(api)[fc["session_id"]].get("executor") == "uno", sessions(api)[fc["session_id"]].get("executor"))
+    st, body, _ = segment(api, fc, 0)
+    ex = sessions(api)[fc["session_id"]].get("executor")
+    check("segmento con la copia completa, sempre sul nodo", st == 200 and body[:1] == b"\x47" and ex == "uno", (st, ex))
+    try:
+        full_done = wait(lambda: "copia completa" in logs_of(N1) and "complete=true" in logs_of(N1), 60, what="copia completa finita")
+    except TimeoutError:
+        full_done = False
+    check("copia completa scaricata tutta", full_done, logs_of(N1)[-800:])
+    stop_all(api, [fc])
+    patch_node(api, "uno", {"config": {**cfg, "source_mode": "stream"}})
+    wait(lambda: node_by_name(api, "uno")["config_synced"], 20, what="config stream")
+    ds = play(api, login(api, 122), uno)
+    st, body, _ = segment(api, ds, 0)
+    check("lettura in diretta (come prima)", st == 200 and body[:1] == b"\x47" and 'via="diretta"' in logs_of(N1), (st, body[:80]))
+    stop_all(api, [ds])
+    st, r, _ = api.req("PATCH", f"/api/v1/admin/nodes/{node_by_name(api, 'uno')['id']}", {"config": {**cfg, "source_parallel": 99}})
+    check("impostazioni della lettura fuori dai limiti rifiutate", st == 400, r)
+    patch_node(api, "uno", {"config": cfg})
+    wait(lambda: node_by_name(api, "uno")["config_synced"], 20, what="config readahead")
+
     # --- regole: uno solo 4K, due solo fino a 1080p
     print("== regole", flush=True)
     patch_node(api, "uno", {"rules": {"min_height": 2160}})
@@ -309,6 +346,86 @@ def main():
     check("a parità di priorità vince chi ha la copia", sessions(api)[b["session_id"]].get("executor") == "due", sessions(api)[b["session_id"]].get("executor"))
     stop_all(api, [b])
 
+    # --- il nodo non raggiunge il server
+    print("== nodo che non raggiunge il server", flush=True)
+    cfg1 = node_by_name(api, "uno")["config"]
+    api.req("PUT", "/api/v1/admin/settings/nodes", {"server_url": f"http://{SRV}:9"})
+    patch_node(api, "due", {"draining": True})
+    st, r, _ = api.post(f"/api/v1/admin/nodes/{node_by_name(api, 'uno')['id']}/check")
+    reach = r.get("server_reach") or {}
+    check("prova: il nodo non raggiunge un indirizzo sbagliato", st == 200 and reach.get("ok") is False and reach.get("error"), reach)
+    check("il server lo segnala nei log", "il nodo non raggiunge il server" in logs_of(SRV), "")
+    # "Il nodo legge dal server": escluso subito invece di fallire dopo l'avvio.
+    patch_node(api, "uno", {"config": {**cfg1, "source_transport": "pull"}})
+    wait(lambda: node_by_name(api, "uno")["config_synced"], 20, what="config pull")
+    t0 = time.time()
+    c = play(api, login(api, 212), uno)
+    ex = sessions(api)[c["session_id"]].get("executor")
+    check("in pull, nodo che non raggiunge il server escluso: transcodifica il server", ex is None, ex)
+    st, body, _ = segment(api, c, 0)
+    check(f"primo segmento senza attesa di failover ({time.time() - t0:.1f} s)", st == 200 and body[:1] == b"\x47" and time.time() - t0 < 15, (st, time.time() - t0))
+    stop_all(api, [c])
+    # Automatico: il server gli manda il file. Cache svuotata prima, così i blocchi arrivano davvero dal server.
+    patch_node(api, "uno", {"config": {**cfg1, "source_transport": "auto", "source_cache_gb": 0}})
+    wait(lambda: node_by_name(api, "uno")["config_synced"], 20, what="config auto")
+    try:
+        wait(lambda: node_by_name(api, "uno")["status"].get("source_cache_files") == 0, 60, what="cache svuotata")
+    except TimeoutError:
+        pass
+    check("cache del nodo svuotata prima del push", node_by_name(api, "uno")["status"].get("source_cache_files") == 0, node_by_name(api, "uno")["status"].get("source_cache_files"))
+    c = play(api, login(api, 214), due)
+    ex = sessions(api)[c["session_id"]].get("executor")
+    check("in automatico il nodo che non raggiunge il server riceve il file dal server", ex == "uno", ex)
+    st, body, _ = segment(api, c, 0)
+    check("segmento con il file mandato dal server", st == 200 and body[:1] == b"\x47", (st, body[:80]))
+    st, body, _ = segment(api, c, 2)
+    ex = sessions(api)[c["session_id"]].get("executor")
+    check("segmento successivo in push, sempre sul nodo", st == 200 and body[:1] == b"\x47" and ex == "uno", (st, ex))
+    check("il nodo dice che il file arriva dal server", "mandato dal server" in logs_of(N1), logs_of(N1)[-600:])
+    stop_all(api, [c])
+    try:
+        sent = wait(lambda: "invio del file al nodo finito" in logs_of(SRV), 30, what="fine invio")
+    except TimeoutError:
+        sent = False
+    check("il server smette di mandare a sessione chiusa", sent, logs_of(SRV)[-600:])
+    sent_lines = [l for l in logs_of(SRV).splitlines() if "invio del file al nodo finito" in l]
+    check("il server ha mandato davvero dei dati", any("mb=0 " not in l for l in sent_lines), sent_lines)
+    try:
+        wait(lambda: node_by_name(api, "uno")["status"].get("source_cache_files") == 0, 60, what="cache svuotata 2")
+    except TimeoutError:
+        pass
+    # "Il server manda" anche con l'indirizzo giusto, copia completa.
+    api.req("PUT", "/api/v1/admin/settings/nodes", {"server_url": ""})
+    patch_node(api, "uno", {"config": {**cfg1, "source_transport": "push", "source_mode": "full", "source_cache_gb": 0}})
+    n_sent = len([l for l in logs_of(SRV).splitlines() if "invio del file al nodo finito" in l])
+    wait(lambda: node_by_name(api, "uno")["config_synced"], 20, what="config push")
+    c = play(api, login(api, 215), uno)
+    ex = sessions(api)[c["session_id"]].get("executor")
+    st, body, _ = segment(api, c, 5)
+    ex2 = sessions(api)[c["session_id"]].get("executor")
+    check("push forzato con copia completa e salto avanti", ex == "uno" and ex2 == "uno" and st == 200 and body[:1] == b"\x47", (ex, ex2, st))
+    try:
+        done = wait(lambda: "mandato dal server, copia completa" in logs_of(N1) and "complete=true" in logs_of(SRV), 60, what="push completo")
+    except TimeoutError:
+        done = False
+    check("push: file mandato tutto", done, logs_of(SRV)[-600:])
+    last = [l for l in logs_of(SRV).splitlines() if "invio del file al nodo finito" in l][n_sent:]
+    check("push: copia completa mandata dal server (non dalla cache)", any("complete=true" in l and "mb=0 " not in l for l in last), last)
+    stop_all(api, [c])
+    try:
+        emptied = wait(lambda: node_by_name(api, "uno")["status"].get("source_cache_files") == 0, 30, what="cache vuota")
+    except TimeoutError:
+        emptied = False
+    check("cache a 0 GB: file tolto a fine visione", emptied, node_by_name(api, "uno")["status"].get("source_cache_files"))
+    patch_node(api, "uno", {"config": cfg1})
+    wait(lambda: node_by_name(api, "uno")["config_synced"], 20, what="config ripristinata")
+    try:
+        ok = wait(lambda: (node_by_name(api, "uno").get("server_reach") or {}).get("ok") is True, 30, what="prova di nuovo riuscita")
+    except TimeoutError:
+        ok = False
+    check("indirizzo corretto: la prova torna verde da sola", ok, node_by_name(api, "uno").get("server_reach"))
+    patch_node(api, "due", {"draining": False})
+
     # --- remux: solo su chi ha il file
     pr = dict(H264_PROFILE)
     r = play(api, login(api, 211), uno, force=False, profile=pr)
@@ -317,6 +434,9 @@ def main():
     st, body, _ = segment(api, r, 0)
     check("segmento remux", st == 200 and body[:1] == b"\x47", (st, body[:80]))
     stop_all(api, [r])
+
+    pre = logs_of(SRV)
+    check("nessun failover prima della prova di failover", "failover" not in pre, [l for l in pre.splitlines() if "failover" in l][:3])
 
     # --- failover a metà sessione
     print("== failover", flush=True)

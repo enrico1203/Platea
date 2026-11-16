@@ -45,6 +45,39 @@ ricontrolla (risultato tenuto 10 minuti). Una copia diversa o assente non si usa
 
 La scansione resta sul server: il server deve vedere tutte le librerie.
 
+### File ricevuti dal server
+
+Un file che il nodo non ha in copia lo riceve dal server (`/api/v1/node-source/<token>`). Il nodo deve poter
+raggiungere il server: il server lo prova da solo (ogni 5 minuti, ogni 15 secondi finché non va) e lo mostra nella
+scheda del nodo ("Il nodo legge da … raggiungibile/non raggiungibile"). Se il nodo non raggiunge il server, in
+automatico il file glielo manda il server (vedi sotto); con "Il nodo legge dal server" il nodo non riceve
+transcodifiche di file che non ha in copia, così la riproduzione non aspetta il failover. Dietro un router di
+sottorete Tailscale (o un NAT) l'indirizzo automatico è quello del router: in quel caso va scritto a mano in
+Impostazioni › Nodi › Indirizzo del server per i nodi (es. `http://100.x.y.z:8096`), oppure si lascia che sia il
+server a mandare il file.
+
+Chi muove il file (dialogo del nodo › File ricevuti dal server › Chi muove il file):
+
+| Scelta | Cosa fa |
+| --- | --- |
+| Automatico (predefinito) | Il nodo legge dal server se la prova riesce; altrimenti il server gli manda il file |
+| Il nodo legge dal server | Solo il nodo che scarica: se non raggiunge il server, niente transcodifiche di file senza copia |
+| Il server manda al nodo | Il server manda i blocchi sul collegamento con cui comanda il nodo (`/node/v1/push/<sessione>/…`): il nodo dice quali blocchi gli servono (attesa lunga), il server li legge dal suo disco e li carica. Funziona con il nodo dietro NAT o con Tailscale solo sul router. Sempre con la cache, mai in diretta |
+
+Come il nodo legge quei file:
+
+| Lettura | Cosa fa |
+| --- | --- |
+| A blocchi, in anticipo (predefinita) | Blocchi da 8 MiB, 4 in parallelo, fino a 1024 MB davanti a dove legge FFmpeg. Scarica solo quello che si guarda; assorbe rallentamenti della rete e del cloud |
+| Copia completa | Tutto il file, a partire dal punto in cui si guarda (poi il resto). Salti istantanei, ma scarica anche quello che non si guarda |
+| In diretta | FFmpeg legge dal server al ritmo della transcodifica, senza cache (comportamento delle versioni fino alla 0.1.2) |
+
+FFmpeg legge dalla cache attraverso `http://127.0.0.1:8097/node/v1/local-source/<token>` (solo dalla macchina del
+nodo); un blocco non ancora arrivato si scarica per primo. I blocchi restano nella cache del nodo (`/data/sources`, cioè `node-data/sources`; `PLATEA_NODE_SOURCE_DIR` per un altro disco;
+tetto predefinito 50 GB, sempre almeno 10 GB liberi (un decimo del disco se è più piccolo di 100 GB), si toglie il file usato meno di recente): riprendere un film o
+tornare indietro non riscarica. La cache si svuota al riavvio del nodo. Con poco spazio la copia completa diventa
+lettura anticipata, e senza spazio si legge in diretta (in push la sessione va a un altro esecutore).
+
 ## Bilanciamento
 
 "Questo server" compare tra i nodi con gli stessi campi, quindi si può decidere anche che il server transcodifichi
@@ -105,8 +138,8 @@ Ferma riproduzioni, Riavvia, Elimina. Nel pannello delle riproduzioni: "Eseguita
 ## Come funziona
 
 - Il server chiama il nodo su `/node/v1` (`Authorization: Bearer <chiave>`). Il nodo non chiama mai il server, tranne
-  FFmpeg che legge il file da `/api/v1/node-source/<token>` (un token per sessione, valido finché la sessione vive,
-  con le richieste Range).
+  la lettura del file da `/api/v1/node-source/<token>` (un token per sessione, valido finché la sessione vive,
+  con le richieste Range) e la prova di collegamento (`POST /node/v1/probe`, il nodo chiama `/api/v1/health`).
 - La playlist HLS la scrive sempre il server; il nodo usa lo stesso motore del server (`HlsRuntime`: FFmpeg
   riavviato sui salti, sospeso quando è troppo avanti, ripiego GPU → software).
 - Codice: `src/node/` (modalità nodo), `src/nodes/` (registro, scelta di esecutori e copie, sessione HLS con failover,

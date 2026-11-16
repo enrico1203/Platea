@@ -1,7 +1,7 @@
 //! Chiamate del server verso un nodo. Ogni chiamata ha il suo tempo limite: un nodo lento o sparito non blocca
 //! mai una richiesta di un client oltre il necessario.
 
-use super::proto::{CreateHls, CreateHlsReply, Heartbeat, NodeStatus, PushConfig, StatEntry, StatReq};
+use super::proto::{CreateHls, CreateHlsReply, Heartbeat, NodeStatus, ProbeReply, ProbeReq, PushConfig, PushWants, StatEntry, StatReq};
 use std::time::Duration;
 
 #[derive(Debug, thiserror::Error)]
@@ -94,6 +94,23 @@ impl NodeClient {
         Self::json(self.req(reqwest::Method::POST, "/node/v1/heartbeat", timeout).json(hb).send().await).await
     }
 
+    /// Il nodo prova a raggiungere il server a `url`. `Status 404` = nodo di una versione senza la prova.
+    pub async fn probe(&self, url: &str) -> Result<ProbeReply, NodeCallError> {
+        Self::json(self.req(reqwest::Method::POST, "/node/v1/probe", Duration::from_secs(10)).json(&ProbeReq { url: url.to_string() }).send().await).await
+    }
+
+    /// Modalità push: blocchi che il nodo aspetta (attesa lunga sul nodo fino a `wait_s`).
+    pub async fn push_wants(&self, remote_id: &str, wait_s: u64) -> Result<PushWants, NodeCallError> {
+        Self::json(self.req(reqwest::Method::GET, &format!("/node/v1/push/{remote_id}/wants?wait={wait_s}"), Duration::from_secs(wait_s + 15)).send().await)
+            .await
+    }
+
+    pub async fn push_chunk(&self, remote_id: &str, i: u64, body: Vec<u8>) -> Result<(), NodeCallError> {
+        Self::check(self.req(reqwest::Method::PUT, &format!("/node/v1/push/{remote_id}/chunk/{i}"), Duration::from_secs(180)).body(body).send().await)
+            .await
+            .map(|_| ())
+    }
+
     pub async fn push_config(&self, c: &PushConfig) -> Result<(), NodeCallError> {
         Self::check(self.req(reqwest::Method::PUT, "/node/v1/config", Duration::from_secs(5)).json(c).send().await).await.map(|_| ())
     }
@@ -156,7 +173,7 @@ impl NodeClient {
 }
 
 /// Errore di reqwest senza l'URL completo (che può contenere percorsi di file).
-fn short(e: &reqwest::Error) -> String {
+pub(crate) fn short(e: &reqwest::Error) -> String {
     let kind = if e.is_timeout() {
         "tempo scaduto"
     } else if e.is_connect() {

@@ -2,7 +2,7 @@
 
 use super::{NodeSession, NodeShared};
 use crate::error::{ApiError, ApiResult};
-use crate::nodes::proto::{CreateHls, CreateHlsReply, Heartbeat, PushConfig, RemoteSessionStatus, Source, StatEntry, StatReq};
+use crate::nodes::proto::{CreateHls, CreateHlsReply, Heartbeat, ProbeReply, ProbeReq, PushConfig, RemoteSessionStatus, Source, StatEntry, StatReq};
 use crate::transcode::{HlsError, HlsRuntime};
 use axum::body::Body;
 use axum::extract::{ConnectInfo, Path, Query, Request, State};
@@ -26,6 +26,7 @@ pub fn router(state: NodeShared) -> Router {
         .route("/node/v1/hw-test", post(hw_test))
         .route("/node/v1/logs", get(logs))
         .route("/node/v1/restart", post(restart))
+        .route("/node/v1/probe", post(probe))
         .route("/node/v1/hls", post(create_hls))
         .route("/node/v1/hls/{id}", get(hls_status).delete(delete_hls))
         .route("/node/v1/hls/{id}/init", get(hls_init))
@@ -33,13 +34,21 @@ pub fn router(state: NodeShared) -> Router {
         .route("/node/v1/file", get(file).head(file))
         .route("/node/v1/fs/stat", post(stat))
         .route("/node/v1/fs/browse", get(browse))
+        .layer(tower_http::limit::RequestBodyLimitLayer::new(4 * 1024 * 1024))
+        .layer(middleware::from_fn_with_state(state.clone(), auth));
+    // Blocchi del file mandati dal server (modalità push): richieste più grandi delle altre.
+    let push = Router::new()
+        .route("/node/v1/push/{id}/wants", get(push_wants))
+        .route("/node/v1/push/{id}/chunk/{n}", put(push_chunk))
+        .layer(axum::extract::DefaultBodyLimit::max((super::fetch::CHUNK + (1 << 20)) as usize))
         .layer(middleware::from_fn_with_state(state.clone(), auth));
     Router::new()
         .route("/node/v1/health", get(|| async { Json(json!({ "ok": true, "protocol": crate::nodes::proto::PROTOCOL })) }))
         .route("/node/v1/d/{exp}/{sig}/{name}", get(direct).head(direct))
+        .route("/node/v1/local-source/{token}", get(local_source).head(local_source))
         .merge(protected)
+        .merge(push)
         .fallback(|| async { ApiError::not_found("Percorso") })
-        .layer(tower_http::limit::RequestBodyLimitLayer::new(4 * 1024 * 1024))
         .with_state(state)
 }
 
@@ -111,6 +120,109 @@ async fn restart() -> Json<Value> {
     Json(json!({ "ok": true }))
 }
 
+/// Il nodo prova a raggiungere il server all'indirizzo con cui leggerà i file (`/api/v1/health`).
+/// Serve a scoprire prima di una riproduzione un indirizzo sbagliato (NAT, router di sottorete, porta non pubblicata).
+async fn probe(Json(req): Json<ProbeReq>) -> ApiResult<Json<ProbeReply>> {
+    let base = req.url.trim().trim_end_matches('/');
+    if !(base.starts_with("http://") || base.starts_with("https://")) || base.len() > 512 {
+        return Err(ApiError::BadRequest("Indirizzo non valido".into()));
+    }
+    static HTTP: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    let http = HTTP.get_or_init(crate::nodes::client::http_client);
+    let t0 = std::time::Instant::now();
+    let res = http.get(format!("{base}/api/v1/health")).timeout(Duration::from_secs(5)).send().await;
+    let ms = t0.elapsed().as_millis() as u64;
+    let error = match res {
+        Err(e) => Some(crate::nodes::client::short(&e)),
+        Ok(r) if !r.status().is_success() => Some(format!("risposta {} (è davvero Platea?)", r.status().as_u16())),
+        Ok(r) => match r.json::<Value>().await {
+            Ok(v) if v.get("status").is_some() => None,
+            _ => Some("risposta che non viene da Platea".into()),
+        },
+    };
+    if let Some(e) = &error {
+        tracing::warn!(url = %base, error = %e, "il nodo non raggiunge il server");
+    }
+    Ok(Json(ProbeReply { ok: error.is_none(), error, ms }))
+}
+
+#[derive(Deserialize)]
+struct WantsQuery {
+    wait: Option<u64>,
+}
+
+/// Modalità push: il server chiede quali blocchi mandare (attesa lunga fino a `wait` secondi).
+async fn push_wants(State(state): State<NodeShared>, Path(id): Path<String>, Query(q): Query<WantsQuery>) -> ApiResult<Json<crate::nodes::proto::PushWants>> {
+    let wait = Duration::from_secs(q.wait.unwrap_or(20).min(30));
+    state.fetcher.wants(&id, wait).await.map(Json).ok_or_else(|| ApiError::coded(StatusCode::GONE, "SessionEnded", "Sessione non presente sul nodo"))
+}
+
+async fn push_chunk(State(state): State<NodeShared>, Path((id, n)): Path<(String, u64)>, body: axum::body::Bytes) -> ApiResult<Json<Value>> {
+    state.fetcher.put_chunk(&id, n, body).await.map_err(|e| ApiError::coded(StatusCode::CONFLICT, "ChunkRejected", e))?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+/// FFmpeg di questo nodo legge il file ricevuto dal server attraverso la cache a blocchi (solo da questa macchina).
+async fn local_source(
+    State(state): State<NodeShared>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    Path(token): Path<String>,
+    method: Method,
+    headers: HeaderMap,
+) -> Response {
+    let local = peer.ip().is_loopback() || state.local_base.contains(&peer.ip().to_string());
+    let Some(entry) = state.fetcher.entry_for(&token).filter(|_| local) else {
+        return ApiError::not_found("Sorgente").into_response();
+    };
+    let size = entry.size();
+    let range = headers.get(header::RANGE).and_then(|v| v.to_str().ok()).and_then(|v| v.strip_prefix("bytes=")).and_then(|v| {
+        let (a, b) = v.split_once('-')?;
+        let a: u64 = a.trim().parse().ok()?;
+        let b: u64 = if b.trim().is_empty() { size.saturating_sub(1) } else { b.trim().parse::<u64>().ok()?.min(size.saturating_sub(1)) };
+        Some((a, b))
+    });
+    let (start, end, partial) = match range {
+        Some((a, b)) if a <= b && a < size => (a, b + 1, true),
+        Some(_) => {
+            return Response::builder()
+                .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                .header(header::CONTENT_RANGE, format!("bytes */{size}"))
+                .body(Body::empty())
+                .unwrap();
+        }
+        None => (0, size, false),
+    };
+    let mut b = Response::builder()
+        .status(if partial { StatusCode::PARTIAL_CONTENT } else { StatusCode::OK })
+        .header(header::ACCEPT_RANGES, "bytes")
+        .header(header::CONTENT_TYPE, "application/octet-stream")
+        .header(header::CONTENT_LENGTH, end - start);
+    if partial {
+        b = b.header(header::CONTENT_RANGE, format!("bytes {}-{}/{}", start, end - 1, size));
+    }
+    if method == Method::HEAD {
+        return b.body(Body::empty()).unwrap();
+    }
+    // Il lettore nasce già nel punto richiesto: lo scaricamento parte da lì, non dall'inizio del file.
+    let reader = super::fetch::Reader::new(&state.fetcher, entry, start);
+    let stream = futures_util::stream::unfold((reader, start), move |(reader, pos)| async move {
+        if pos >= end {
+            return None;
+        }
+        match reader.read(pos, ((end - pos) as usize).min(1 << 20)).await {
+            Ok(buf) => {
+                let next = pos + buf.len() as u64;
+                Some((Ok::<_, std::io::Error>(axum::body::Bytes::from(buf)), (reader, next)))
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "lettura della sorgente interrotta");
+                Some((Err(std::io::Error::other(e)), (reader, end)))
+            }
+        }
+    });
+    b.body(Body::from_stream(stream)).unwrap()
+}
+
 fn hls_error(e: HlsError) -> Response {
     let (status, code) = match &e {
         HlsError::OutOfRange => (StatusCode::NOT_FOUND, "NotFound"),
@@ -139,6 +251,27 @@ async fn create_hls(State(state): State<NodeShared>, Json(req): Json<CreateHls>)
     };
     super::stop_session(&state, &req.id).await;
     let cfg = state.config.read().unwrap().1.clone();
+    // File dal server: a blocchi e in anticipo attraverso la cache, se la configurazione lo chiede.
+    let mut input = input;
+    let mut via = "diretta";
+    if let (Source::Url(u), Some(size), Some(key)) = (&req.source, req.source_size, req.source_key.as_deref()) {
+        match state.fetcher.attach(key, size, u, &req.id, &cfg, req.source_push) {
+            Some(a) => {
+                input = std::path::PathBuf::from(format!("{}/node/v1/local-source/{}", state.local_base, a.token));
+                via = match (req.source_push, a.mode) {
+                    (true, crate::nodes::proto::SourceMode::Full) => "mandato dal server, copia completa",
+                    (true, _) => "mandato dal server, in anticipo",
+                    (false, crate::nodes::proto::SourceMode::Full) => "copia completa",
+                    (false, _) => "lettura anticipata",
+                };
+            }
+            // In push senza cache non c'è modo di ricevere il file.
+            None if req.source_push => {
+                return Err(ApiError::coded(StatusCode::INSUFFICIENT_STORAGE, "NoSpace", "Spazio insufficiente sul nodo per ricevere il file"));
+            }
+            None => {}
+        }
+    }
     let mut spec = req.spec;
     spec.input = input;
     spec.out_dir = state.transcode_dir.join(&req.id);
@@ -155,7 +288,7 @@ async fn create_hls(State(state): State<NodeShared>, Json(req): Json<CreateHls>)
         req.id.clone(),
         Arc::new(NodeSession { rt, ahead: req.ahead_segments.max(5), keep: req.keep_behind, created: now, last_used: AtomicI64::new(now) }),
     );
-    tracing::info!(session = %req.id, backend = %backend, source = ?req.source, "sessione aperta");
+    tracing::info!(session = %req.id, backend = %backend, source = ?req.source, via, "sessione aperta");
     Ok(Json(CreateHlsReply { id: req.id, backend }))
 }
 

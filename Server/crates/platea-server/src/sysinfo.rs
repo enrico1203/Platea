@@ -23,6 +23,25 @@ pub fn load_1m() -> Option<f64> {
     std::fs::read_to_string("/proc/loadavg").ok().and_then(|l| l.split_whitespace().next().and_then(|x| x.parse::<f64>().ok()))
 }
 
+/// Dimensione totale del filesystem di `path`, in byte.
+pub fn disk_bytes(path: &std::path::Path) -> Option<u64> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        let c = std::ffi::CString::new(path.as_os_str().as_bytes()).ok()?;
+        let mut st: libc::statvfs = unsafe { std::mem::zeroed() };
+        if unsafe { libc::statvfs(c.as_ptr(), &mut st) } == 0 {
+            return Some(st.f_blocks as u64 * st.f_frsize as u64);
+        }
+        None
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        None
+    }
+}
+
 /// Spazio libero per i non amministratori sul filesystem di `path`, in byte.
 pub fn free_bytes(path: &std::path::Path) -> Option<u64> {
     #[cfg(unix)]

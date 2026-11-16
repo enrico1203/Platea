@@ -477,6 +477,17 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-16 — Versione 0.1.3: nodi (parità al nodo, prova di collegamento, lettura a blocchi, push dal server).
+- 2026-11-16 — Nodi: il server prova se il nodo lo raggiunge (`POST /node/v1/probe`, ogni 5 min, 15 s se fallisce) e
+  lo mostra nella scheda; un nodo che non lo raggiunge non riceve transcodifiche di file che non ha in copia (prima:
+  "Connection refused" e failover dopo ~24 s).
+- 2026-11-16 — Nodi: lettura a blocchi dei file ricevuti dal server (`node/fetch.rs`): blocchi da 8 MiB in parallelo,
+  in anticipo su FFmpeg, cache su disco con tetto (`/data/sources`). Modalità nel dialogo del nodo: a blocchi in
+  anticipo (predefinita, 1024 MB, 4 in parallelo, cache 50 GB), copia completa, in diretta. FFmpeg legge da
+  `127.0.0.1:8097/node/v1/local-source/<token>`. Rete della prova dei nodi con sottorete esplicita (10.201.77.0/24).
+- 2026-11-16 — Nodi: "Chi muove il file" (automatico/il nodo legge/il server manda). In push il server manda i blocchi
+  al nodo (`nodes/push.rs`, `/node/v1/push/{id}/wants|chunk/{n}`): basta che il server raggiunga il nodo. Automatico =
+  push se la prova di collegamento fallisce. Pensato per i nodi dietro NAT o con la VPN solo sul router.
 - 2026-11-16 — Nodi: a parità di priorità, peso e carico vince il nodo invece del server (prima la prima transcodifica
   restava sempre sul server). Vale anche per le copie CDN. Test `tie_goes_to_the_node`.
 - 2026-11-15 — Release v0.1.2 (nodi compresi): immagini 0.1.2, 0.1 e latest su ghcr.io (amd64 e arm64). Versione nel codice allineata (era rimasta 0.1.0).

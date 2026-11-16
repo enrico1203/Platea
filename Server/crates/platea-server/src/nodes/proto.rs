@@ -9,6 +9,32 @@ use serde::{Deserialize, Serialize};
 /// Versione del protocollo. Un nodo con una versione diversa viene rifiutato con l'avviso "aggiorna il nodo".
 pub const PROTOCOL: u32 = 1;
 
+/// Come il nodo legge un file che non ha in copia (lo riceve dal server).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SourceMode {
+    /// FFmpeg legge dal server in diretta, al ritmo della transcodifica.
+    Stream,
+    /// A blocchi in parallelo, in anticipo su FFmpeg (finestra `readahead_mb`), con cache su disco.
+    #[default]
+    Readahead,
+    /// Tutto il file, a partire da dove si guarda, con cache su disco.
+    Full,
+}
+
+/// Chi muove il file dal server al nodo.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SourceTransport {
+    /// Il nodo legge dal server se la prova di collegamento riesce, altrimenti il server manda.
+    #[default]
+    Auto,
+    /// Il nodo legge dal server (serve che il nodo raggiunga il server).
+    Pull,
+    /// Il server manda i blocchi al nodo sul collegamento che usa già per comandarlo (nodo dietro NAT, VPN a senso unico).
+    Push,
+}
+
 /// Configurazione del nodo: vive nel database del server e viene spinta al nodo a ogni collegamento.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
@@ -23,6 +49,14 @@ pub struct NodeConfig {
     pub sw_crf: u32,
     /// 0 = automatico.
     pub threads: u32,
+    pub source_mode: SourceMode,
+    pub source_transport: SourceTransport,
+    /// Quanto leggere in anticipo rispetto a FFmpeg (modalità `readahead`).
+    pub readahead_mb: u32,
+    /// Blocchi scaricati insieme.
+    pub source_parallel: u32,
+    /// Tetto della cache dei file ricevuti dal server; 0 = niente cache tra una sessione e l'altra.
+    pub source_cache_gb: u32,
 }
 
 impl Default for NodeConfig {
@@ -35,6 +69,11 @@ impl Default for NodeConfig {
             sw_preset: "veryfast".into(),
             sw_crf: 23,
             threads: 0,
+            source_mode: SourceMode::Readahead,
+            source_transport: SourceTransport::Auto,
+            readahead_mb: 1024,
+            source_parallel: 4,
+            source_cache_gb: 50,
         }
     }
 }
@@ -89,6 +128,9 @@ pub struct NodeStatus {
     pub memory_available: Option<u64>,
     pub rss: Option<u64>,
     pub transcode_free_bytes: Option<u64>,
+    /// Cache dei file ricevuti dal server: byte e file.
+    pub source_cache_bytes: u64,
+    pub source_cache_files: usize,
     pub sessions: Vec<RemoteSessionStatus>,
     /// Revisione della configurazione applicata (0 = mai ricevuta dopo l'avvio).
     pub config_rev: i64,
@@ -118,6 +160,14 @@ pub struct CreateHls {
     pub cuts: Vec<i64>,
     pub duration_ms: i64,
     pub source: Source,
+    /// Per `Source::Url` dal server: dimensione e identità del file (cache del nodo). Assenti = lettura in diretta.
+    #[serde(default)]
+    pub source_size: Option<u64>,
+    #[serde(default)]
+    pub source_key: Option<String>,
+    /// I blocchi li manda il server (`/node/v1/push/…`): il nodo non deve raggiungere il server.
+    #[serde(default)]
+    pub source_push: bool,
     /// Rallentamento e pulizia come sul server.
     pub ahead_segments: usize,
     pub keep_behind: usize,
@@ -127,6 +177,29 @@ pub struct CreateHls {
 pub struct CreateHlsReply {
     pub id: String,
     pub backend: String,
+}
+
+/// Prova di collegamento dal nodo verso il server: il nodo chiama `{url}/api/v1/health`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProbeReq {
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ProbeReply {
+    pub ok: bool,
+    pub error: Option<String>,
+    pub ms: u64,
+}
+
+/// Blocchi che il nodo aspetta dal server (modalità push). `gone` = sessione chiusa: il server smette di mandare.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PushWants {
+    pub chunk_size: u64,
+    pub chunks: Vec<u64>,
+    pub complete: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

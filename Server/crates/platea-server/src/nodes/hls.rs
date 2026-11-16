@@ -222,11 +222,19 @@ async fn launch(state: &Shared, plan: &mut Plan, node_id: i64, gen: u32, first: 
             source = Some(Source::Path(path));
         }
     }
+    let from_server = source.is_none();
+    // File dal server: lo legge il nodo, o (push) lo manda il server sul collegamento verso il nodo.
+    let push = from_server && super::push::wanted(state, &row) && !crate::transcode::command::is_http(&plan.spec.input);
     let source = match source {
         Some(s) => s,
         None if !transcode => return Err("remux su un nodo senza il file in locale".into()),
         None => {
-            let base = super::server_base_for(state, node_id).ok_or("indirizzo del server per i nodi sconosciuto (Impostazioni › Nodi)")?;
+            let base = match super::server_base_for(state, node_id) {
+                Some(b) => b,
+                // In push l'indirizzo non serve (lo userebbe solo un nodo di una versione senza push).
+                None if push => "http://server-non-raggiungibile.invalid".into(),
+                None => return Err("indirizzo del server per i nodi sconosciuto (Impostazioni › Nodi)".into()),
+            };
             let token = crate::util::random_hex(24);
             state.nodes.sources.lock().unwrap().insert(token.clone(), super::SourceGrant { file_id: plan.file_id, session_id: plan.session_id.clone() });
             Source::Url(format!("{base}/api/v1/node-source/{token}"))
@@ -241,11 +249,26 @@ async fn launch(state: &Shared, plan: &mut Plan, node_id: i64, gen: u32, first: 
         cuts: plan.cuts.clone(),
         duration_ms: plan.duration_ms,
         source,
+        source_size: from_server.then_some(plan.file_size as u64).filter(|s| *s > 0),
+        source_key: from_server.then(|| format!("f{}-{}", plan.file_id, plan.file_size)),
+        source_push: push,
         ahead_segments: plan.ahead,
         keep_behind: plan.keep.max(s.playback.keep_segments_behind as usize),
     };
     let client = row.client(&state.nodes.http);
     let reply = client.create_hls(&req).await.map_err(|e| e.to_string())?;
+    if push {
+        let job = super::push::Job {
+            client: client.clone(),
+            remote_id: remote_id.clone(),
+            path: plan.spec.input.clone(),
+            size: plan.file_size as u64,
+            session_id: plan.session_id.clone(),
+            parallel: row.config.source_parallel.clamp(1, 16) as usize,
+            node: row.name.clone(),
+        };
+        tokio::spawn(super::push::run(state.clone(), job));
+    }
     Ok((Exec::Remote { node_id, client, remote_id }, reply.backend))
 }
 

@@ -5,6 +5,7 @@ pub mod cdn;
 pub mod client;
 pub mod hls;
 pub mod proto;
+pub mod push;
 pub mod route;
 
 use crate::state::Shared;
@@ -21,6 +22,9 @@ use std::time::Duration;
 const BREAKER_FAILURES: usize = 3;
 const BREAKER_WINDOW_MS: i64 = 5 * 60_000;
 const BREAKER_OPEN_MS: i64 = 2 * 60_000;
+/// Prova "il nodo raggiunge il server": ripetuta ogni tanto se riuscita, più spesso se no (per accorgersi della correzione).
+const REACH_OK_TTL_MS: i64 = 5 * 60_000;
+const REACH_BAD_TTL_MS: i64 = 15_000;
 /// Verifica di una copia (dimensione del file sul nodo uguale a quella nel database): vale per un po'.
 const STAT_TTL_MS: i64 = 10 * 60_000;
 
@@ -79,6 +83,19 @@ pub struct Live {
     pub config_sent: i64,
     pub breaker_until: i64,
     pub failures: VecDeque<i64>,
+    /// Ultima prova del nodo verso il server (l'indirizzo da cui legge i file).
+    pub reach: Option<Reach>,
+}
+
+/// Esito della prova "il nodo raggiunge il server".
+#[derive(Debug, Clone, Serialize)]
+pub struct Reach {
+    pub url: String,
+    /// None = il nodo è di una versione senza la prova: non si sa.
+    pub ok: Option<bool>,
+    pub error: Option<String>,
+    pub ms: u64,
+    pub checked_at: i64,
 }
 
 impl Default for Live {
@@ -93,6 +110,7 @@ impl Default for Live {
             config_sent: 0,
             breaker_until: 0,
             failures: VecDeque::new(),
+            reach: None,
         }
     }
 }
@@ -344,6 +362,12 @@ pub fn transcode_order(state: &Shared, job: &Job, library_path_id: i64, file_id:
         if !job.transcode && !has_local {
             continue;
         }
+        // Senza il file in locale il nodo lo legge dal server: se la prova dice che non ci arriva, inutile tentare
+        // (FFmpeg fallirebbe e la sessione ripartirebbe sul successivo dopo secondi di attesa). In automatico o in
+        // push invece glielo manda il server.
+        if !r.is_local && !has_local && r.config.source_transport == proto::SourceTransport::Pull && m.live(r.id).reach.is_some_and(|x| x.ok == Some(false)) {
+            continue;
+        }
         if job.transcode {
             let (encoders, hw) = if r.is_local {
                 (local_encoders.clone(), Some(state.transcoder.current_profile()))
@@ -499,7 +523,46 @@ pub async fn check_node(state: &Shared, r: &NodeRow) -> Health {
     if before != after {
         on_health_change(state, r, before, after);
     }
+    if after == Health::Online && r.role_transcode {
+        probe_server(state, r, false).await;
+    }
     after
+}
+
+/// Il nodo prova a raggiungere il server all'indirizzo da cui leggerà i file. Senza `force` solo se l'ultima prova è
+/// vecchia o l'indirizzo è cambiato (impostazioni, rete).
+pub async fn probe_server(state: &Shared, r: &NodeRow, force: bool) {
+    let Some(url) = server_base_for(state, r.id) else {
+        return;
+    };
+    let prev = state.nodes.live(r.id).reach;
+    if !force {
+        if let Some(p) = &prev {
+            let ttl = if p.ok == Some(false) { REACH_BAD_TTL_MS } else { REACH_OK_TTL_MS };
+            if p.url == url && now_ms() - p.checked_at < ttl {
+                return;
+            }
+        }
+    }
+    let (ok, error, ms) = match r.client(&state.nodes.http).probe(&url).await {
+        Ok(p) => (Some(p.ok), p.error, p.ms),
+        Err(NodeCallError::Status { status: 404, .. }) => (None, None, 0),
+        // Il nodo non ha risposto: è un problema dell'heartbeat, non della strada verso il server.
+        Err(_) => return,
+    };
+    let reach = Reach { url: url.clone(), ok, error: error.clone(), ms, checked_at: now_ms() };
+    state.nodes.live.lock().unwrap().entry(r.id).or_default().reach = Some(reach);
+    let was = prev.as_ref().filter(|p| p.url == url).and_then(|p| p.ok);
+    if was != ok {
+        match ok {
+            Some(false) => {
+                tracing::warn!(node = %r.name, url = %url, error = %error.unwrap_or_default(), "il nodo non raggiunge il server")
+            }
+            Some(true) => tracing::info!(node = %r.name, url = %url, ms, "il nodo raggiunge il server"),
+            None => {}
+        }
+        state.events.admin("nodes.changed", serde_json::json!({ "id": r.id }));
+    }
 }
 
 fn on_health_change(state: &Shared, r: &NodeRow, before: Health, after: Health) {

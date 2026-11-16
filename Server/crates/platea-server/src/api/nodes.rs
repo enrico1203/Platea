@@ -54,6 +54,8 @@ fn local_status(state: &Shared) -> NodeStatus {
         memory_available,
         rss: crate::sysinfo::rss(),
         transcode_free_bytes: crate::sysinfo::free_bytes(&state.boot.transcode_dir),
+        source_cache_bytes: 0,
+        source_cache_files: 0,
         sessions: vec![],
         config_rev: 0,
         config: None,
@@ -102,6 +104,7 @@ async fn view(state: &Shared, r: &NodeRow) -> ApiResult<Value> {
         "active_transcodes": tc.get(&r.id).copied().unwrap_or(0),
         "active_streams": cdn.get(&r.id).copied().unwrap_or(0),
         "server_url": server_base,
+        "server_reach": if r.is_local { None } else { live.reach.clone() },
         "paths": paths.into_iter().map(|(lp, p, at, err)| json!({ "library_path_id": lp, "node_path": p, "verified_at": at, "verify_error": err })).collect::<Vec<_>>(),
     }))
 }
@@ -171,6 +174,9 @@ fn validate(r: &NodeRow) -> ApiResult<()> {
     }
     if !(16..=35).contains(&c.sw_crf) || c.threads > 64 || c.max_hw_transcodes > 64 || c.max_sw_transcodes > 64 {
         return Err(ApiError::BadRequest("Valori della transcodifica fuori dai limiti".into()));
+    }
+    if !(16..=65536).contains(&c.readahead_mb) || !(1..=16).contains(&c.source_parallel) || c.source_cache_gb > 100_000 {
+        return Err(ApiError::BadRequest("Lettura dal server: anticipo 16–65536 MB, blocchi in parallelo 1–16".into()));
     }
     if !c.vaapi_device.starts_with("/dev/") {
         return Err(ApiError::BadRequest("Il dispositivo DRI deve stare sotto /dev/".into()));
@@ -314,8 +320,8 @@ async fn update(State(state): State<Shared>, AdminUser(admin): AdminUser, Path(i
     let r = node(&state, id)?;
     state.db.activity(Some(admin.user_id), "node_updated", &format!("{} ha modificato il nodo {}", admin.username, display_name(&state, &r)), None).await;
     state.events.admin("nodes.changed", json!({ "id": id }));
-    if !r.is_local && r.enabled {
-        crate::nodes::check_node(&state, &r).await;
+    if !r.is_local && r.enabled && crate::nodes::check_node(&state, &r).await == crate::nodes::Health::Online {
+        crate::nodes::probe_server(&state, &r, true).await;
     }
     Ok(Json(view(&state, &r).await?))
 }
@@ -340,8 +346,8 @@ async fn remove(State(state): State<Shared>, AdminUser(admin): AdminUser, Path(i
 
 async fn check(State(state): State<Shared>, _a: AdminUser, Path(id): Path<i64>) -> ApiResult<Json<Value>> {
     let r = node(&state, id)?;
-    if !r.is_local {
-        crate::nodes::check_node(&state, &r).await;
+    if !r.is_local && crate::nodes::check_node(&state, &r).await == crate::nodes::Health::Online {
+        crate::nodes::probe_server(&state, &r, true).await;
     }
     Ok(Json(view(&state, &r).await?))
 }

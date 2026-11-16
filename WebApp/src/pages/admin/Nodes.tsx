@@ -9,21 +9,23 @@ import { useSession } from "../../session";
 
 type Health = "unknown" | "online" | "offline" | "incompatible" | "unauthorized";
 interface Rules { min_height: number; max_height: number; hdr: "any" | "only_hdr" | "only_sdr"; codecs: string[]; libraries: number[]; transcode: boolean; remux: boolean; require_hw: boolean }
-interface NodeConfig { hw_backend: string; vaapi_device: string; max_hw_transcodes: number; max_sw_transcodes: number; sw_preset: string; sw_crf: number; threads: number }
+interface NodeConfig { hw_backend: string; vaapi_device: string; max_hw_transcodes: number; max_sw_transcodes: number; sw_preset: string; sw_crf: number; threads: number; source_mode: string; source_transport: string; readahead_mb: number; source_parallel: number; source_cache_gb: number }
 interface NodeStatus {
   version: string; protocol: number; name: string; ffmpeg_version: string; ffmpeg_available: boolean; ffmpeg_jellyfin: boolean;
   caps: Capabilities; current: { backend: string; device: string; encode: string[]; decode: string[] } | null; encoders: string[];
   slots: { hw_used: number; hw_max: number; sw_used: number; sw_max: number }; cpus: number; load_1m: number | null;
   memory_total: number | null; memory_available: number | null; rss: number | null; transcode_free_bytes: number | null;
+  source_cache_bytes?: number; source_cache_files?: number;
   peer_ip: string | null; media_roots: string[]; uptime_ms: number;
 }
+interface ServerReach { url: string; ok: boolean | null; error: string | null; ms: number; checked_at: number }
 interface NodePath { library_path_id: number; node_path: string; verified_at: number | null; verify_error: string | null }
 interface NodeView {
   id: number; name: string; is_local: boolean; url: string; key_set: boolean; enabled: boolean; draining: boolean;
   role_transcode: boolean; role_cdn: boolean; tc_priority: number; tc_weight: number; tc_max_sessions: number; rules: Rules;
   cdn_priority: number; cdn_weight: number; cdn_max_streams: number; config: NodeConfig; public_url: string;
   health: Health; last_error: string | null; last_ok: number | null; latency_ms: number; breaker_until: number | null; config_synced: boolean;
-  status: NodeStatus | null; active_transcodes: number; active_streams: number; server_url: string | null; paths: NodePath[];
+  status: NodeStatus | null; active_transcodes: number; active_streams: number; server_url: string | null; server_reach: ServerReach | null; paths: NodePath[];
 }
 interface LibraryPath { id: number; library_id: number; library: string; path: string }
 interface NodesData { nodes: NodeView[]; library_paths: LibraryPath[]; libraries: { id: number; name: string }[]; protocol: number }
@@ -97,8 +99,15 @@ function NodeCard({ n, data, onEdit, onChanged }: { n: NodeView; data: NodesData
         <dt>{t("admin.nodes.activeStreams")}</dt><dd>{n.active_streams}{n.cdn_max_streams ? ` / ${n.cdn_max_streams}` : ""}</dd>
         {st && <><dt>{t("admin.nodes.machine")}</dt><dd>{t("admin.nodes.machineValue", { cpus: st.cpus, load: st.load_1m != null ? st.load_1m.toFixed(2) : "—", mem: st.memory_available != null && st.memory_total != null ? `${bytes(st.memory_available)} / ${bytes(st.memory_total)}` : "—" })}</dd></>}
         {st && st.transcode_free_bytes != null && <><dt>{t("admin.nodes.freeSpace")}</dt><dd>{bytes(st.transcode_free_bytes)}</dd></>}
+        {st && !n.is_local && (st.source_cache_files ?? 0) > 0 && <><dt>{t("admin.nodes.sourceCacheUsed")}</dt><dd>{t("admin.nodes.sourceCacheValue", { size: bytes(st.source_cache_bytes ?? 0), count: st.source_cache_files ?? 0 })}</dd></>}
         {st && !n.is_local && <><dt>FFmpeg</dt><dd className="t-mono-sm">{st.ffmpeg_available ? `${st.ffmpeg_version}${st.ffmpeg_jellyfin ? " · jellyfin-ffmpeg" : ""}` : t("admin.nodes.ffmpegMissing")}</dd></>}
-        {!n.is_local && n.server_url && <><dt>{t("admin.nodes.serverUrl")}</dt><dd className="t-mono-sm">{n.server_url}</dd></>}
+        {!n.is_local && n.server_url && <><dt>{t("admin.nodes.serverUrl")}</dt><dd className="stack" style={{ gap: 2 }}>
+          <span><span className="t-mono-sm">{n.server_url}</span>{" "}
+            {n.server_reach?.url === n.server_url && n.server_reach.ok === true && <Badge tone="direct">{t("admin.nodes.reachOk", { ms: n.server_reach.ms })}</Badge>}
+            {n.server_reach?.url === n.server_url && n.server_reach.ok === false && <Badge tone="danger">{t("admin.nodes.reachBad")}</Badge>}
+          </span>
+          {n.server_reach?.url === n.server_url && n.server_reach.ok === false && <span className="t-small">{t("admin.nodes.reachBadHint", { error: n.server_reach.error ?? "" })}</span>}
+        </dd></>}
         {folders.length > 0 && <><dt>{t("admin.nodes.folders")}</dt><dd className="stack" style={{ gap: 2 }}>{folders.map((f) => (
           <span key={f.library_path_id} className="t-small"><span className="t-mono-sm">{f.node_path}</span> ← {f.label} {f.verify_error ? <Badge tone="danger">{t("admin.nodes.folderBad")}</Badge> : <Badge tone="direct">{t("admin.nodes.folderOk")}</Badge>}</span>
         ))}</dd></>}
@@ -214,7 +223,7 @@ function NodeDialog({ node, data, onClose, onCreated }: { node: NodeView | null;
   const isNew = node === null;
   const local = node?.is_local ?? false;
   const r = node?.rules ?? { min_height: 0, max_height: 0, hdr: "any", codecs: [], libraries: [], transcode: true, remux: true, require_hw: false };
-  const c = node?.config ?? { hw_backend: "auto", vaapi_device: "/dev/dri/renderD128", max_hw_transcodes: 0, max_sw_transcodes: 0, sw_preset: "veryfast", sw_crf: 23, threads: 0 };
+  const c = node?.config ?? { hw_backend: "auto", vaapi_device: "/dev/dri/renderD128", max_hw_transcodes: 0, max_sw_transcodes: 0, sw_preset: "veryfast", sw_crf: 23, threads: 0, source_mode: "readahead", source_transport: "auto", readahead_mb: 1024, source_parallel: 4, source_cache_gb: 50 };
   const [f, setF] = useState({
     name: node?.name ?? "", url: node?.url ?? "", key: "", role_transcode: node?.role_transcode ?? true, role_cdn: node?.role_cdn ?? false,
     tc_priority: String(node?.tc_priority ?? 1), tc_weight: String(node?.tc_weight ?? 100), tc_max_sessions: String(node?.tc_max_sessions ?? 0),
@@ -222,7 +231,10 @@ function NodeDialog({ node, data, onClose, onCreated }: { node: NodeView | null;
     public_url: node?.public_url ?? "", enabled: node?.enabled ?? true,
   });
   const [rules, setRules] = useState<Rules>(r as Rules);
-  const [cfg, setCfg] = useState<NodeConfig & { _max_hw: string; _max_sw: string; _crf: string; _threads: string }>({ ...c, _max_hw: String(c.max_hw_transcodes), _max_sw: String(c.max_sw_transcodes), _crf: String(c.sw_crf), _threads: String(c.threads) });
+  const [cfg, setCfg] = useState<NodeConfig & { _max_hw: string; _max_sw: string; _crf: string; _threads: string; _ra: string; _par: string; _cache: string }>({
+    ...c, _max_hw: String(c.max_hw_transcodes), _max_sw: String(c.max_sw_transcodes), _crf: String(c.sw_crf), _threads: String(c.threads),
+    source_mode: c.source_mode ?? "readahead", source_transport: c.source_transport ?? "auto", _ra: String(c.readahead_mb ?? 1024), _par: String(c.source_parallel ?? 4), _cache: String(c.source_cache_gb ?? 50),
+  });
   const [paths, setPaths] = useState<Record<number, string>>(Object.fromEntries((node?.paths ?? []).map((p) => [p.library_path_id, p.node_path])));
   const [browse, setBrowse] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -248,7 +260,8 @@ function NodeDialog({ node, data, onClose, onCreated }: { node: NodeView | null;
       body.url = f.url;
       if (f.key) body.key = f.key;
       body.public_url = f.public_url;
-      body.config = { hw_backend: cfg.hw_backend, vaapi_device: cfg.vaapi_device, max_hw_transcodes: num(cfg._max_hw), max_sw_transcodes: num(cfg._max_sw), sw_preset: cfg.sw_preset, sw_crf: num(cfg._crf, 23), threads: num(cfg._threads) };
+      body.config = { hw_backend: cfg.hw_backend, vaapi_device: cfg.vaapi_device, max_hw_transcodes: num(cfg._max_hw), max_sw_transcodes: num(cfg._max_sw), sw_preset: cfg.sw_preset, sw_crf: num(cfg._crf, 23), threads: num(cfg._threads),
+        source_mode: cfg.source_mode, source_transport: cfg.source_transport, readahead_mb: num(cfg._ra, 1024), source_parallel: num(cfg._par, 4), source_cache_gb: num(cfg._cache, 50) };
     }
     try {
       if (isNew) {
@@ -362,6 +375,17 @@ function NodeDialog({ node, data, onClose, onCreated }: { node: NodeView | null;
           <SelectField label={t("settings.transcode.sw_preset")} value={cfg.sw_preset} onChange={(v) => setCfg({ ...cfg, sw_preset: v })} options={PRESETS.map((p) => ({ value: p, label: p }))} />
           <TextField label={t("settings.transcode.sw_crf")} inputMode="numeric" value={cfg._crf} onChange={(e) => setCfg({ ...cfg, _crf: e.target.value })} hint="16–35" />
           <TextField label={t("settings.transcode.threads")} inputMode="numeric" value={cfg._threads} onChange={(e) => setCfg({ ...cfg, _threads: e.target.value })} />
+        </div>
+        <span className="pl-eyebrow">{t("admin.nodes.sectionSource")}</span>
+        <p className="t-small muted" style={{ margin: 0 }}>{t("admin.nodes.sourceHint")}</p>
+        <div className="form-grid">
+          <SelectField label={t("admin.nodes.sourceTransport")} value={cfg.source_transport} onChange={(v) => setCfg({ ...cfg, source_transport: v })}
+            options={["auto", "pull", "push"].map((m) => ({ value: m, label: t(`admin.nodes.sourceTransports.${m}` as MessageKey) }))} hint={t(`admin.nodes.sourceTransportHints.${cfg.source_transport}` as MessageKey)} />
+          <SelectField label={t("admin.nodes.sourceMode")} value={cfg.source_mode} onChange={(v) => setCfg({ ...cfg, source_mode: v })}
+            options={["readahead", "full", "stream"].map((m) => ({ value: m, label: t(`admin.nodes.sourceModes.${m}` as MessageKey) }))} hint={t(`admin.nodes.sourceModeHints.${cfg.source_mode}` as MessageKey)} />
+          {cfg.source_mode === "readahead" && <TextField label={t("admin.nodes.readahead")} inputMode="numeric" value={cfg._ra} onChange={(e) => setCfg({ ...cfg, _ra: e.target.value })} hint={t("admin.nodes.readaheadHint")} />}
+          {cfg.source_mode !== "stream" && <TextField label={t("admin.nodes.sourceParallel")} inputMode="numeric" value={cfg._par} onChange={(e) => setCfg({ ...cfg, _par: e.target.value })} hint="1–16" />}
+          {cfg.source_mode !== "stream" && <TextField label={t("admin.nodes.sourceCache")} inputMode="numeric" value={cfg._cache} onChange={(e) => setCfg({ ...cfg, _cache: e.target.value })} hint={t("admin.nodes.sourceCacheHint")} />}
         </div>
         <span className="pl-eyebrow">{t("admin.nodes.sectionDelivery")}</span>
         <TextField label={t("admin.nodes.publicUrl")} mono value={f.public_url} onChange={(e) => set("public_url", e.target.value)} placeholder="https://nodo.example.com" hint={t("admin.nodes.publicUrlHint")} autoComplete="off" />
