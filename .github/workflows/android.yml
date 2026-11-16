@@ -23,6 +23,8 @@ jobs:
   apk:
     name: Test e APK
     runs-on: ubuntu-24.04
+    # Un test o un download bloccato non deve tenere occupato il runner per ore.
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: Android

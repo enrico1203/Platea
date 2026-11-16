@@ -58,10 +58,25 @@ abstract class ScreensBase(private val tv: Boolean, private val widthDp: Int, pr
     fun login() {
         assumeTrue("server di prova non indicato", server.isNotEmpty())
         val app = ApplicationProvider.getApplicationContext<android.app.Application>()
+        // ID del dispositivo fisso: ogni test ripete il login, e sul server deve restare un solo dispositivo di prova.
+        app.getSharedPreferences("platea", android.content.Context.MODE_PRIVATE).edit().putString("device_id", "screens-test-$tag").commit()
         Api.init(app, tv)
         Api.store.server = server
         Api.store.token = null
-        runBlocking { Session.login("admin", "password-di-prova") }
+        // Il login gira fuori dal thread principale: la sessione ricarica sul thread principale (Dispatchers.Main) e
+        // un runBlocking qui lo bloccherebbe per sempre. Il looper si fa girare a mano, con una scadenza.
+        val done = java.util.concurrent.atomic.AtomicBoolean(false)
+        val failure = java.util.concurrent.atomic.AtomicReference<Throwable?>(null)
+        Thread {
+            try { runBlocking { Session.login("admin", "password-di-prova") } } catch (e: Throwable) { failure.set(e) } finally { done.set(true) }
+        }.start()
+        val deadline = System.currentTimeMillis() + 60_000
+        while (!(done.get() && Session.state.value !is SessionState.Loading)) {
+            check(System.currentTimeMillis() < deadline) { "login al server di prova: nessuna risposta in 60 s" }
+            ShadowLooper.idleMainLooper()
+            Thread.sleep(20)
+        }
+        failure.get()?.let { throw it }
         assumeTrue(Session.state.value is SessionState.LoggedIn)
     }
 

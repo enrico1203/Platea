@@ -87,9 +87,10 @@ private fun AuthCard(content: @Composable androidx.compose.foundation.layout.Col
         Surface(
             color = tokens.surface1,
             shape = RoundedCornerShape(14.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, tokens.lineStrong),
             modifier = Modifier.padding(16.dp).widthIn(max = 460.dp).fillMaxWidth(),
         ) {
-            Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp), content = content)
+            Column(Modifier.padding(horizontal = 24.dp, vertical = 28.dp), verticalArrangement = Arrangement.spacedBy(16.dp), content = content)
         }
     }
 }
@@ -97,26 +98,29 @@ private fun AuthCard(content: @Composable androidx.compose.foundation.layout.Col
 @Composable
 private fun Brand(name: String?, sub: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Mark(44.dp)
-        Spacer(Modifier.width(12.dp))
+        Mark(48.dp)
+        Spacer(Modifier.width(14.dp))
         Column {
             Text(name?.takeIf { it.isNotBlank() } ?: "Platea", style = MaterialTheme.typography.headlineSmall, color = tokens.ink)
-            Text(sub, style = MaterialTheme.typography.bodySmall, color = tokens.inkSubtle)
+            Text(sub, style = if (sub.startsWith("http")) app.platea.ui.theme.Mono.regular else MaterialTheme.typography.bodySmall, color = tokens.inkSubtle)
         }
     }
 }
 
 @Composable
 fun plateaFieldColors() = OutlinedTextFieldDefaults.colors(
-    focusedBorderColor = tokens.blue, unfocusedBorderColor = tokens.lineStrong, cursorColor = tokens.blueText,
+    focusedBorderColor = tokens.focus, unfocusedBorderColor = tokens.lineControl.copy(alpha = 0.6f), cursorColor = tokens.blueText,
+    focusedContainerColor = tokens.surface2, unfocusedContainerColor = tokens.surface2, disabledContainerColor = tokens.surface2,
     focusedLabelColor = tokens.blueText, unfocusedLabelColor = tokens.inkMuted,
     focusedTextColor = tokens.ink, unfocusedTextColor = tokens.ink,
+    focusedPlaceholderColor = tokens.inkSubtle.copy(alpha = 0.7f), unfocusedPlaceholderColor = tokens.inkSubtle.copy(alpha = 0.7f),
+    focusedLeadingIconColor = tokens.inkMuted, unfocusedLeadingIconColor = tokens.inkMuted,
 )
 
 @Composable
 fun ConnectScreen() {
     val scope = rememberCoroutineScope()
-    var address by remember { mutableStateOf("") }
+    var address by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val unreachable = stringResource(R.string.connect_failed)
@@ -135,7 +139,8 @@ fun ConnectScreen() {
     LaunchedEffect(Unit) { if (!tv) runCatching { focus.requestFocus() } }
     AuthCard {
         Brand(null, stringResource(R.string.tagline))
-        Text(stringResource(R.string.connect_title), style = MaterialTheme.typography.titleMedium, color = tokens.ink)
+        Spacer(Modifier.height(4.dp))
+        Text(stringResource(R.string.connect_title), style = MaterialTheme.typography.titleLarge, color = tokens.ink)
         Text(stringResource(R.string.connect_hint), style = MaterialTheme.typography.bodyMedium, color = tokens.inkMuted)
         OutlinedTextField(
             value = address,
@@ -143,13 +148,13 @@ fun ConnectScreen() {
             label = { Text(stringResource(R.string.connect_address)) },
             placeholder = { Text("192.168.1.10:8096") },
             singleLine = true,
-            colors = plateaFieldColors(),
+            colors = plateaFieldColors(), shape = app.platea.ui.theme.Radius.md,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go, autoCorrectEnabled = false),
             keyboardActions = KeyboardActions(onGo = { go(address) }),
             modifier = Modifier.fillMaxWidth().focusRequester(focus),
         )
         error?.let { Text(it, color = tokens.danger, style = MaterialTheme.typography.bodyMedium) }
-        PrimaryButton(stringResource(R.string.connect_action), enabled = !busy && address.isNotBlank(), modifier = Modifier.fillMaxWidth()) { go(address) }
+        PrimaryButton(stringResource(R.string.connect_action), enabled = !busy && address.isNotBlank(), modifier = Modifier.fillMaxWidth(), large = true) { go(address) }
         if (recent.isNotEmpty()) {
             Text(stringResource(R.string.connect_recent), style = MaterialTheme.typography.labelMedium, color = tokens.inkSubtle)
             recent.forEach { r -> SecondaryButton(r, modifier = Modifier.fillMaxWidth()) { go(r) } }
@@ -164,7 +169,7 @@ fun UnreachableScreen(server: String) {
         Brand(null, server)
         Text(stringResource(R.string.unreachable_title), style = MaterialTheme.typography.titleMedium, color = tokens.ink)
         Text(stringResource(R.string.unreachable_hint), style = MaterialTheme.typography.bodyMedium, color = tokens.inkMuted)
-        PrimaryButton(stringResource(R.string.retry), modifier = Modifier.fillMaxWidth()) { scope.launch { Session.reload() } }
+        PrimaryButton(stringResource(R.string.retry), modifier = Modifier.fillMaxWidth()) { Session.retry() }
         SecondaryButton(stringResource(R.string.change_server), modifier = Modifier.fillMaxWidth()) { Session.forgetServer() }
     }
 }
@@ -175,8 +180,8 @@ fun LoginScreen(info: SystemInfo) {
     val tv = LocalIsTv.current
     // Sulla TV si parte dal codice: scrivere la password col telecomando è scomodo.
     var quick by remember { mutableStateOf(tv && info.quickConnect) }
-    var username by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
+    var username by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
+    var password by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val network = stringResource(R.string.error_network)
@@ -186,7 +191,7 @@ fun LoginScreen(info: SystemInfo) {
         AuthCard {
             Brand(info.name, Api.store.server)
             Text(stringResource(R.string.setup_required), style = MaterialTheme.typography.bodyLarge, color = tokens.inkMuted)
-            PrimaryButton(stringResource(R.string.retry), modifier = Modifier.fillMaxWidth()) { scope.launch { Session.reload() } }
+            PrimaryButton(stringResource(R.string.retry), modifier = Modifier.fillMaxWidth()) { Session.retry() }
             SecondaryButton(stringResource(R.string.change_server), modifier = Modifier.fillMaxWidth()) { Session.forgetServer() }
         }
         return
@@ -226,7 +231,7 @@ fun LoginScreen(info: SystemInfo) {
             onValueChange = { username = it },
             label = { Text(stringResource(R.string.username)) },
             singleLine = true,
-            colors = plateaFieldColors(),
+            colors = plateaFieldColors(), shape = app.platea.ui.theme.Radius.md,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next, autoCorrectEnabled = false),
             keyboardActions = KeyboardActions(onNext = { passwordFocus.requestFocus() }),
             modifier = Modifier.fillMaxWidth(),
@@ -237,13 +242,13 @@ fun LoginScreen(info: SystemInfo) {
             label = { Text(stringResource(R.string.password)) },
             singleLine = true,
             visualTransformation = PasswordVisualTransformation(),
-            colors = plateaFieldColors(),
+            colors = plateaFieldColors(), shape = app.platea.ui.theme.Radius.md,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { submit() }),
             modifier = Modifier.fillMaxWidth().focusRequester(passwordFocus),
         )
         error?.let { Text(it, color = tokens.danger, style = MaterialTheme.typography.bodyMedium) }
-        PrimaryButton(stringResource(R.string.login), enabled = !busy && username.isNotBlank() && password.isNotEmpty(), modifier = Modifier.fillMaxWidth()) { submit() }
+        PrimaryButton(stringResource(R.string.login), enabled = !busy && username.isNotBlank() && password.isNotEmpty(), modifier = Modifier.fillMaxWidth(), large = true) { submit() }
         if (info.quickConnect) {
             SecondaryButton(stringResource(R.string.qc_login_with_code), modifier = Modifier.fillMaxWidth()) { quick = true }
         }
@@ -302,7 +307,7 @@ private fun QuickConnectLogin(onCancel: () -> Unit) {
         val code = req?.code
         Text(
             if (code != null) "${code.take(3)} ${code.drop(3)}" else "··· ···",
-            fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 44.sp, letterSpacing = 4.sp,
+            fontFamily = app.platea.ui.theme.GeistMono, fontWeight = FontWeight.Medium, fontSize = 46.sp, letterSpacing = 6.sp,
             color = tokens.ink, textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth().background(tokens.surface2, RoundedCornerShape(12.dp)).padding(vertical = 18.dp),
         )

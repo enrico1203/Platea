@@ -70,6 +70,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -247,7 +248,7 @@ private fun Controls(c: PlayerController, controls: ControlsState, onBack: () ->
             Spacer(Modifier.weight(1f))
             SeekBar(c, controls)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("${Fmt.clock(c.positionMs)} / ${Fmt.clock(c.durationMs)}", color = Color.White, style = MaterialTheme.typography.labelLarge, fontFamily = FontFamily.Monospace)
+                Text("${Fmt.clock(c.positionMs)} / ${Fmt.clock(c.durationMs)}", color = Color.White, style = MaterialTheme.typography.labelLarge, fontFamily = app.platea.ui.theme.GeistMono)
                 Spacer(Modifier.weight(1f))
                 if (c.hasNext) CtrlButton(Icons.Filled.SkipNext, stringResource(R.string.player_next)) { c.next() }
                 if (c.chapters.size > 1) CtrlButton(Icons.AutoMirrored.Filled.FormatListBulleted, stringResource(R.string.player_chapters)) { controls.panel = Panel.Chapters }
@@ -278,7 +279,9 @@ private fun PlayButton(playing: Boolean, modifier: Modifier, onClick: () -> Unit
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     Box(
-        modifier.size(76.dp).clip(CircleShape).background(tokens.blue)
+        modifier.size(76.dp)
+            .shadow(28.dp, CircleShape, ambientColor = tokens.blue, spotColor = tokens.blue)
+            .clip(CircleShape).background(tokens.blue)
             .then(if (focused) Modifier.border(3.dp, Color.White, CircleShape) else Modifier)
             .clickable(interactionSource = interaction, indication = androidx.compose.material3.ripple(color = Color.White), onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -416,7 +419,8 @@ private fun SidePanel(c: PlayerController, controls: ControlsState) {
     LaunchedEffect(controls.panel) { delay(50); runCatching { first.requestFocus() } }
     Box(Modifier.fillMaxSize().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { controls.panel = Panel.None }) {
         Surface(
-            color = Color(0xF20C0E11),
+            color = Color(0xFA0C0E11),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF22262D)),
             shape = RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp),
             modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight().widthIn(max = if (tv) 420.dp else 340.dp).fillMaxWidth(0.85f)
                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
@@ -474,8 +478,8 @@ private fun SidePanel(c: PlayerController, controls: ControlsState) {
                         item {
                             Column(Modifier.padding(horizontal = 20.dp).focusRequester(first).focusable(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 MethodBadge(info.method)
-                                Text(info.chain, color = Muted, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
-                                if (info.reasons.isNotEmpty()) Text(info.reasons.joinToString(", "), color = Subtle, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                                Text(info.chain, color = Muted, fontFamily = app.platea.ui.theme.GeistMono, style = MaterialTheme.typography.bodySmall)
+                                if (info.reasons.isNotEmpty()) Text(info.reasons.joinToString(", "), color = Subtle, fontFamily = app.platea.ui.theme.GeistMono, style = MaterialTheme.typography.bodySmall)
                                 Text(
                                     stringResource(when (info.method) { "direct_play" -> R.string.why_direct; "remux" -> R.string.why_remux; else -> R.string.why_transcode }),
                                     color = Muted, style = MaterialTheme.typography.bodySmall,
@@ -494,7 +498,7 @@ private fun SidePanel(c: PlayerController, controls: ControlsState) {
 
 @Composable
 private fun PanelTitle(t: String) {
-    Text(t, color = Subtle, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 6.dp))
+    Text(t.uppercase(), color = Subtle, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 8.dp))
 }
 
 @Composable
@@ -509,7 +513,7 @@ private fun PanelRow(label: String, detail: String?, active: Boolean, modifier: 
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(label, color = if (active) Color(0xFF6E9BFF) else Color.White, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (detail != null) Text(detail, color = Subtle, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+        if (detail != null) Text(detail, color = Subtle, style = MaterialTheme.typography.bodySmall, fontFamily = app.platea.ui.theme.GeistMono)
     }
 }
 
@@ -537,7 +541,7 @@ private fun ErrorOverlay(c: PlayerController, message: String, onBack: () -> Uni
         Column(Modifier.padding(24.dp).widthIn(max = 520.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(stringResource(R.string.player_cannot_play), color = Color.White, style = MaterialTheme.typography.titleLarge)
             Text(message, color = Muted, style = MaterialTheme.typography.bodyMedium)
-            c.errorDetail?.let { Text(it, color = Subtle, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) }
+            c.errorDetail?.let { Text(it, color = Subtle, fontFamily = app.platea.ui.theme.GeistMono, style = MaterialTheme.typography.bodySmall) }
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 app.platea.ui.components.SecondaryButton(stringResource(R.string.back)) { onBack() }

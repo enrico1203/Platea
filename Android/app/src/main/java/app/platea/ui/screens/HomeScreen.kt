@@ -35,6 +35,21 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.platform.LocalConfiguration
+import app.platea.ui.components.Eyebrow
+import app.platea.ui.components.parseColor
+import kotlinx.coroutines.delay
 import app.platea.R
 import app.platea.data.Api
 import app.platea.data.Home
@@ -62,18 +77,19 @@ fun HomeScreen() {
     val home = rememberLoad("home") { Api.get<Home>("/api/v1/home") }
     val nav = LocalNav.current
     val me = Session.me
+    val tv = LocalIsTv.current
     ResContent(home) { data ->
         val nothing = data.resume.isEmpty() && data.nextUp.isEmpty() && data.recent.all { it.items.isEmpty() }
         if (nothing) {
-            EmptyBox(stringResource(if (me?.isAdmin == true) R.string.home_empty_admin else R.string.home_empty), Modifier.windowInsetsPadding(WindowInsets.statusBars))
+            EmptyBox(stringResource(if (me?.isAdmin == true) R.string.home_empty_admin else R.string.home_empty), Modifier.windowInsetsPadding(WindowInsets.statusBars).padding(top = 64.dp))
             return@ResContent
         }
         val order = me?.preferences?.homeSections ?: listOf("resume", "next_up", "recent")
-        val featured = pickFeatured(if ("resume" in order) data.resume else emptyList(), data.recent.flatMap { it.items })
-        val resumeRow = data.resume.filter { !(featured?.second == true && it.id == featured.first.id) }
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
-            if (featured != null) {
-                item("hero") { Hero(featured.first, featured.second) }
+        val featured = pickFeatured(if ("resume" in order) data.resume else emptyList(), data.recent.flatMap { it.items }, if (tv) 1 else 5)
+        val resumeRow = data.resume.filter { r -> featured.none { it.second && it.first.id == r.id } }
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
+            if (featured.isNotEmpty()) {
+                item("hero") { HeroCarousel(featured) }
             } else {
                 item("top") { Spacer(Modifier.windowInsetsPadding(WindowInsets.statusBars).height(8.dp)) }
             }
@@ -104,19 +120,69 @@ fun HomeScreen() {
 }
 
 /**
- * "In scena": ciò che si stava guardando, altrimenti un titolo appena arrivato con uno sfondo, stabile per tutta la
- * giornata. Il secondo valore dice se è una ripresa.
+ * "In scena": prima ciò che si stava guardando, poi titoli appena arrivati con uno sfondo. L'ordine dei nuovi cambia
+ * ogni giorno ma resta stabile durante la giornata. Il secondo valore dice se è una ripresa.
  */
-fun pickFeatured(resume: List<Item>, recent: List<Item>): Pair<Item, Boolean>? {
-    resume.firstOrNull { it.images.backdrop != null }?.let { return it to true }
-    val pool = recent.filter { it.images.backdrop != null && (it.kind == "movie" || it.kind == "series") }
-    if (pool.isEmpty()) return null
-    val day = (System.currentTimeMillis() / 86_400_000L).toInt()
-    return pool[day % pool.size] to false
+fun pickFeatured(resume: List<Item>, recent: List<Item>, max: Int = 5): List<Pair<Item, Boolean>> {
+    val out = mutableListOf<Pair<Item, Boolean>>()
+    resume.firstOrNull { it.images.backdrop != null }?.let { out += it to true }
+    val pool = recent.filter { it.images.backdrop != null && (it.kind == "movie" || it.kind == "series") }.distinctBy { it.id }
+    if (pool.isNotEmpty()) {
+        val day = (System.currentTimeMillis() / 86_400_000L).toInt()
+        val start = day % pool.size
+        for (i in pool.indices) {
+            if (out.size >= max) break
+            val it = pool[(start + i) % pool.size]
+            if (out.none { o -> o.first.id == it.id }) out += it to false
+        }
+    }
+    return out.take(max)
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun HeroCarousel(items: List<Pair<Item, Boolean>>) {
+    val tv = LocalIsTv.current
+    val wide = LocalWidthDp.current >= 600
+    val screenH = LocalConfiguration.current.screenHeightDp
+    val height = when {
+        tv -> 440.dp
+        wide -> (screenH * 0.62f).dp.coerceIn(420.dp, 620.dp)
+        else -> (screenH * 0.68f).dp.coerceIn(460.dp, 640.dp)
+    }
+    if (items.size == 1) {
+        Hero(items[0].first, items[0].second, Modifier.fillMaxWidth().height(height))
+        return
+    }
+    val pager = rememberPagerState { items.size }
+    // Avanza da solo, ma mai mentre la si sta scorrendo a mano.
+    val dragged by pager.interactionSource.collectIsDraggedAsState()
+    LaunchedEffect(pager, dragged) {
+        if (dragged) return@LaunchedEffect
+        while (true) {
+            delay(8000)
+            pager.animateScrollToPage((pager.currentPage + 1) % items.size, animationSpec = tween(600))
+        }
+    }
+    Box(Modifier.fillMaxWidth().height(height)) {
+        HorizontalPager(pager, Modifier.fillMaxSize(), key = { items[it].first.id }) { page ->
+            Hero(items[page].first, items[page].second, Modifier.fillMaxSize())
+        }
+        Row(
+            Modifier.align(Alignment.BottomEnd).padding(end = pagePadding(), bottom = 22.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            repeat(items.size) { i ->
+                val active = pager.currentPage == i
+                val w by animateDpAsState(if (active) 22.dp else 8.dp, tween(200), label = "dot")
+                Box(Modifier.width(w).height(4.dp).clip(RoundedCornerShape(2.dp)).background(if (active) tokens.ink else tokens.ink.copy(alpha = 0.3f)))
+            }
+        }
+    }
 }
 
 @Composable
-private fun Hero(item: Item, resume: Boolean) {
+private fun Hero(item: Item, resume: Boolean, modifier: Modifier) {
     val nav = LocalNav.current
     val tv = LocalIsTv.current
     val wide = LocalWidthDp.current >= 600
@@ -132,44 +198,51 @@ private fun Hero(item: Item, resume: Boolean) {
         if (item.kind == "movie") item.runtimeMs?.let { Fmt.duration(it) } else null,
         detail?.officialRating,
         detail?.communityRating?.let { Fmt.rating(it) },
-    ) + (detail?.genres ?: emptyList()).take(3)
+    ) + (detail?.genres ?: emptyList()).take(if (wide) 3 else 2)
     val overview = if (item.kind == "episode") item.overview else detail?.overview ?: item.overview
     val playFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { if (tv) runCatching { playFocus.requestFocus() } }
+    val bg = tokens.bg
 
-    Box(Modifier.fillMaxWidth().heightIn(min = if (tv) 420.dp else if (wide) 440.dp else 520.dp)) {
+    Box(modifier.clipToBounds()) {
+        Box(Modifier.matchParentSize().background(parseColor(item.images.posterColor)?.copy(alpha = 0.35f) ?: tokens.placeholder))
         AsyncImage(
-            model = Api.image(item.images.backdrop, 1600),
+            model = Api.image(item.images.backdrop, if (wide || tv) 1920 else 1280),
             contentDescription = null,
             contentScale = ContentScale.Crop,
+            alignment = if (wide || tv) Alignment.TopEnd else Alignment.TopCenter,
             modifier = Modifier.matchParentSize(),
         )
-        // Lo sfondo sfuma nel fondo della pagina, e a sinistra dietro il testo.
-        Box(Modifier.matchParentSize().background(Brush.verticalGradient(0f to Color.Transparent, 0.45f to tokens.bg.copy(alpha = 0.35f), 1f to tokens.bg)))
-        Box(Modifier.matchParentSize().background(Brush.horizontalGradient(0f to tokens.bg.copy(alpha = 0.75f), 0.6f to Color.Transparent)))
+        // Lo sfondo scende verso `bg` (velo del marchio): forte in basso, dietro il testo; a sinistra su schermi larghi.
+        Box(Modifier.matchParentSize().background(Brush.verticalGradient(0f to bg.copy(alpha = 0.35f), 0.22f to Color.Transparent, 0.5f to bg.copy(alpha = 0.25f), 0.82f to bg.copy(alpha = 0.92f), 1f to bg)))
+        if (wide || tv) Box(Modifier.matchParentSize().background(Brush.horizontalGradient(0f to bg.copy(alpha = 0.85f), 0.55f to Color.Transparent)))
         Column(
-            Modifier.align(Alignment.BottomStart).padding(horizontal = pagePadding()).padding(bottom = 8.dp).widthIn(max = 640.dp),
+            Modifier.align(Alignment.BottomStart).padding(horizontal = pagePadding()).padding(bottom = if (tv) 24.dp else 44.dp).widthIn(max = 620.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text(eyebrow.joinToString(" · "), style = MaterialTheme.typography.labelLarge, color = tokens.inkMuted)
+            Eyebrow(eyebrow.joinToString("  ·  "), color = tokens.inkMuted)
             val logo = detail?.images?.logo
             if (logo != null) {
-                AsyncImage(model = Api.image(logo, 600), contentDescription = title, modifier = Modifier.heightIn(max = 96.dp).widthIn(max = 360.dp), contentScale = ContentScale.Fit, alignment = Alignment.CenterStart)
+                AsyncImage(model = Api.image(logo, 600), contentDescription = title, modifier = Modifier.heightIn(max = if (wide || tv) 110.dp else 84.dp).widthIn(max = 380.dp), contentScale = ContentScale.Fit, alignment = Alignment.CenterStart)
             } else {
-                Text(title, style = MaterialTheme.typography.displaySmall, color = tokens.ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(
+                    title, style = if (wide || tv) MaterialTheme.typography.displayMedium else MaterialTheme.typography.displaySmall,
+                    color = tokens.ink, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                )
             }
             if (meta.isNotEmpty()) Text(meta.joinToString("  ·  "), style = MaterialTheme.typography.bodySmall, color = tokens.inkMuted)
             if (!overview.isNullOrBlank()) {
-                Text(overview, style = MaterialTheme.typography.bodyMedium, color = tokens.inkMuted, maxLines = 3, overflow = TextOverflow.Ellipsis)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                PrimaryButton(stringResource(if (resume) R.string.hero_resume_action else R.string.play), Icons.Filled.PlayArrow, modifier = Modifier.focusRequester(playFocus)) {
-                    nav.play(item.id)
-                }
-                SecondaryButton(stringResource(R.string.hero_details), Icons.Outlined.Info) { nav.item(detailId) }
+                Text(overview, style = MaterialTheme.typography.bodyMedium, color = tokens.inkMuted, maxLines = if (wide || tv) 3 else 2, overflow = TextOverflow.Ellipsis)
             }
             if (resume && item.runtimeMs != null && item.runtimeMs > 0) {
-                Box(Modifier.widthIn(max = 320.dp)) { ProgressLine(item.progress) }
+                Box(Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(2.dp))) { ProgressLine(item.progress) }
+            }
+            Spacer(Modifier.height(4.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                PrimaryButton(stringResource(if (resume) R.string.hero_resume_action else R.string.play), Icons.Filled.PlayArrow, modifier = Modifier.focusRequester(playFocus), large = true) {
+                    nav.play(item.id)
+                }
+                SecondaryButton(stringResource(R.string.hero_details), Icons.Outlined.Info, large = true) { nav.item(detailId) }
             }
         }
     }

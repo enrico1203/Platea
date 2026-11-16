@@ -56,7 +56,16 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import app.platea.BuildConfig
+import androidx.compose.material.icons.filled.UnfoldMore
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import app.platea.R
+import androidx.compose.foundation.border
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import app.platea.data.Api
 import app.platea.data.DeviceList
 import app.platea.data.Profile
@@ -65,6 +74,7 @@ import app.platea.data.UserPrefs
 import app.platea.ui.LocalNav
 import app.platea.ui.components.LocalIsTv
 import app.platea.ui.components.PrimaryButton
+import app.platea.ui.components.GhostButton
 import app.platea.ui.components.SecondaryButton
 import app.platea.ui.components.focusRing
 import app.platea.ui.components.pagePadding
@@ -86,9 +96,9 @@ data class CodeBody(val code: String)
 /** Sezione dell'account con titolo. */
 @Composable
 private fun Section(title: String, content: @Composable () -> Unit) {
-    Surface(color = tokens.surface1, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, color = tokens.ink)
+    Surface(color = tokens.surface1, shape = RoundedCornerShape(14.dp), border = androidx.compose.foundation.BorderStroke(1.dp, tokens.line), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(title.uppercase(), style = MaterialTheme.typography.labelMedium, color = tokens.inkSubtle, letterSpacing = 0.8.sp, modifier = Modifier.padding(horizontal = 4.dp))
             content()
         }
     }
@@ -101,7 +111,7 @@ private fun SwitchRow(label: String, hint: String? = null, checked: Boolean, onC
     Row(
         Modifier.fillMaxWidth().focusRing(interaction, shape, grow = false).clip(shape)
             .clickable(interactionSource = interaction, indication = androidx.compose.material3.ripple()) { onChange(!checked) }
-            .padding(vertical = 4.dp, horizontal = 4.dp),
+            .padding(vertical = 8.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
@@ -114,6 +124,65 @@ private fun SwitchRow(label: String, hint: String? = null, checked: Boolean, onC
             colors = SwitchDefaults.colors(checkedTrackColor = tokens.blue, checkedThumbColor = androidx.compose.ui.graphics.Color.White, uncheckedTrackColor = tokens.surface3, uncheckedBorderColor = tokens.lineStrong),
         )
     }
+}
+
+/** Scelta tra valori: etichetta a sinistra, valore attuale a destra, menu al tocco. */
+@Composable
+private fun ChoiceRow(label: String, value: String, options: List<Pair<String, String>>, onChange: (String) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val interaction = remember { MutableInteractionSource() }
+    val shape = RoundedCornerShape(10.dp)
+    val current = options.firstOrNull { it.first == value }?.second ?: options.firstOrNull()?.second ?: ""
+    Box {
+        Row(
+            Modifier.fillMaxWidth().focusRing(interaction, shape, grow = false).clip(shape)
+                .clickable(interactionSource = interaction, indication = androidx.compose.material3.ripple()) { open = true }
+                .padding(vertical = 10.dp, horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(label, style = MaterialTheme.typography.bodyLarge, color = tokens.ink, modifier = Modifier.weight(1f))
+            Spacer(Modifier.width(12.dp))
+            Text(current, style = MaterialTheme.typography.bodyMedium, color = tokens.blueText, maxLines = 1)
+            Icon(Icons.Filled.UnfoldMore, null, tint = tokens.inkSubtle, modifier = Modifier.padding(start = 4.dp).size(18.dp))
+        }
+        Box(Modifier.align(Alignment.TopEnd)) {
+            DropdownMenu(expanded = open, onDismissRequest = { open = false }, containerColor = tokens.surface2) {
+                options.forEach { (v, l) ->
+                    DropdownMenuItem(
+                        text = { Text(l, color = if (v == value) tokens.blueText else tokens.ink, fontWeight = if (v == value) FontWeight.SemiBold else FontWeight.Normal) },
+                        trailingIcon = if (v == value) ({ Icon(Icons.Filled.Check, null, tint = tokens.blueText) }) else null,
+                        onClick = { open = false; onChange(v) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Voce che apre qualcosa o esegue un'azione: icona, etichetta, dettaglio facoltativo, freccia. */
+@Composable
+private fun LinkRow(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, detail: String? = null, color: androidx.compose.ui.graphics.Color = tokens.ink, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val shape = RoundedCornerShape(10.dp)
+    Row(
+        Modifier.fillMaxWidth().focusRing(interaction, shape, grow = false).clip(shape)
+            .clickable(interactionSource = interaction, indication = androidx.compose.material3.ripple(), onClick = onClick)
+            .padding(vertical = 12.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, tint = if (color == tokens.ink) tokens.inkMuted else color, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.bodyLarge, color = color)
+            if (detail != null) Text(detail, style = app.platea.ui.theme.Mono.regular, color = tokens.inkSubtle, maxLines = 1)
+        }
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = tokens.inkSubtle)
+    }
+}
+
+@Composable
+private fun Divider() {
+    Box(Modifier.fillMaxWidth().height(1.dp).background(tokens.line))
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -158,15 +227,16 @@ fun AccountScreen() {
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             // Profilo
-            Surface(color = tokens.surface1, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
-                Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(56.dp).clip(CircleShape).background(tokens.blueSoft), contentAlignment = Alignment.Center) {
+            Surface(color = tokens.surface1, shape = RoundedCornerShape(14.dp), border = androidx.compose.foundation.BorderStroke(1.dp, tokens.line), modifier = Modifier.fillMaxWidth()) {
+                Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(64.dp).clip(CircleShape).background(tokens.blueSoft).border(1.dp, tokens.blue.copy(alpha = 0.5f), CircleShape), contentAlignment = Alignment.Center) {
                         if (me.avatar != null) AsyncImage(Api.url(me.avatar), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                         else Text(me.username.take(1).uppercase(), style = MaterialTheme.typography.titleLarge, color = tokens.blueText)
                     }
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(me.username, style = MaterialTheme.typography.titleLarge, color = tokens.ink)
+                        if (me.isAdmin) Text(stringResource(R.string.account_admin).uppercase(), style = MaterialTheme.typography.labelSmall, color = tokens.blueText)
+                        Text(me.username, style = MaterialTheme.typography.headlineSmall, color = tokens.ink)
                         Text(listOfNotNull(Session.info?.name, Api.store.server).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = tokens.inkSubtle)
                         me.permissions.expiresAt?.let {
                             Text(
@@ -179,63 +249,69 @@ fun AccountScreen() {
             }
 
             Section(stringResource(R.string.prefs_playback)) {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Dropdown(stringResource(R.string.prefs_audio_language), prefs.audioLanguage, listOf("" to stringResource(R.string.prefs_file_default)) + langs) { update("audio_language" to s(it)) }
-                    Dropdown(stringResource(R.string.prefs_subtitle_language), prefs.subtitleLanguage, listOf("" to stringResource(R.string.prefs_ui_language)) + langs) { update("subtitle_language" to s(it)) }
-                    Dropdown(stringResource(R.string.prefs_subtitle_mode), prefs.subtitleMode, listOf(
+                val qualities = listOf(0L, 40_000_000L, 20_000_000L, 8_000_000L, 4_000_000L, 2_000_000L, 1_000_000L).map { q ->
+                    q.toString() to (if (q == 0L) context.getString(R.string.quality_original) else Fmt.bitrate(q))
+                }
+                Column {
+                    ChoiceRow(stringResource(R.string.prefs_audio_language), prefs.audioLanguage, listOf("" to stringResource(R.string.prefs_file_default)) + langs) { update("audio_language" to s(it)) }
+                    ChoiceRow(stringResource(R.string.prefs_subtitle_language), prefs.subtitleLanguage, listOf("" to stringResource(R.string.prefs_ui_language)) + langs) { update("subtitle_language" to s(it)) }
+                    ChoiceRow(stringResource(R.string.prefs_subtitle_mode), prefs.subtitleMode, listOf(
                         "default" to stringResource(R.string.sub_mode_default), "smart" to stringResource(R.string.sub_mode_smart),
                         "always" to stringResource(R.string.sub_mode_always), "only_forced" to stringResource(R.string.sub_mode_forced),
                         "none" to stringResource(R.string.sub_mode_none),
                     )) { update("subtitle_mode" to s(it)) }
-                    Dropdown(stringResource(R.string.prefs_subtitle_size), prefs.subtitleSize, listOf(
+                    ChoiceRow(stringResource(R.string.prefs_subtitle_size), prefs.subtitleSize, listOf(
                         "s" to stringResource(R.string.size_s), "m" to stringResource(R.string.size_m), "l" to stringResource(R.string.size_l), "xl" to stringResource(R.string.size_xl),
                     )) { update("subtitle_size" to s(it)) }
-                }
-                SwitchRow(stringResource(R.string.prefs_subtitle_background), checked = prefs.subtitleBackground) { update("subtitle_background" to b(it)) }
-                val qualities = listOf(0L, 40_000_000L, 20_000_000L, 8_000_000L, 4_000_000L, 2_000_000L, 1_000_000L).map { q ->
-                    q.toString() to (if (q == 0L) context.getString(R.string.quality_original) else Fmt.bitrate(q))
-                }
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Dropdown(stringResource(R.string.prefs_quality_local), prefs.maxBitrateLocal.toString(), qualities) { update("max_bitrate_local" to n(it.toLong())) }
-                    Dropdown(stringResource(R.string.prefs_quality_remote), prefs.maxBitrateRemote.toString(), qualities) { update("max_bitrate_remote" to n(it.toLong())) }
-                }
-                SwitchRow(stringResource(R.string.prefs_remember_tracks), stringResource(R.string.prefs_remember_tracks_hint), prefs.rememberTracks) { update("remember_tracks" to b(it)) }
-                SwitchRow(stringResource(R.string.prefs_autoplay), stringResource(R.string.prefs_autoplay_hint), prefs.autoplayNext) { update("autoplay_next" to b(it)) }
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SwitchRow(stringResource(R.string.prefs_subtitle_background), checked = prefs.subtitleBackground) { update("subtitle_background" to b(it)) }
+                    Divider()
+                    ChoiceRow(stringResource(R.string.prefs_quality_local), prefs.maxBitrateLocal.toString(), qualities) { update("max_bitrate_local" to n(it.toLong())) }
+                    ChoiceRow(stringResource(R.string.prefs_quality_remote), prefs.maxBitrateRemote.toString(), qualities) { update("max_bitrate_remote" to n(it.toLong())) }
+                    Divider()
+                    SwitchRow(stringResource(R.string.prefs_remember_tracks), stringResource(R.string.prefs_remember_tracks_hint), prefs.rememberTracks) { update("remember_tracks" to b(it)) }
+                    SwitchRow(stringResource(R.string.prefs_autoplay), stringResource(R.string.prefs_autoplay_hint), prefs.autoplayNext) { update("autoplay_next" to b(it)) }
                     if (prefs.autoplayNext) {
-                        Dropdown(stringResource(R.string.prefs_countdown), prefs.autoplayCountdownSeconds.toString(), listOf(0, 5, 10, 15, 20, 30).map {
+                        ChoiceRow(stringResource(R.string.prefs_countdown), prefs.autoplayCountdownSeconds.toString(), listOf(0, 5, 10, 15, 20, 30).map {
                             it.toString() to (if (it == 0) context.getString(R.string.immediately) else seconds(it))
                         }) { update("autoplay_countdown_seconds" to n(it.toInt())) }
                     }
-                    Dropdown(stringResource(R.string.prefs_skip_back), prefs.skipBackSeconds.toString(), listOf(5, 10, 15, 30).map { it.toString() to seconds(it) }) { update("skip_back_seconds" to n(it.toInt())) }
-                    Dropdown(stringResource(R.string.prefs_skip_forward), prefs.skipForwardSeconds.toString(), listOf(10, 15, 30, 60, 90).map { it.toString() to seconds(it) }) { update("skip_forward_seconds" to n(it.toInt())) }
+                    ChoiceRow(stringResource(R.string.prefs_skip_back), prefs.skipBackSeconds.toString(), listOf(5, 10, 15, 30).map { it.toString() to seconds(it) }) { update("skip_back_seconds" to n(it.toInt())) }
+                    ChoiceRow(stringResource(R.string.prefs_skip_forward), prefs.skipForwardSeconds.toString(), listOf(10, 15, 30, 60, 90).map { it.toString() to seconds(it) }) { update("skip_forward_seconds" to n(it.toInt())) }
                 }
             }
 
             Section(stringResource(R.string.prefs_home)) {
                 val all = listOf("resume" to R.string.home_resume, "next_up" to R.string.home_next_up, "recent" to R.string.home_recent)
-                all.forEach { (key, label) ->
-                    SwitchRow(stringResource(label), checked = key in prefs.homeSections) { on ->
-                        val list = if (on) prefs.homeSections + key else prefs.homeSections - key
-                        update("home_sections" to kotlinx.serialization.json.JsonArray(list.distinct().map { JsonPrimitive(it) }))
+                Column {
+                    all.forEach { (key, label) ->
+                        SwitchRow(stringResource(label), checked = key in prefs.homeSections) { on ->
+                            val list = if (on) prefs.homeSections + key else prefs.homeSections - key
+                            update("home_sections" to kotlinx.serialization.json.JsonArray(list.distinct().map { JsonPrimitive(it) }))
+                        }
                     }
-                }
-                SwitchRow(stringResource(R.string.prefs_hide_played), checked = prefs.hidePlayedInRecent) { update("hide_played_in_recent" to b(it)) }
-                if (!tv) {
-                    Dropdown(stringResource(R.string.prefs_theme), prefs.theme, listOf(
-                        "auto" to stringResource(R.string.theme_auto), "dark" to stringResource(R.string.theme_dark), "light" to stringResource(R.string.theme_light),
-                    )) { update("theme" to s(it)) }
+                    SwitchRow(stringResource(R.string.prefs_hide_played), checked = prefs.hidePlayedInRecent) { update("hide_played_in_recent" to b(it)) }
+                    if (!tv) {
+                        Divider()
+                        // Il tema vale per questo dispositivo (come nella web UI); al server va anche la scelta.
+                        val theme by Session.theme.collectAsState()
+                        ChoiceRow(stringResource(R.string.prefs_theme), theme, listOf(
+                            "dark" to stringResource(R.string.theme_dark), "light" to stringResource(R.string.theme_light), "auto" to stringResource(R.string.theme_auto),
+                        )) { Session.setTheme(it); update("theme" to s(it)) }
+                    }
                 }
             }
 
             Section(stringResource(R.string.link_title)) { LinkDevice() }
 
             Section(stringResource(R.string.devices)) {
-                (devices.data ?: emptyList()).forEach { d ->
+                var allDevices by remember { mutableStateOf(false) }
+                val list = devices.data ?: emptyList()
+                (if (allDevices) list else list.take(5)).forEach { d ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(d.deviceName + if (d.current) " · " + stringResource(R.string.this_device) else "", style = MaterialTheme.typography.bodyLarge, color = tokens.ink)
-                            Text(listOfNotNull(d.client.takeIf { it.isNotBlank() }?.let { "$it ${d.clientVersion}".trim() }, if (d.lastUsedAt > 0) Fmt.dateTime(d.lastUsedAt) else null, d.lastIp).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = tokens.inkSubtle)
+                            Text(listOfNotNull(d.client.takeIf { it.isNotBlank() }?.let { "$it ${d.clientVersion}".trim() }, if (d.lastUsedAt > 0) Fmt.dateTime(d.lastUsedAt) else null).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = tokens.inkSubtle)
+                            d.lastIp?.let { Text(it, style = app.platea.ui.theme.Mono.small, color = tokens.inkSubtle) }
                         }
                         if (!d.current && me.permissions.manageDevices) {
                             IconButton(onClick = {
@@ -243,6 +319,9 @@ fun AccountScreen() {
                             }) { Icon(Icons.Filled.Close, stringResource(R.string.revoke), tint = tokens.inkMuted) }
                         }
                     }
+                }
+                if (list.size > 5 && !allDevices) {
+                    GhostButton(stringResource(R.string.devices_show_all, list.size), color = tokens.blueText) { allDevices = true }
                 }
                 if (me.permissions.manageDevices && (devices.data?.size ?: 0) > 1) {
                     SecondaryButton(stringResource(R.string.revoke_others)) {
@@ -253,12 +332,14 @@ fun AccountScreen() {
 
             if (!tv) Section(stringResource(R.string.password_change)) { PasswordForm() }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                SecondaryButton(stringResource(R.string.about), Icons.Outlined.Info) { nav.about() }
-                SecondaryButton(stringResource(R.string.change_server), Icons.Filled.Dns) { Session.forgetServer() }
+            Section(stringResource(R.string.account_more)) {
+                Column {
+                    LinkRow(Icons.Outlined.Info, stringResource(R.string.about)) { nav.about() }
+                    LinkRow(Icons.Filled.Dns, stringResource(R.string.change_server), Api.store.server) { Session.forgetServer() }
+                    LinkRow(Icons.AutoMirrored.Filled.Logout, stringResource(R.string.logout), color = tokens.danger) { scope.launch { Session.logout() } }
+                }
             }
-            PrimaryButton(stringResource(R.string.logout), Icons.AutoMirrored.Filled.Logout) { scope.launch { Session.logout() } }
-            Text("Platea ${BuildConfig.VERSION_NAME} · ${Api.clientName}", style = MaterialTheme.typography.bodySmall, color = tokens.inkSubtle)
+            Text("Platea ${BuildConfig.VERSION_NAME} · ${Api.clientName}", style = app.platea.ui.theme.Mono.regular, color = tokens.inkSubtle, modifier = Modifier.padding(horizontal = 4.dp))
         }
     }
 }
@@ -274,7 +355,7 @@ private fun LinkDevice() {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         OutlinedTextField(
             code, { v -> code = v.filter { it.isDigit() }.take(6) },
-            label = { Text(stringResource(R.string.link_code)) }, singleLine = true, colors = plateaFieldColors(),
+            label = { Text(stringResource(R.string.link_code)) }, singleLine = true, colors = plateaFieldColors(), shape = app.platea.ui.theme.Radius.md,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
             modifier = Modifier.weight(1f),
         )
@@ -296,8 +377,8 @@ private fun PasswordForm() {
     val scope = rememberCoroutineScope()
     var current by remember { mutableStateOf("") }
     var next by remember { mutableStateOf("") }
-    OutlinedTextField(current, { current = it }, label = { Text(stringResource(R.string.password_current)) }, singleLine = true, visualTransformation = PasswordVisualTransformation(), colors = plateaFieldColors(), modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(next, { next = it }, label = { Text(stringResource(R.string.password_new)) }, singleLine = true, visualTransformation = PasswordVisualTransformation(), colors = plateaFieldColors(), modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(current, { current = it }, label = { Text(stringResource(R.string.password_current)) }, singleLine = true, visualTransformation = PasswordVisualTransformation(), colors = plateaFieldColors(), shape = app.platea.ui.theme.Radius.md, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(next, { next = it }, label = { Text(stringResource(R.string.password_new)) }, singleLine = true, visualTransformation = PasswordVisualTransformation(), colors = plateaFieldColors(), shape = app.platea.ui.theme.Radius.md, modifier = Modifier.fillMaxWidth())
     PrimaryButton(stringResource(R.string.save), enabled = current.isNotEmpty() && next.length >= 4) {
         scope.launch {
             runCatching { Api.send("/api/v1/me/password", "POST", PasswordBody(current, next)) }

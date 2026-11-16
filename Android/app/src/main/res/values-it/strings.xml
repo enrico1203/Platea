@@ -3,7 +3,7 @@
     <string name="about">Informazioni</string>
     <string name="about_device">Questo dispositivo</string>
     <string name="about_licenses">Open source</string>
-    <string name="about_licenses_text">Platea è software libero con licenza AGPL-3.0. L\'app usa AndroidX, Jetpack Compose, Media3 (ExoPlayer), OkHttp, Coil e kotlinx.serialization (Apache 2.0).</string>
+    <string name="about_licenses_text">Platea è software libero con licenza AGPL-3.0. L\'app usa AndroidX, Jetpack Compose, Media3 (ExoPlayer), OkHttp, Coil e kotlinx.serialization (Apache 2.0), e il carattere Geist (SIL OFL 1.1).</string>
     <string name="about_text">Platea riproduce la tua libreria dal tuo server. Il server decide come arriva ogni file su questo dispositivo: così com\'è (direct play), con un contenitore nuovo (remux) o ricodificato (transcodifica).</string>
     <string name="about_tmdb">Questo prodotto usa l\'API di TMDB ma non è approvato né certificato da TMDB.</string>
     <string name="about_tmdb_title">Metadati</string>
@@ -196,7 +196,7 @@
     <string name="tech_subtitles">Sottotitoli</string>
     <string name="tech_video">Video</string>
     <string name="technical">Dettagli tecnici</string>
-    <string name="theme_auto">Automatico</string>
+    <string name="theme_auto">Come il sistema</string>
     <string name="theme_dark">Scuro</string>
     <string name="theme_light">Chiaro</string>
     <string name="this_device">questo dispositivo</string>
@@ -230,4 +230,14 @@
         <item quantity="one">%d titolo</item>
         <item quantity="other">%d titoli</item>
     </plurals>
+    <string name="search_hint">Scrivi il titolo di un film, di una serie o di un episodio.</string>
+    <string name="action_playlist">Playlist</string>
+    <string name="action_download">Scarica</string>
+    <string name="kind_movie_label">Film</string>
+    <string name="kind_episode_label">Episodio</string>
+    <string name="kind_season_label">Stagione</string>
+    <string name="subtitles_n">%1$d sottotitoli</string>
+    <string name="account_more">Altro</string>
+    <string name="account_admin">Amministratore</string>
+    <string name="devices_show_all">Mostra tutti (%1$d)</string>
 </resources>

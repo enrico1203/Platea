@@ -1,3 +1,4 @@
+import java.time.Duration
 import java.util.Properties
 
 plugins {
@@ -80,6 +81,9 @@ android {
             it.systemProperty("platea.server", project.findProperty("plateaServer") ?: "")
             it.systemProperty("roborazzi.test.record", "true")
             it.maxHeapSize = "2g"
+            // Un test bloccato (server di prova che non risponde, Robolectric fermo) non deve tenere ferma la build:
+            // il task si interrompe dopo 15 minuti, ogni singolo test dopo 2 (regola JUnit nei test).
+            it.timeout.set(Duration.ofMinutes(15))
         }
     }
 }

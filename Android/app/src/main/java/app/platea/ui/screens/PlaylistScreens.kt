@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -87,7 +88,7 @@ fun PlaylistsScreen() {
     Column(Modifier.fillMaxSize()) {
         PageTitle(stringResource(R.string.nav_playlists))
         Row(Modifier.padding(horizontal = pagePadding(), vertical = 4.dp)) {
-            SecondaryButton(stringResource(R.string.playlist_new)) { creating = true }
+            SecondaryButton(stringResource(R.string.playlist_new), Icons.Filled.Add) { creating = true }
         }
         ResContent(lists) { ls ->
             if (ls.isEmpty()) {
@@ -169,7 +170,7 @@ fun PlaylistScreen(id: String) {
                 val interaction = remember { MutableInteractionSource() }
                 val shape = RoundedCornerShape(12.dp)
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = pagePadding(), vertical = 4.dp).focusRing(interaction, shape, grow = false).clip(shape)
+                    Modifier.fillMaxWidth().padding(horizontal = pagePadding() - 6.dp, vertical = 2.dp).focusRing(interaction, shape, grow = false).clip(shape)
                         .clickable(interactionSource = interaction, indication = androidx.compose.material3.ripple()) { nav.play(it.id, playlistId = pl.id, index = i) }
                         .padding(6.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -224,7 +225,7 @@ fun NameDialog(title: String, initial: String, onClose: () -> Unit, onSave: (Str
         onDismissRequest = onClose,
         containerColor = tokens.surface1,
         title = { Text(title, color = tokens.ink) },
-        text = { OutlinedTextField(name, { name = it }, label = { Text(stringResource(R.string.name)) }, singleLine = true, colors = plateaFieldColors(), modifier = Modifier.fillMaxWidth()) },
+        text = { OutlinedTextField(name, { name = it }, label = { Text(stringResource(R.string.name)) }, singleLine = true, colors = plateaFieldColors(), shape = app.platea.ui.theme.Radius.md, modifier = Modifier.fillMaxWidth()) },
         confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = { onSave(name.trim()); onClose() }) { Text(stringResource(R.string.save), color = tokens.blueText) } },
         dismissButton = { TextButton(onClick = onClose) { Text(stringResource(R.string.cancel), color = tokens.inkMuted) } },
     )

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -81,6 +82,10 @@ import app.platea.ui.components.LoadingBox
 import app.platea.ui.components.LocalIsTv
 import app.platea.ui.components.PosterCard
 import app.platea.ui.components.ResContent
+import app.platea.ui.components.bleed
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.border
 import app.platea.ui.components.focusRing
 import app.platea.ui.components.pagePadding
 import app.platea.ui.components.pluralRes
@@ -94,15 +99,18 @@ import kotlinx.coroutines.flow.filter
 
 /** Titolo di pagina con "indietro" facoltativo. */
 @Composable
-fun PageTitle(title: String, sub: String? = null, back: Boolean = false) {
+fun PageTitle(title: String, sub: String? = null, back: Boolean = false, inset: Boolean = true) {
     val nav = LocalNav.current
     Row(
-        Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars).padding(horizontal = pagePadding()).padding(top = 16.dp, bottom = 8.dp),
+        Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars)
+            .padding(horizontal = if (inset) pagePadding() else 0.dp).padding(top = if (back) 8.dp else 16.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (back) {
-            IconButton(onClick = { nav.back() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back), tint = tokens.ink) }
-            Spacer(Modifier.width(4.dp))
+            // La freccia si allinea al margine: l'area di tocco resta di 48 dp, l'icona sta sul bordo del testo.
+            IconButton(onClick = { nav.back() }, modifier = Modifier.offset(x = (-12).dp)) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back), tint = tokens.ink)
+            }
         }
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.headlineMedium, color = tokens.ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -136,7 +144,7 @@ fun LibrariesScreen() {
                 return@ResContent
             }
             LazyVerticalGrid(
-                columns = GridCells.Adaptive(if (LocalIsTv.current) 280.dp else 220.dp),
+                columns = GridCells.Adaptive(if (LocalIsTv.current) 360.dp else 320.dp),
                 contentPadding = PaddingValues(horizontal = pagePadding(), vertical = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(gridSpacing()),
                 verticalArrangement = Arrangement.spacedBy(gridSpacing()),
@@ -147,26 +155,37 @@ fun LibrariesScreen() {
     }
 }
 
+/**
+ * Libreria: card 16:9 con lo sfondo di un titolo aggiunto di recente (lo stesso finché la libreria non cambia),
+ * il nome e il conteggio sopra un velo. Senza immagini resta il fondo neutro con l'icona.
+ */
 @Composable
 private fun LibraryCard(lib: Library, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val shape = RoundedCornerShape(14.dp)
-    Surface(
-        color = tokens.surface2,
-        shape = shape,
-        modifier = Modifier.fillMaxWidth().focusRing(interaction, shape).clip(shape)
+    val cover = rememberLoad("library-cover", lib.id) {
+        Api.get<ItemPage>("/api/v1/items?library_id=${lib.id}&sort=added&order=desc&limit=8").items.firstOrNull { it.images.backdrop != null }
+    }.data
+    Box(
+        Modifier.fillMaxWidth().aspectRatio(16f / 9f).focusRing(interaction, shape, glow = true).clip(shape)
+            .background(tokens.surface2)
             .clickable(interactionSource = interaction, indication = androidx.compose.material3.ripple(), onClick = onClick),
     ) {
-        Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)).background(tokens.blueSoft), contentAlignment = Alignment.Center) {
-                Icon(if (lib.kind == "shows") Icons.Filled.Tv else Icons.Filled.Movie, null, tint = tokens.blueText)
+        cover?.images?.backdrop?.let {
+            AsyncImage(Api.image(it, 960), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        }
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Transparent, 0.45f to Color(0x33000000), 1f to Color(0xD9000000))))
+        Box(Modifier.fillMaxSize().border(1.dp, Color.White.copy(alpha = 0.08f), shape))
+        Row(Modifier.align(Alignment.BottomStart).padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(Color(0x66000000)).border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
+                Icon(if (lib.kind == "shows") Icons.Filled.Tv else Icons.Filled.Movie, null, tint = Color.White, modifier = Modifier.size(22.dp))
             }
-            Spacer(Modifier.width(16.dp))
+            Spacer(Modifier.width(14.dp))
             Column {
-                Text(lib.name, style = MaterialTheme.typography.titleMedium, color = tokens.ink)
+                Text(lib.name, style = MaterialTheme.typography.titleLarge, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     pluralRes(if (lib.kind == "shows") R.plurals.count_shows else R.plurals.count_movies, lib.itemCount),
-                    style = MaterialTheme.typography.bodySmall, color = tokens.inkSubtle,
+                    style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.75f),
                 )
             }
         }
@@ -283,12 +302,14 @@ fun LibraryScreen(id: String) {
                     lib?.name ?: "",
                     lib?.let { pluralRes(if (it.kind == "shows") R.plurals.count_shows else R.plurals.count_movies, it.itemCount) },
                     back = true,
+                    inset = false,
                 )
             }
             fullLine("filters") {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(bottom = 8.dp)) {
                     SearchField(text, { text = it }, stringResource(R.string.library_search_in, lib?.name ?: ""))
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val pad = pagePadding()
+                    LazyRow(Modifier.bleed(pad), contentPadding = PaddingValues(horizontal = pad), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         item {
                             Dropdown(stringResource(R.string.sort), sort, listOf(
                                 "title" to stringResource(R.string.sort_title), "added" to stringResource(R.string.sort_added),
@@ -316,7 +337,7 @@ fun LibraryScreen(id: String) {
                         }
                     }
                     if (sort == "title" && query.isEmpty()) {
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        LazyRow(Modifier.bleed(pad), contentPadding = PaddingValues(horizontal = pad), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             items(LETTERS) { l -> LetterChip(l, l == letter) { letter = if (letter == l) "" else l } }
                         }
                     }
@@ -334,7 +355,7 @@ fun SearchField(value: String, onChange: (String) -> Unit, label: String, focus:
         label = { Text(label) },
         leadingIcon = { Icon(Icons.Filled.Search, null, tint = tokens.inkMuted) },
         singleLine = true,
-        colors = plateaFieldColors(),
+        colors = plateaFieldColors(), shape = app.platea.ui.theme.Radius.md,
         modifier = Modifier.fillMaxWidth().then(if (focus != null) Modifier.focusRequester(focus) else Modifier),
     )
 }
@@ -395,7 +416,7 @@ fun BrowseScreen(genre: String?, studio: String?) {
     PagedGrid(
         url = "/api/v1/items?$params",
         empty = stringResource(R.string.library_empty),
-        header = { fullLine("title") { PageTitle(genre ?: studio ?: "", stringResource(if (genre != null) R.string.genre else R.string.studio), back = true) } },
+        header = { fullLine("title") { PageTitle(genre ?: studio ?: "", stringResource(if (genre != null) R.string.genre else R.string.studio), back = true, inset = false) } },
     )
 }
 
@@ -419,9 +440,12 @@ fun SearchScreen() {
         verticalArrangement = Arrangement.spacedBy(16.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
-        fullLine("title") { PageTitle(stringResource(R.string.nav_search)) }
+        fullLine("title") { PageTitle(stringResource(R.string.nav_search), inset = false) }
         fullLine("field") { SearchField(text, { text = it }, stringResource(R.string.search_label), focus) }
         val list = results.data ?: emptyList()
+        if (query.isEmpty()) {
+            fullLine("hint") { EmptyBox(stringResource(R.string.search_hint)) }
+        }
         if (query.isNotEmpty() && results.data != null && list.isEmpty()) {
             fullLine("none") { EmptyBox(stringResource(R.string.search_none, query)) }
         }
@@ -461,7 +485,7 @@ fun PersonScreen(id: String) {
         ) {
             fullLine("head") {
                 Column {
-                    PageTitle(p.name, back = true)
+                    PageTitle(p.name, back = true, inset = false)
                     if (p.image != null) {
                         AsyncImage(
                             model = Api.image(p.image, 300), contentDescription = p.name, contentScale = ContentScale.Crop,

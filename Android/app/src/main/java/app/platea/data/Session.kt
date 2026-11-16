@@ -35,6 +35,15 @@ object Session {
     private val _events = MutableSharedFlow<ServerEvent>(extraBufferCapacity = 32)
     val events: SharedFlow<ServerEvent> = _events
 
+    /** Tema del dispositivo ("dark", "light", "auto"): vedi [Store.theme]. */
+    private val _theme = MutableStateFlow("dark")
+    val theme: StateFlow<String> = _theme
+
+    fun setTheme(t: String) {
+        Api.store.theme = t
+        _theme.value = t
+    }
+
     val me: Me? get() = (state.value as? SessionState.LoggedIn)?.me
     val info: SystemInfo? get() = when (val s = state.value) {
         is SessionState.LoggedIn -> s.info
@@ -43,7 +52,13 @@ object Session {
     }
 
     fun start() {
+        _theme.value = Api.store.theme
         Api.onUnauthorized = { scope.launch { reload() } }
+        scope.launch { reload() }
+    }
+
+    /** Ricarica dalla UI (Riprova): nello scope della sessione, vedi [acceptToken]. */
+    fun retry() {
         scope.launch { reload() }
     }
 
@@ -55,11 +70,21 @@ object Session {
         _state.value = SessionState.Loading
         val info = try {
             Api.get<SystemInfo>("/api/v1/system/info")
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             _state.value = SessionState.Unreachable(Api.store.server)
             return
         }
-        val me = if (Api.store.token != null) runCatching { Api.get<Me>("/api/v1/me") }.getOrNull() else null
+        val me = if (Api.store.token != null) {
+            try {
+                Api.get<Me>("/api/v1/me")
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            }
+        } else null
         _state.value = if (me != null) SessionState.LoggedIn(info, me) else SessionState.LoggedOut(info)
         if (me != null) connectEvents() else disconnectEvents()
     }
@@ -112,16 +137,22 @@ object Session {
         acceptToken(r.token)
     }
 
+    /**
+     * Il ricaricamento gira nello scope della sessione, non in quello della schermata che lo chiede: appena lo stato
+     * passa a Loading la schermata di accesso esce dalla composizione e la sua coroutine viene annullata. Se il
+     * ricaricamento girasse lì, l'annullamento a metà farebbe sembrare fallita la lettura dell'utente e si tornerebbe
+     * al login (campi vuoti, o un nuovo codice Quick Connect sulla TV).
+     */
     suspend fun acceptToken(token: String) {
         Api.store.token = token
-        reload()
+        scope.launch { reload() }.join()
     }
 
     suspend fun logout() {
         runCatching { Api.postUnit("/api/v1/auth/logout") }
         Api.store.token = null
         disconnectEvents()
-        reload()
+        scope.launch { reload() }.join()
     }
 
     fun forgetServer() {

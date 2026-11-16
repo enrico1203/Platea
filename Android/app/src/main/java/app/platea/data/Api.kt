@@ -45,6 +45,14 @@ class Store(context: Context) {
         get() = (prefs.getString("recent_servers", "") ?: "").split('\n').filter { it.isNotBlank() }
         set(v) = prefs.edit().putString("recent_servers", v.distinct().take(5).joinToString("\n")).apply()
 
+    /**
+     * Tema scelto su questo dispositivo, come nella web UI: "dark" (predefinito del marchio), "light" o "auto"
+     * (segue il sistema). Il server conserva "auto" anche per chi non ha mai scelto, quindi il valore vale solo qui.
+     */
+    var theme: String
+        get() = prefs.getString("theme", "dark") ?: "dark"
+        set(v) = prefs.edit().putString("theme", v).apply()
+
     val deviceId: String
         get() {
             prefs.getString("device_id", null)?.let { return it }

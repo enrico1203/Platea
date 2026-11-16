@@ -13,12 +13,27 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.windowInsetsTopHeight
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.VideoLibrary
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.automirrored.outlined.PlaylistPlay
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -97,15 +112,21 @@ class Nav(private val nav: NavHostController, private val context: Context) {
 
 val LocalNav = staticCompositionLocalOf<Nav> { error("Nav non disponibile") }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun Root() {
     val context = LocalContext.current
     val state by Session.state.collectAsState()
     val tv = remember { PlateaApp.isTv(context) }
-    val theme = (state as? SessionState.LoggedIn)?.me?.preferences?.theme ?: "auto"
+    val theme by Session.theme.collectAsState()
     val width = LocalConfiguration.current.screenWidthDp
     PlateaTheme(theme = theme, forceDark = tv) {
-        CompositionLocalProvider(LocalIsTv provides tv, LocalWidthDp provides width) {
+        CompositionLocalProvider(
+            LocalIsTv provides tv,
+            LocalWidthDp provides width,
+            androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides
+                if (tv) TvBringIntoView else androidx.compose.foundation.gestures.LocalBringIntoViewSpec.current,
+        ) {
             Box(Modifier.fillMaxSize().background(tokens.bg)) {
                 when (val s = state) {
                     SessionState.Loading -> LoadingScreen()
@@ -119,14 +140,37 @@ fun Root() {
     }
 }
 
-private data class Tab(val route: String, val label: Int, val icon: ImageVector)
+/**
+ * Scorrimento col telecomando. Quello predefinito di Compose sulle TV tiene l'elemento a fuoco su un punto fisso
+ * dello schermo e scorre anche quando è già tutto visibile: la parte alta delle schede (sfondo, locandina, titolo)
+ * finiva fuori schermo appena il focus andava su Riproduci. Qui si scorre solo quanto serve, con un margine del 10%.
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+private val TvBringIntoView = object : androidx.compose.foundation.gestures.BringIntoViewSpec {
+    @Suppress("OVERRIDE_DEPRECATION")
+    override val scrollAnimationSpec: androidx.compose.animation.core.AnimationSpec<Float> =
+        androidx.compose.animation.core.tween(durationMillis = 180, easing = androidx.compose.animation.core.FastOutSlowInEasing)
 
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+        val margin = containerSize * 0.1f
+        return when {
+            offset >= 0f && offset + size <= containerSize -> 0f
+            size >= containerSize - 2 * margin -> offset - margin
+            offset < 0f -> offset - margin
+            else -> offset + size - (containerSize - margin)
+        }
+    }
+}
+
+private data class Tab(val route: String, val label: Int, val icon: ImageVector, val outline: ImageVector)
+
+/** Sezioni: icona piena per quella attiva, a contorno per le altre. */
 private val TABS = listOf(
-    Tab("home", R.string.nav_home, Icons.Filled.Home),
-    Tab("search", R.string.nav_search, Icons.Filled.Search),
-    Tab("libraries", R.string.nav_libraries, Icons.Filled.VideoLibrary),
-    Tab("playlists", R.string.nav_playlists, Icons.AutoMirrored.Filled.PlaylistPlay),
-    Tab("account", R.string.nav_account, Icons.Filled.Person),
+    Tab("home", R.string.nav_home, Icons.Filled.Home, Icons.Outlined.Home),
+    Tab("search", R.string.nav_search, Icons.Filled.Search, Icons.Outlined.Search),
+    Tab("libraries", R.string.nav_libraries, Icons.Filled.VideoLibrary, Icons.Outlined.VideoLibrary),
+    Tab("playlists", R.string.nav_playlists, Icons.AutoMirrored.Filled.PlaylistPlay, Icons.AutoMirrored.Outlined.PlaylistPlay),
+    Tab("account", R.string.nav_account, Icons.Filled.Person, Icons.Outlined.Person),
 )
 
 @Composable
@@ -137,23 +181,29 @@ fun Main(start: String = "home") {
     val tv = LocalIsTv.current
     val rail = tv || LocalWidthDp.current >= 600
     val entry by navController.currentBackStackEntryAsState()
-    val current = entry?.destination?.route
+    // Nelle pagine interne (scheda, libreria, persona…) resta evidenziata la sezione da cui si è arrivati.
+    var current by rememberSaveable { mutableStateOf(start) }
+    val route = entry?.destination?.route
+    LaunchedEffect(route) { if (route != null && TABS.any { it.route == route }) current = route }
 
     CompositionLocalProvider(LocalNav provides nav) {
         if (rail) {
             Row(Modifier.fillMaxSize()) {
+                val railLine = tokens.line
                 NavigationRail(
                     containerColor = tokens.surface1,
-                    modifier = Modifier.fillMaxHeight().windowInsetsPadding(WindowInsets.systemBars),
+                    // Il fondo della barra arriva sotto le barre di sistema; solo il contenuto ne rispetta i margini.
+                    windowInsets = WindowInsets.systemBars,
+                    modifier = Modifier.fillMaxHeight().drawBehind { drawLine(railLine, Offset(size.width, 0f), Offset(size.width, size.height), 1.dp.toPx()) },
                     header = { Column { Spacer(Modifier.height(12.dp)); Mark(36.dp) } },
                 ) {
                     Spacer(Modifier.height(24.dp))
                     TABS.forEach { t ->
                         NavigationRailItem(
                             selected = current == t.route,
-                            onClick = { nav.tab(t.route) },
-                            icon = { Icon(t.icon, null) },
-                            label = { Text(stringResource(t.label)) },
+                            onClick = { if (current == t.route && route != t.route) navController.popBackStack(t.route, false) else nav.tab(t.route); current = t.route },
+                            icon = { Icon(if (current == t.route) t.icon else t.outline, null) },
+                            label = { Text(stringResource(t.label), style = androidx.compose.material3.MaterialTheme.typography.labelMedium) },
                             colors = NavigationRailItemDefaults.colors(
                                 selectedIconColor = tokens.blueText, selectedTextColor = tokens.ink, indicatorColor = tokens.blueSoft,
                                 unselectedIconColor = tokens.inkMuted, unselectedTextColor = tokens.inkMuted,
@@ -161,19 +211,26 @@ fun Main(start: String = "home") {
                         )
                     }
                 }
-                Box(Modifier.weight(1f).fillMaxHeight()) { Routes(navController, start, Modifier) }
+                Box(Modifier.weight(1f).fillMaxHeight()) {
+                    Routes(navController, start, Modifier)
+                    StatusBarScrim()
+                }
             }
         } else {
+            val lineColor = tokens.line
             Scaffold(
                 containerColor = tokens.bg,
                 bottomBar = {
-                    NavigationBar(containerColor = tokens.surface1, tonalElevation = 0.dp) {
+                    NavigationBar(
+                        containerColor = tokens.bg.copy(alpha = 0.96f), tonalElevation = 0.dp,
+                        modifier = Modifier.drawBehind { drawLine(lineColor, Offset(0f, 0f), Offset(size.width, 0f), 1.dp.toPx()) },
+                    ) {
                         TABS.forEach { t ->
                             NavigationBarItem(
                                 selected = current == t.route,
-                                onClick = { nav.tab(t.route) },
-                                icon = { Icon(t.icon, null) },
-                                label = { Text(stringResource(t.label), maxLines = 1) },
+                                onClick = { if (current == t.route && route != t.route) navController.popBackStack(t.route, false) else nav.tab(t.route); current = t.route },
+                                icon = { Icon(if (current == t.route) t.icon else t.outline, null) },
+                                label = { Text(stringResource(t.label), maxLines = 1, style = androidx.compose.material3.MaterialTheme.typography.labelMedium) },
                                 colors = NavigationBarItemDefaults.colors(
                                     selectedIconColor = tokens.blueText, selectedTextColor = tokens.ink, indicatorColor = tokens.blueSoft,
                                     unselectedIconColor = tokens.inkMuted, unselectedTextColor = tokens.inkMuted,
@@ -182,9 +239,28 @@ fun Main(start: String = "home") {
                         }
                     }
                 },
-            ) { pad -> Routes(navController, start, Modifier.padding(bottom = pad.calculateBottomPadding())) }
+            ) { pad ->
+                Box(Modifier.fillMaxSize()) {
+                    Routes(navController, start, Modifier.padding(bottom = pad.calculateBottomPadding()))
+                    StatusBarScrim()
+                }
+            }
         }
     }
+}
+
+/**
+ * Velo sotto la barra di stato: il contenuto scorre da bordo a bordo, ma ora e icone restano leggibili sopra
+ * locandine e testo. Sfuma verso il basso, così sugli sfondi delle schede non si vede uno stacco.
+ */
+@Composable
+private fun StatusBarScrim() {
+    val bg = tokens.bg
+    Box(
+        Modifier.fillMaxWidth().windowInsetsTopHeight(WindowInsets.statusBars).background(
+            Brush.verticalGradient(0f to bg.copy(alpha = 0.97f), 0.75f to bg.copy(alpha = 0.85f), 1f to bg.copy(alpha = 0f)),
+        ),
+    )
 }
 
 @Composable

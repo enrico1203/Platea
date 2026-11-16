@@ -477,6 +477,34 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-16 notte — **App Android provata sugli emulatori e ridisegnata** (richiesta dell'utente: "verifica con
+  l'emulatore, sistema tutti i problemi, migliora la grafica"). Prove sul Mac dell'utente: emulatori telefono
+  (API 36), tablet (API 36) e Android TV (API 34), server di prova dall'immagine ghcr con media sintetici e un TMDB
+  finto che disegna locandine e sfondi (strumenti nello scratchpad, non versionati). Build locale con JDK 21
+  (`cd Android && ./gradlew assembleDebug`, `local.properties` non versionato).
+  Bug corretti: (1) **dopo il login si tornava al login** (campi vuoti; sulla TV un nuovo codice Quick Connect):
+  `Session.reload()` girava nella coroutine della schermata di accesso, che usciva dalla composizione appena lo
+  stato passava a Loading; l'annullamento faceva fallire `/me`. Ora ricaricamento nello scope della sessione
+  (`acceptToken`, `logout`, `retry`) e la CancellationException non è più un errore. (2) Tema chiaro all'avvio sui
+  telefoni in modalità chiara: ora il tema è del dispositivo come nella web UI, scuro predefinito (`Store.theme`;
+  "Come il sistema" = `auto`). (3) Icone della barra di stato illeggibili: colore secondo il tema e velo sotto la
+  barra di stato. (4) Marchio con la P bianca fissa (invisibile sul chiaro): disegnato col colore del tema.
+  (5) Sezione della barra non evidenziata nelle pagine interne. (6) Su TV lo scorrimento "a perno" di Compose
+  tagliava la parte alta di Home e schede: `TvBringIntoView` scorre solo quanto serve. (7) Sul tablet la barra
+  laterale finiva prima della barra di navigazione. (8) Titoli, filtri e lettere fuori margine nelle griglie.
+  (9) I test delle schermate si bloccavano (runBlocking sul thread principale): login del test su un altro thread
+  con scadenza di 60 s, timeout di 15 min sul task Gradle e di 30 min sul job CI, ID dispositivo fisso nei test.
+  Grafica: font Geist e Geist Mono inclusi (OFL, licenza in `assets/licenses`), scala tipografica del marchio
+  (display/h1/h2/eyebrow/mono), Home con carosello "In scena" (fino a 5, avanzamento ogni 8 s, uno solo sulla TV),
+  locandine con angoli 6 dp, filo interno e luce blu a fuoco col telecomando, scheda con sfondo grande, tag tecnici
+  in mono (risoluzione, HDR, codec, audio), Riproduci a tutta larghezza sul telefono e azioni con etichetta,
+  librerie come card con lo sfondo di un titolo recente, campi `surface-2`, account a righe (scelte a destra,
+  Altro con Informazioni/Cambia server/Esci), stati vuoti col marchio monocromatico, Play del player con la luce.
+  Test: 6 di contratto + 33 schermate (telefono, tablet, TV) verdi; APK di rilascio ~3,7 MB provato (login, direct
+  play MP4, remux MKV+AC3). **Firma:** il repository non ha ancora i segreti `ANDROID_KEYSTORE_*`, quindi ogni APK
+  della CI ha una chiave diversa e per aggiornare bisogna disinstallare: serve una chiave di rilascio decisa
+  dall'utente.
+
 - 2026-11-16 — **App Android nativa** (`Android/`, richiesta dell'utente: "completa con tutte le schermate e il player,
   per telefoni, tablet e Android TV tipo Fire Stick"). Una sola app Kotlin + Jetpack Compose + Media3 (ExoPlayer),
   minSdk 22 (Fire OS 5), pacchetto `app.platea`. Su TV (leanback/Fire TV/niente touch) barra laterale, focus visibile

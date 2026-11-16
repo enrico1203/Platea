@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Environment
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -74,6 +75,16 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.border
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.FileDownload
+import androidx.compose.material.icons.outlined.Movie
+import androidx.compose.ui.platform.LocalConfiguration
+import app.platea.ui.components.ActionButton
+import app.platea.ui.components.CodecBadge
+import app.platea.ui.components.Eyebrow
 import app.platea.R
 import app.platea.data.Api
 import app.platea.data.DownloadLink
@@ -164,89 +175,130 @@ private fun ItemContent(item: ItemDetail, onChanged: () -> Unit) {
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
         item("header") {
+            val backdrop = item.images.backdrop ?: item.images.still
+            val screenH = LocalConfiguration.current.screenHeightDp
+            val bg = tokens.bg
+            val big = tv || wide
+            val eyebrow = when (item.kind) {
+                "movie" -> stringResource(R.string.kind_movie_label)
+                "series" -> stringResource(R.string.kind_series)
+                "season" -> item.seriesTitle ?: stringResource(R.string.kind_season_label)
+                "episode" -> listOfNotNull(item.seriesTitle, "S${item.parentIndexNumber} · E${item.indexNumber}").joinToString("  ·  ")
+                "collection" -> stringResource(R.string.kind_collection)
+                else -> ""
+            }
             Box(Modifier.fillMaxWidth()) {
-                val backdrop = item.images.backdrop ?: item.images.still
-                Box(Modifier.fillMaxWidth().height(if (tv) 280.dp else if (wide) 360.dp else 260.dp)) {
+                // Sfondo a tutta larghezza che sfuma nel fondo: su telefono il titolo ci sta sopra, in basso.
+                Box(Modifier.fillMaxWidth().height(if (tv) 300.dp else if (wide) 420.dp else (screenH * 0.5f).dp.coerceIn(300.dp, 460.dp))) {
+                    Box(Modifier.fillMaxSize().background(parseColor(item.images.posterColor)?.copy(alpha = 0.3f) ?: tokens.placeholder))
                     if (backdrop != null) {
-                        AsyncImage(Api.image(backdrop, 1280), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                        AsyncImage(Api.image(backdrop, 1600), null, contentScale = ContentScale.Crop, alignment = Alignment.TopCenter, modifier = Modifier.fillMaxSize())
                     }
-                    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to tokens.bg.copy(alpha = 0.2f), 1f to tokens.bg)))
+                    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to bg.copy(alpha = 0.45f), 0.2f to Color.Transparent, 0.55f to bg.copy(alpha = 0.3f), 1f to bg)))
+                    if (big) Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to bg.copy(alpha = 0.7f), 0.6f to Color.Transparent)))
                 }
-                IconButton(onClick = { nav.back() }, modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars).padding(8.dp).background(tokens.scrim, CircleShape)) {
+                IconButton(
+                    onClick = { nav.back() },
+                    modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars).padding(start = pagePadding() - 8.dp, top = 4.dp).background(tokens.scrim, CircleShape),
+                ) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back), tint = Color.White)
                 }
                 Row(
-                    Modifier.padding(horizontal = pagePadding()).padding(top = if (tv) 96.dp else if (wide) 220.dp else 150.dp),
+                    Modifier.padding(horizontal = pagePadding()).padding(top = if (tv) 90.dp else if (wide) 230.dp else ((screenH * 0.5f).coerceIn(300f, 460f) - 150).dp),
                     verticalAlignment = Alignment.Bottom,
                 ) {
-                    if (item.kind != "episode") {
+                    if (big && item.kind != "episode") {
                         Box(
-                            Modifier.width(if (tv) 140.dp else if (wide) 180.dp else 110.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(12.dp))
-                                .background(parseColor(item.images.posterColor) ?: tokens.placeholder),
+                            Modifier.width(if (tv) 150.dp else 190.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(6.dp))
+                                .background(parseColor(item.images.posterColor) ?: tokens.placeholder)
+                                .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(6.dp)),
                         ) {
                             item.images.poster?.let { AsyncImage(Api.image(it, 400), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
                         }
-                        Spacer(Modifier.width(16.dp))
+                        Spacer(Modifier.width(28.dp))
                     }
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        if (item.seriesTitle != null && item.seriesId != null) {
-                            Text(item.seriesTitle, style = MaterialTheme.typography.labelLarge, color = tokens.blueText, modifier = Modifier.clickable { nav.item(item.seriesId) })
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (eyebrow.isNotEmpty()) {
+                            if (item.seriesId != null && item.kind != "series") {
+                                Text(
+                                    eyebrow.uppercase(), style = MaterialTheme.typography.labelSmall, color = tokens.blueText,
+                                    modifier = Modifier.clickable { nav.item(item.seriesId) },
+                                )
+                            } else Eyebrow(eyebrow, color = tokens.inkMuted)
                         }
                         val logo = item.images.logo
                         if (logo != null && item.kind != "episode") {
-                            AsyncImage(Api.image(logo, 600), item.title, contentScale = ContentScale.Fit, alignment = Alignment.CenterStart, modifier = Modifier.heightIn(max = 80.dp).widthIn(max = 320.dp))
+                            AsyncImage(Api.image(logo, 600), item.title, contentScale = ContentScale.Fit, alignment = Alignment.CenterStart, modifier = Modifier.heightIn(max = if (big) 110.dp else 88.dp).widthIn(max = 360.dp))
                         } else {
-                            Text(item.title, style = MaterialTheme.typography.headlineMedium, color = tokens.ink, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                item.title, style = if (big) MaterialTheme.typography.displayMedium else MaterialTheme.typography.displaySmall,
+                                color = tokens.ink, maxLines = 3, overflow = TextOverflow.Ellipsis,
+                            )
                         }
-                        if (meta.isNotEmpty()) Text(meta.joinToString("  ·  "), style = MaterialTheme.typography.bodySmall, color = tokens.inkMuted)
+                        if (meta.isNotEmpty()) Text(meta.joinToString("  ·  "), style = MaterialTheme.typography.bodyMedium, color = tokens.inkMuted)
+                        file?.let { f ->
+                            val tags = techTags(f)
+                            if (tags.isNotEmpty()) {
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { tags.forEach { CodecBadge(it) } }
+                            }
+                        }
                     }
                 }
             }
         }
 
         item("info") {
-            Column(Modifier.padding(horizontal = pagePadding()).padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            // Righe di testo lunghe si leggono male sui tablet e sulle TV: la colonna delle informazioni ha un limite.
+            Column(Modifier.padding(horizontal = pagePadding()).padding(top = 20.dp).widthIn(max = 880.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 if (expired) {
                     Surface(color = tokens.warning.copy(alpha = 0.12f), shape = RoundedCornerShape(10.dp)) {
                         Text(stringResource(R.string.item_expired), color = tokens.warning, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(12.dp))
                     }
                 }
-                // Azioni: riproduzione, trailer, visto, preferito, playlist, download.
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    if (!expired && (item.isPlayable || nextEpisode != null)) {
-                        val label = when {
-                            resume -> stringResource(R.string.item_resume_from, Fmt.duration(item.userData.positionMs))
-                            item.isPlayable -> stringResource(R.string.play)
-                            nextEpisode != null -> stringResource(R.string.play) + " " + nextEpisode.episodeCode
-                            else -> ""
+                val canPlay = !expired && (item.isPlayable || nextEpisode != null)
+                val playLabel = when {
+                    resume -> stringResource(R.string.item_resume_from, Fmt.duration(item.userData.positionMs))
+                    item.isPlayable -> stringResource(R.string.play)
+                    nextEpisode != null -> stringResource(R.string.play) + " " + nextEpisode.episodeCode
+                    else -> ""
+                }
+                val play = { if (item.isPlayable) nav.play(item.id, file?.id) else nextEpisode?.let { nav.play(it.id) } }
+                // Su telefono il Play occupa tutta la riga (pollice); su tablet e TV sta accanto alle azioni.
+                if (!wide && !tv && canPlay) {
+                    PrimaryButton(playLabel, Icons.Filled.PlayArrow, modifier = Modifier.fillMaxWidth().focusRequester(playFocus), large = true) { play() }
+                    if (resume) {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            if (item.runtimeMs != null) Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(2.dp))) { ProgressLine(item.userData.positionMs.toFloat() / item.runtimeMs) }
+                            SecondaryButton(stringResource(R.string.item_from_start), Icons.Filled.Replay, modifier = Modifier.fillMaxWidth()) { nav.play(item.id, file?.id, startOver = true) }
                         }
-                        PrimaryButton(label, Icons.Filled.PlayArrow, modifier = Modifier.focusRequester(playFocus)) {
-                            if (item.isPlayable) nav.play(item.id, file?.id) else nextEpisode?.let { nav.play(it.id) }
-                        }
-                        if (resume) {
-                            SecondaryButton(stringResource(R.string.item_from_start)) { nav.play(item.id, file?.id, startOver = true) }
-                        }
+                    }
+                }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(if (wide || tv) 10.dp else 4.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if ((wide || tv) && canPlay) {
+                        PrimaryButton(playLabel, Icons.Filled.PlayArrow, modifier = Modifier.focusRequester(playFocus), large = true) { play() }
+                        if (resume) SecondaryButton(stringResource(R.string.item_from_start), Icons.Filled.Replay, large = true) { nav.play(item.id, file?.id, startOver = true) }
+                        Spacer(Modifier.width(6.dp))
                     }
                     if (item.trailers.isNotEmpty()) {
-                        SecondaryButton(stringResource(R.string.item_trailer), Icons.Filled.Movie) { openTrailer(context, item.trailers.first().key) }
+                        ActionButton(Icons.Outlined.Movie, stringResource(R.string.item_trailer)) { openTrailer(context, item.trailers.first().key) }
                     }
                     if (item.kind != "collection") {
-                        RoundIconButton(Icons.Filled.Check, stringResource(if (item.userData.played) R.string.mark_unplayed else R.string.mark_played), item.userData.played) {
+                        ActionButton(if (item.userData.played) Icons.Filled.CheckCircle else Icons.Outlined.CheckCircle, stringResource(R.string.watched), item.userData.played) {
                             toggle("played", !item.userData.played)
                         }
-                        RoundIconButton(if (item.userData.favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder, stringResource(R.string.favorite), item.userData.favorite) {
+                        ActionButton(if (item.userData.favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder, stringResource(R.string.favorite), item.userData.favorite) {
                             toggle("favorite", !item.userData.favorite)
                         }
                     }
-                    RoundIconButton(Icons.AutoMirrored.Filled.PlaylistAdd, stringResource(R.string.playlist_add_to)) { dialog = "playlist" }
+                    ActionButton(Icons.AutoMirrored.Filled.PlaylistAdd, stringResource(R.string.action_playlist)) { dialog = "playlist" }
                     if (item.isPlayable && me?.permissions?.allowDownload == true && !expired && !tv) {
-                        RoundIconButton(Icons.Filled.Download, stringResource(R.string.item_download)) {
+                        ActionButton(Icons.Outlined.FileDownload, stringResource(R.string.action_download)) {
                             scope.launch { download(context, item.id, file?.id) }
                         }
                     }
                 }
-                if (resume && item.runtimeMs != null) Box(Modifier.widthIn(max = 360.dp)) { ProgressLine(item.userData.positionMs.toFloat() / item.runtimeMs) }
-                item.tagline?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.titleSmall, color = tokens.inkMuted) }
+                if ((wide || tv) && resume && item.runtimeMs != null) Box(Modifier.widthIn(max = 360.dp).clip(RoundedCornerShape(2.dp))) { ProgressLine(item.userData.positionMs.toFloat() / item.runtimeMs) }
+                item.tagline?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.titleMedium, color = tokens.ink) }
                 item.overview?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyLarge, color = tokens.inkMuted) }
                 if (item.genres.isNotEmpty()) {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -254,15 +306,19 @@ private fun ItemContent(item: ItemDetail, onChanged: () -> Unit) {
                     }
                 }
                 if (item.studios.isNotEmpty() && item.kind != "episode") {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(stringResource(R.string.studios), style = MaterialTheme.typography.bodySmall, color = tokens.inkSubtle)
-                        item.studios.take(4).forEach { s -> Chip(s) { nav.studio(s) } }
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Eyebrow(stringResource(R.string.studios))
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            item.studios.take(4).forEach { s -> Chip(s) { nav.studio(s) } }
+                        }
                     }
                 }
                 if (item.collections.isNotEmpty()) {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(stringResource(R.string.part_of), style = MaterialTheme.typography.bodySmall, color = tokens.inkSubtle)
-                        item.collections.forEach { c -> Chip(c.title) { nav.item(c.id) } }
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Eyebrow(stringResource(R.string.part_of))
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            item.collections.forEach { c -> Chip(c.title) { nav.item(c.id) } }
+                        }
                     }
                 }
             }
@@ -389,11 +445,12 @@ private fun SeasonTab(title: String, active: Boolean, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val shape = RoundedCornerShape(999.dp)
     Surface(
-        color = if (active) tokens.ink else tokens.surface2, shape = shape,
+        color = if (active) tokens.blueSoft else tokens.surface2, shape = shape,
+        border = if (active) androidx.compose.foundation.BorderStroke(1.dp, tokens.blue) else null,
         modifier = Modifier.focusRing(interaction, shape, grow = false).clip(shape)
             .clickable(interactionSource = interaction, indication = androidx.compose.material3.ripple(), onClick = onClick),
     ) {
-        Text(title, style = MaterialTheme.typography.labelLarge, color = if (active) tokens.bg else tokens.ink, modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp))
+        Text(title, style = MaterialTheme.typography.labelLarge, color = if (active) tokens.blueText else tokens.ink, modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp))
     }
 }
 
@@ -403,7 +460,7 @@ private fun EpisodeRow(e: Item, onOpen: () -> Unit, onPlay: () -> Unit) {
     val shape = RoundedCornerShape(12.dp)
     val wide = LocalWidthDp.current >= 600
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = pagePadding(), vertical = 6.dp)
+        Modifier.fillMaxWidth().padding(horizontal = pagePadding() - 6.dp, vertical = 4.dp)
             .focusRing(interaction, shape, grow = false).clip(shape)
             .clickable(interactionSource = interaction, indication = androidx.compose.material3.ripple(), onClick = onOpen)
             .padding(6.dp),
@@ -433,8 +490,15 @@ private fun EpisodeRow(e: Item, onOpen: () -> Unit, onPlay: () -> Unit) {
 
 @Composable
 private fun MissingRow(m: MissingEpisode) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = pagePadding(), vertical = 6.dp).padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.width(if (LocalWidthDp.current >= 600) 200.dp else 140.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp)).background(tokens.surface1))
+    Row(Modifier.fillMaxWidth().padding(horizontal = pagePadding() - 6.dp, vertical = 4.dp).padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        // Episodio che manca dalla libreria: solo il contorno del riquadro, così non pesa quanto quelli presenti.
+        Box(
+            Modifier.width(if (LocalWidthDp.current >= 600) 200.dp else 140.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp))
+                .border(1.dp, tokens.line, RoundedCornerShape(8.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("${m.episode}", style = MaterialTheme.typography.titleLarge, color = tokens.line)
+        }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -473,7 +537,7 @@ private fun ExtraCard(title: String, sub: String, onClick: () -> Unit) {
 private fun PersonCard(name: String, sub: String?, image: String?, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     Column(
-        Modifier.width(if (LocalIsTv.current) 120.dp else 96.dp).clickable(interactionSource = interaction, indication = null, onClick = onClick),
+        Modifier.width(if (LocalIsTv.current) 116.dp else 84.dp).clickable(interactionSource = interaction, indication = null, onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(Modifier.fillMaxWidth().aspectRatio(1f).focusRing(interaction, CircleShape).clip(CircleShape).background(tokens.placeholder), contentAlignment = Alignment.Center) {
@@ -481,7 +545,7 @@ private fun PersonCard(name: String, sub: String?, image: String?, onClick: () -
             else Text(name.split(' ').mapNotNull { it.firstOrNull()?.uppercase() }.take(2).joinToString(""), color = tokens.inkMuted, style = MaterialTheme.typography.titleMedium)
         }
         Spacer(Modifier.height(6.dp))
-        Text(name, style = MaterialTheme.typography.labelMedium, color = tokens.ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(name, style = MaterialTheme.typography.labelMedium, color = tokens.ink, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         if (!sub.isNullOrBlank()) Text(sub, style = MaterialTheme.typography.bodySmall, color = tokens.inkSubtle, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
@@ -506,17 +570,38 @@ private fun TechInfo(f: MediaFile) {
             ).joinToString(" · "))
         }
     }
-    Surface(color = tokens.surface1, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(f.name, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace, color = tokens.inkSubtle)
+    // Pannello (`surface-1`, filo `line-strong`): i dati tecnici in mono, come nella dashboard.
+    Surface(color = tokens.surface1, shape = RoundedCornerShape(14.dp), border = androidx.compose.foundation.BorderStroke(1.dp, tokens.line), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(f.name, style = app.platea.ui.theme.Mono.regular, color = tokens.inkSubtle)
+            Box(Modifier.fillMaxWidth().height(1.dp).background(tokens.line))
             rows.forEach { (k, v) ->
                 Row {
-                    Text(k, style = MaterialTheme.typography.labelMedium, color = tokens.inkSubtle, modifier = Modifier.width(92.dp))
-                    Text(v, style = MaterialTheme.typography.bodySmall, color = tokens.ink)
+                    Text(k.uppercase(), style = MaterialTheme.typography.labelSmall, color = tokens.inkSubtle, modifier = Modifier.width(96.dp).padding(top = 2.dp))
+                    Text(v, style = app.platea.ui.theme.Mono.regular, color = tokens.ink)
                 }
             }
         }
     }
+}
+
+/** Tag tecnici della versione: risoluzione, HDR, codec video, audio. */
+fun techTags(f: MediaFile): List<String> {
+    val v = f.video.firstOrNull()
+    val a = f.audio.firstOrNull { it.default } ?: f.audio.firstOrNull()
+    val res = v?.let { s ->
+        val w = s.width ?: 0; val h = s.height ?: 0
+        when { w >= 3200 || h >= 1800 -> "4K"; w >= 1800 || h >= 1000 -> "1080p"; w >= 1200 || h >= 700 -> "720p"; w > 0 -> "SD"; else -> null }
+    }
+    val hdr = v?.hdr?.takeIf { it.isNotBlank() }?.let { h ->
+        when (h.lowercase()) { "dovi", "dolby_vision", "dv" -> "Dolby Vision"; "hdr10plus", "hdr10+" -> "HDR10+"; "hlg" -> "HLG"; else -> h.uppercase() }
+    }
+    val vc = v?.codec?.let { c -> when (c.lowercase()) { "h264", "avc" -> "H.264"; "hevc", "h265" -> "HEVC"; "av1" -> "AV1"; "vp9" -> "VP9"; else -> c.uppercase() } }
+    val ac = a?.let { s ->
+        val name = when (s.codec.lowercase()) { "eac3" -> "DD+"; "ac3" -> "DD"; "truehd" -> "TrueHD"; "dts" -> "DTS"; "aac" -> "AAC"; "flac" -> "FLAC"; "opus" -> "Opus"; "mp3" -> "MP3"; else -> s.codec.uppercase() }
+        listOfNotNull(name, s.channels?.let { Fmt.channels(it) }).joinToString(" ")
+    }
+    return listOfNotNull(res, hdr, vc, ac)
 }
 
 @Composable
@@ -567,7 +652,7 @@ fun AddToPlaylistDialog(itemId: String, onClose: () -> Unit) {
                         }
                     }
                 }
-                OutlinedTextField(name, { name = it }, label = { Text(stringResource(R.string.playlist_new)) }, singleLine = true, colors = plateaFieldColors(), modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(name, { name = it }, label = { Text(stringResource(R.string.playlist_new)) }, singleLine = true, colors = plateaFieldColors(), shape = app.platea.ui.theme.Radius.md, modifier = Modifier.fillMaxWidth())
             }
         },
         confirmButton = {
