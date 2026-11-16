@@ -488,6 +488,8 @@ async fn episode_hints(state: &Shared, root: &Path, plexmatch: &[String]) -> Has
 }
 
 async fn apply_listing(state: &Shared, library_id: i64, kind: &str, path_id: i64, root: &Path, start_rel: &str, listing: Listing) -> anyhow::Result<ScanStats> {
+    let mut listing = listing;
+    keep_bluray_main(&mut listing.videos);
     let mut stats = ScanStats { listed: listing.videos.len(), dirs: listing.dirs, ..Default::default() };
     let in_scope = |rel: &str| start_rel.is_empty() || rel == start_rel || rel.starts_with(&format!("{start_rel}/"));
 
@@ -1031,6 +1033,43 @@ async fn sync_external_subtitles(state: &Shared, path_id: i64, subs: &HashMap<St
         tx.commit().await?;
     }
     Ok(())
+}
+
+/// Dischi Blu-ray copiati come cartella (`BDMV/STREAM/*.m2ts`): il film è il flusso più grande, gli altri (menu,
+/// avvisi, extra spezzettati) si ignorano. Senza questo ogni flusso diventerebbe un "film" chiamato 00021, 00050…
+fn keep_bluray_main(videos: &mut Vec<Entry>) {
+    let mut main: HashMap<String, (u64, String)> = HashMap::new();
+    for e in videos.iter() {
+        if let Some(root) = naming::bluray_root(&e.rel) {
+            if naming::is_bluray_stream(&e.rel) {
+                let size = e.size.max(0) as u64;
+                let best = main.entry(root.to_string()).or_insert((0, String::new()));
+                if best.1.is_empty() || size > best.0 {
+                    *best = (size, e.rel.clone());
+                }
+            }
+        }
+    }
+    videos.retain(|e| match naming::bluray_root(&e.rel) {
+        Some(root) => main.get(root).is_some_and(|(_, rel)| *rel == e.rel),
+        None => true,
+    });
+}
+
+#[cfg(test)]
+#[test]
+fn bluray_main_stream_only() {
+    let e = |rel: &str, size: i64| Entry { rel: rel.into(), size, mtime: 0 };
+    let mut v = vec![
+        e("Robo (1987)/BDMV/STREAM/00021.m2ts", 100),
+        e("Robo (1987)/BDMV/STREAM/00800.m2ts", 9000),
+        e("Robo (1987)/BDMV/BACKUP/x.m2ts", 99999),
+        e("Robo (1987)/BDMV/STREAM/00050.m2ts", 10),
+        e("Altro (2000)/Altro.mkv", 5),
+    ];
+    keep_bluray_main(&mut v);
+    let rels: Vec<&str> = v.iter().map(|e| e.rel.as_str()).collect();
+    assert_eq!(rels, vec!["Robo (1987)/BDMV/STREAM/00800.m2ts", "Altro (2000)/Altro.mkv"]);
 }
 
 /// Rimuove i file mancanti oltre il periodo di grazia e gli elementi rimasti senza file.

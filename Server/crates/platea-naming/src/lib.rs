@@ -359,8 +359,38 @@ pub fn parse_title_year(name: &str) -> (String, Option<u16>) {
     split_title_year(&base_clean(name))
 }
 
+/// Cartella di un disco Blu-ray copiato così com'è (`Film (2000)/BDMV/STREAM/00800.m2ts`): il percorso della cartella
+/// che contiene `BDMV` (vuoto se `BDMV` è alla radice). `None` se il file non è dentro un disco.
+pub fn bluray_root(rel_path: &str) -> Option<&str> {
+    let mut start = 0;
+    for part in rel_path.split('/') {
+        let end = start + part.len();
+        if end >= rel_path.len() {
+            return None;
+        }
+        if part.eq_ignore_ascii_case("BDMV") {
+            return Some(rel_path[..start].trim_end_matches('/'));
+        }
+        start = end + 1;
+    }
+    None
+}
+
+/// `true` se il file è un flusso di un disco Blu-ray (`…/BDMV/STREAM/*.m2ts`): l'unico tipo di file del disco che può
+/// essere il film. Gli altri file sotto `BDMV` (copie in `BACKUP`, `SSIF` 3D…) si ignorano.
+pub fn is_bluray_stream(rel_path: &str) -> bool {
+    let parts: Vec<&str> = rel_path.split('/').collect();
+    let n = parts.len();
+    n >= 3 && parts[n - 3].eq_ignore_ascii_case("BDMV") && parts[n - 2].eq_ignore_ascii_case("STREAM")
+}
+
 /// Lettura del nome di un film dal percorso relativo alla radice della libreria.
 pub fn parse_movie(rel_path: &str) -> MovieName {
+    // Disco Blu-ray: il nome è quello della cartella del disco, non del flusso (00800.m2ts).
+    if let Some(root) = bluray_root(rel_path).filter(|r| !r.is_empty()) {
+        let name = root.rsplit('/').next().unwrap_or(root);
+        return parse_movie(&format!("{root}/{name}.m2ts"));
+    }
     let parts: Vec<&str> = rel_path.split('/').filter(|p| !p.is_empty()).collect();
     let file = parts.last().copied().unwrap_or("");
     let stem = file_stem(file);
@@ -675,3 +705,26 @@ pub fn subtitle_language(file: &str) -> (Option<String>, bool, bool) {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod bluray_tests {
+    use super::*;
+
+    #[test]
+    fn bluray_disc_folder() {
+        let rel = "RoboCop (1987) Bluray-1080p [tt0093870]/BDMV/STREAM/00800.m2ts";
+        assert_eq!(bluray_root(rel), Some("RoboCop (1987) Bluray-1080p [tt0093870]"));
+        assert!(is_bluray_stream(rel));
+        let m = parse_movie(rel);
+        assert_eq!(m.title, "RoboCop");
+        assert_eq!(m.year, Some(1987));
+        assert_eq!(m.group_key, "robocop (1987) bluray-1080p [tt0093870]");
+        assert_eq!(bluray_root("Film/a/bdmv/STREAM/1.m2ts"), Some("Film/a"));
+        assert_eq!(bluray_root("BDMV/STREAM/1.m2ts"), Some(""));
+        assert_eq!(bluray_root("Film/BDMV.mkv"), None);
+        assert_eq!(bluray_root("Film (2000)/Film.mkv"), None);
+        assert!(!is_bluray_stream("X/BDMV/BACKUP/STREAM/1.m2ts"));
+        assert!(!is_bluray_stream("X/BDMV/STREAM/SSIF/1.ssif"));
+        assert!(!is_bluray_stream("X/STREAM/1.m2ts"));
+    }
+}

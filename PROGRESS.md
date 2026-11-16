@@ -480,6 +480,10 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 - 2026-11-16 — Versione 0.1.6: nella scheda del nodo, se il nodo non raggiunge il server ma i file glieli manda il
   server (modalità automatica o "il server manda"), niente più rosso: "File da transcodificare · Li manda il server"
   con una nota. Rosso solo con "Il nodo legge dal server". Stesso criterio nella prova di velocità e nel log (INFO).
+  Dischi Blu-ray copiati come cartella (`BDMV/STREAM/*.m2ts`): il film è solo il flusso più grande, con il nome della
+  cartella del disco; gli altri flussi e `BDMV/BACKUP` si ignorano. Prima ogni flusso era un "film" (00021, 00050…,
+  156 nella libreria Film, in cima all'ordine per titolo). Migrazione 0024: toglie quei file e i loro elementi, la
+  scansione successiva rilegge il disco. Provata su un estratto del database reale (via 156 file e 156 elementi, nient'altro).
 - 2026-11-16 — Versione 0.1.5: prova di velocità tra server e nodo (pulsante Velocità nella scheda del nodo).
   Tre misure da 5 s con dati casuali: server → nodo, nodo → server, il nodo legge dal server (token monouso su
   `/api/v1/node-speed/`), più la latenza. Ultimo risultato nella scheda. Prova end-to-end: 84/84.
