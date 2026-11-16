@@ -104,13 +104,7 @@ function NodeCard({ n, data, onEdit, onChanged }: { n: NodeView; data: NodesData
         {st && st.transcode_free_bytes != null && <><dt>{t("admin.nodes.freeSpace")}</dt><dd>{bytes(st.transcode_free_bytes)}</dd></>}
         {st && !n.is_local && (st.source_cache_files ?? 0) > 0 && <><dt>{t("admin.nodes.sourceCacheUsed")}</dt><dd>{t("admin.nodes.sourceCacheValue", { size: bytes(st.source_cache_bytes ?? 0), count: st.source_cache_files ?? 0 })}</dd></>}
         {st && !n.is_local && <><dt>FFmpeg</dt><dd className="t-mono-sm">{st.ffmpeg_available ? `${st.ffmpeg_version}${st.ffmpeg_jellyfin ? " · jellyfin-ffmpeg" : ""}` : t("admin.nodes.ffmpegMissing")}</dd></>}
-        {!n.is_local && n.server_url && <><dt>{t("admin.nodes.serverUrl")}</dt><dd className="stack" style={{ gap: 2 }}>
-          <span><span className="t-mono-sm">{n.server_url}</span>{" "}
-            {n.server_reach?.url === n.server_url && n.server_reach.ok === true && <Badge tone="direct">{t("admin.nodes.reachOk", { ms: n.server_reach.ms })}</Badge>}
-            {n.server_reach?.url === n.server_url && n.server_reach.ok === false && <Badge tone="danger">{t("admin.nodes.reachBad")}</Badge>}
-          </span>
-          {n.server_reach?.url === n.server_url && n.server_reach.ok === false && <span className="t-small">{t("admin.nodes.reachBadHint", { error: n.server_reach.error ?? "" })}</span>}
-        </dd></>}
+        {!n.is_local && <SourceRow n={n} />}
         {n.speed && <><dt>{t("admin.nodes.speedTest")}</dt><dd>{t("admin.nodes.speedSummary", { up: mbps(n.speed.to_node), down: mbps(n.speed.from_node) })} <span className="t-small muted">· {relative(n.speed.at)}</span></dd></>}
         {folders.length > 0 && <><dt>{t("admin.nodes.folders")}</dt><dd className="stack" style={{ gap: 2 }}>{folders.map((f) => (
           <span key={f.library_path_id} className="t-small"><span className="t-mono-sm">{f.node_path}</span> ← {f.label} {f.verify_error ? <Badge tone="danger">{t("admin.nodes.folderBad")}</Badge> : <Badge tone="direct">{t("admin.nodes.folderOk")}</Badge>}</span>
@@ -167,13 +161,41 @@ function CapsDialog({ n, onClose, onChanged }: { n: NodeView; onClose: () => voi
   );
 }
 
+/** Come arrivano al nodo i file da transcodificare. Rosso solo quando è davvero un problema: con "il server manda"
+ * (scelto o automatico) un indirizzo del server irraggiungibile non impedisce niente. */
+function SourceRow({ n }: { n: NodeView }) {
+  const { t } = useI18n();
+  const transport = n.config.source_transport ?? "auto";
+  const reach = n.server_reach && n.server_reach.url === n.server_url ? n.server_reach : null;
+  if (transport === "push" || (transport === "auto" && reach?.ok === false)) {
+    return <>
+      <dt>{t("admin.nodes.sourceFiles")}</dt>
+      <dd className="stack" style={{ gap: 2 }}>
+        <span><Badge tone="direct">{t("admin.nodes.serverSends")}</Badge></span>
+        {transport === "auto" && <span className="t-small muted">{t("admin.nodes.serverSendsHint", { url: n.server_url ?? "" })}</span>}
+      </dd>
+    </>;
+  }
+  if (!n.server_url) return null;
+  return <>
+    <dt>{t("admin.nodes.serverUrl")}</dt>
+    <dd className="stack" style={{ gap: 2 }}>
+      <span><span className="t-mono-sm">{n.server_url}</span>{" "}
+        {reach?.ok === true && <Badge tone="direct">{t("admin.nodes.reachOk", { ms: reach.ms })}</Badge>}
+        {reach?.ok === false && <Badge tone="danger">{t("admin.nodes.reachBad")}</Badge>}
+      </span>
+      {reach?.ok === false && <span className="t-small">{t("admin.nodes.reachBadHint", { error: reach.error ?? "" })}</span>}
+    </dd>
+  </>;
+}
+
 const mbps = (d: SpeedDir) => (d.mbps != null ? `${d.mbps.toLocaleString(undefined, { maximumFractionDigits: 1 })} Mbit/s` : "—");
 
-function SpeedRow({ label, hint, d }: { label: string; hint: string; d: SpeedDir | null }) {
+function SpeedRow({ label, hint, d, soft }: { label: string; hint: string; d: SpeedDir | null; soft?: string }) {
   return (
     <>
       <dt>{label}<span className="t-small muted" style={{ display: "block" }}>{hint}</span></dt>
-      <dd>{d == null ? "—" : d.error ? <Badge tone="danger">{d.error}</Badge> : <strong className="node-speed">{mbps(d)}</strong>}</dd>
+      <dd>{d == null ? "—" : d.error && soft ? <span className="t-small muted">{soft}</span> : d.error ? <Badge tone="danger">{d.error}</Badge> : <strong className="node-speed">{mbps(d)}</strong>}</dd>
     </>
   );
 }
@@ -203,7 +225,8 @@ function SpeedDialog({ n, onClose, onChanged }: { n: NodeView; onClose: () => vo
       {res && <dl className="kv">
         <SpeedRow label={t("admin.nodes.speedToNode")} hint={t("admin.nodes.speedToNodeHint")} d={res.to_node} />
         <SpeedRow label={t("admin.nodes.speedFromNode")} hint={t("admin.nodes.speedFromNodeHint")} d={res.from_node} />
-        <SpeedRow label={t("admin.nodes.speedNodeReads")} hint={res.server_url ? t("admin.nodes.speedNodeReadsHint", { url: res.server_url }) : t("admin.nodes.speedNoServerUrl")} d={res.node_reads} />
+        <SpeedRow label={t("admin.nodes.speedNodeReads")} hint={res.server_url ? t("admin.nodes.speedNodeReadsHint", { url: res.server_url }) : t("admin.nodes.speedNoServerUrl")} d={res.node_reads}
+          soft={(n.config.source_transport ?? "auto") !== "pull" ? t("admin.nodes.speedNodeReadsSoft") : undefined} />
         <dt>{t("admin.nodes.speedLatency")}</dt><dd>{res.latency_ms == null ? "—" : res.latency_ms < 1 ? "< 1 ms" : `${res.latency_ms} ms`}</dd>
       </dl>}
       {res && <p className="t-small muted" style={{ margin: 0 }}>{t("admin.nodes.speedLast", { time: relative(res.at) })} · {t("admin.nodes.speedNeed")}</p>}

@@ -559,6 +559,10 @@ pub async fn probe_server(state: &Shared, r: &NodeRow, force: bool) {
     let was = prev.as_ref().filter(|p| p.url == url).and_then(|p| p.ok);
     if was != ok {
         match ok {
+            // Con "il server manda" (scelto o automatico) non è un problema: i file arrivano lo stesso.
+            Some(false) if r.config.source_transport != proto::SourceTransport::Pull => {
+                tracing::info!(node = %r.name, url = %url, error = %error.unwrap_or_default(), "il nodo non raggiunge il server: i file glieli manda il server")
+            }
             Some(false) => {
                 tracing::warn!(node = %r.name, url = %url, error = %error.unwrap_or_default(), "il nodo non raggiunge il server")
             }
