@@ -1,0 +1,215 @@
+{
+ "resume": [],
+ "next_up": [],
+ "recent": [
+  {
+   "library_id": "eb3f869e88d4e907",
+   "library_name": "Film",
+   "kind": "movies",
+   "items": [
+    {
+     "id": "5b8329bf2849fb3a",
+     "library_id": "eb3f869e88d4e907",
+     "kind": "movie",
+     "title": "Prova Remux",
+     "original_title": null,
+     "year": 2021,
+     "index_number": null,
+     "index_end": null,
+     "parent_index_number": null,
+     "parent_id": null,
+     "series_id": null,
+     "series_title": null,
+     "overview": null,
+     "runtime_ms": 40000,
+     "community_rating": null,
+     "official_rating": null,
+     "premiere_date": null,
+     "end_date": null,
+     "status": null,
+     "available": true,
+     "match_state": "pending",
+     "added_at": 1794861758956,
+     "images": {
+      "poster": null,
+      "poster_color": null,
+      "backdrop": null,
+      "still": null
+     },
+     "user_data": {
+      "position_ms": 0,
+      "played": false,
+      "play_count": 0,
+      "favorite": false,
+      "last_played_at": null
+     },
+     "child_count": null,
+     "unplayed_count": null
+    },
+    {
+     "id": "426abdefd27ee139",
+     "library_id": "eb3f869e88d4e907",
+     "kind": "movie",
+     "title": "Prova HEVC",
+     "original_title": null,
+     "year": 2022,
+     "index_number": null,
+     "index_end": null,
+     "parent_index_number": null,
+     "parent_id": null,
+     "series_id": null,
+     "series_title": null,
+     "overview": null,
+     "runtime_ms": 30021,
+     "community_rating": null,
+     "official_rating": null,
+     "premiere_date": null,
+     "end_date": null,
+     "status": null,
+     "available": true,
+     "match_state": "pending",
+     "added_at": 1794861758956,
+     "images": {
+      "poster": null,
+      "poster_color": null,
+      "backdrop": null,
+      "still": null
+     },
+     "user_data": {
+      "position_ms": 0,
+      "played": false,
+      "play_count": 0,
+      "favorite": false,
+      "last_played_at": null
+     },
+     "child_count": null,
+     "unplayed_count": null
+    },
+    {
+     "id": "eb3f869e88d4e907",
+     "library_id": "eb3f869e88d4e907",
+     "kind": "movie",
+     "title": "Prova Diretta",
+     "original_title": null,
+     "year": 2020,
+     "index_number": null,
+     "index_end": null,
+     "parent_index_number": null,
+     "parent_id": null,
+     "series_id": null,
+     "series_title": null,
+     "overview": null,
+     "runtime_ms": 40000,
+     "community_rating": null,
+     "official_rating": null,
+     "premiere_date": null,
+     "end_date": null,
+     "status": null,
+     "available": true,
+     "match_state": "pending",
+     "added_at": 1794861758956,
+     "images": {
+      "poster": null,
+      "poster_color": null,
+      "backdrop": null,
+      "still": null
+     },
+     "user_data": {
+      "position_ms": 0,
+      "played": false,
+      "play_count": 0,
+      "favorite": false,
+      "last_played_at": null
+     },
+     "child_count": null,
+     "unplayed_count": null
+    }
+   ]
+  },
+  {
+   "library_id": "426abdefd27ee139",
+   "library_name": "Serie",
+   "kind": "shows",
+   "items": [
+    {
+     "id": "b363fba61e230c77",
+     "library_id": "426abdefd27ee139",
+     "kind": "episode",
+     "title": "Episodio 2",
+     "original_title": null,
+     "year": null,
+     "index_number": 2,
+     "index_end": null,
+     "parent_index_number": 1,
+     "parent_id": "d7be822d289ea86e",
+     "series_id": "7f09ba6f7691100a",
+     "series_title": "Serie di Prova",
+     "overview": null,
+     "runtime_ms": 20021,
+     "community_rating": null,
+     "official_rating": null,
+     "premiere_date": null,
+     "end_date": null,
+     "status": null,
+     "available": true,
+     "match_state": "pending",
+     "added_at": 1794861758963,
+     "images": {
+      "poster": null,
+      "poster_color": null,
+      "backdrop": null,
+      "still": null
+     },
+     "user_data": {
+      "position_ms": 0,
+      "played": false,
+      "play_count": 0,
+      "favorite": false,
+      "last_played_at": null
+     },
+     "child_count": null,
+     "unplayed_count": null
+    },
+    {
+     "id": "0fc6134b461b33a6",
+     "library_id": "426abdefd27ee139",
+     "kind": "episode",
+     "title": "Episodio 1",
+     "original_title": null,
+     "year": null,
+     "index_number": 1,
+     "index_end": null,
+     "parent_index_number": 1,
+     "parent_id": "d7be822d289ea86e",
+     "series_id": "7f09ba6f7691100a",
+     "series_title": "Serie di Prova",
+     "overview": null,
+     "runtime_ms": 20021,
+     "community_rating": null,
+     "official_rating": null,
+     "premiere_date": null,
+     "end_date": null,
+     "status": null,
+     "available": true,
+     "match_state": "pending",
+     "added_at": 1794861758963,
+     "images": {
+      "poster": null,
+      "poster_color": null,
+      "backdrop": null,
+      "still": null
+     },
+     "user_data": {
+      "position_ms": 0,
+      "played": false,
+      "play_count": 0,
+      "favorite": false,
+      "last_played_at": 1794861760675
+     },
+     "child_count": null,
+     "unplayed_count": null
+    }
+   ]
+  }
+ ]
+}

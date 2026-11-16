@@ -1,0 +1,15 @@
+{
+ "items": [
+  {
+   "id": "eb3f869e88d4e907",
+   "device_id": "android-test",
+   "device_name": "Pixel di prova",
+   "client": "Platea Android",
+   "client_version": "test",
+   "created_at": 1794861758948,
+   "last_used_at": 1794861758952,
+   "last_ip": "172.17.0.1",
+   "current": true
+  }
+ ]
+}

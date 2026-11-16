@@ -1,0 +1,11 @@
+{
+ "name": "Platea",
+ "id": "22e79b53c8fe41a520f0fbf9db40258c",
+ "version": "0.1.6",
+ "product": "Platea",
+ "api": "v1",
+ "setup_required": false,
+ "quick_connect": true,
+ "login_message": null,
+ "custom_css": null
+}

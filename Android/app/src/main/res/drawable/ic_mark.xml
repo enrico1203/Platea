@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Marchio: la P il cui occhiello è uno schermo blu 16:9. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp" android:height="64dp" android:viewportWidth="64" android:viewportHeight="64">
+    <path android:fillColor="#F3F5F7" android:fillType="evenOdd" android:pathData="M14 10h28a10 10 0 0 1 10 10v5.5a10 10 0 0 1-10 10H22V52a2 2 0 0 1-2 2h-6a2 2 0 0 1-2-2V12a2 2 0 0 1 2-2zm8 6v13.5h20a4 4 0 0 0 4-4V20a4 4 0 0 0-4-4H22z" />
+    <path android:fillColor="#2F66F5" android:pathData="M24,16h20a2,2 0 0 1 2,2v9.5a2,2 0 0 1 -2,2h-20a2,2 0 0 1 -2,-2v-9.5a2,2 0 0 1 2,-2z" />
+</vector>

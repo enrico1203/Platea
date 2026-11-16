@@ -1,0 +1,30 @@
+{
+ "session_id": "b4fc3d559b0a282e081f5e7b",
+ "stream_token": "<token>",
+ "method": "direct_play",
+ "reasons": [],
+ "chain": "MP4 · H.264 · AAC 1.0",
+ "stream_url": "/api/v1/stream/b4fc3d559b0a282e081f5e7b?t=x",
+ "hls_url": null,
+ "file_id": "eb3f869e88d4e907",
+ "duration_ms": 40000,
+ "start_ms": 0,
+ "audio_index": 1,
+ "subtitle": {
+  "delivery": "none"
+ },
+ "subtitle_default": null,
+ "audio_tracks": [
+  {
+   "index": 1,
+   "codec": "aac",
+   "channels": 1,
+   "language": null,
+   "default": true
+  }
+ ],
+ "subtitles": [],
+ "trickplay": null,
+ "max_bitrate": null,
+ "container": "mp4"
+}

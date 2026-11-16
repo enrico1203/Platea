@@ -1,0 +1,66 @@
+# App Android (telefoni, tablet, Android TV, Fire TV): test e APK.
+# - Ogni push e pull request: test JVM (contratto con le risposte vere del server, in Android/app/src/test/resources)
+#   e APK di rilascio come artefatto del job.
+# - Un tag vX.Y.Z allega platea-X.Y.Z.apk alla release di GitHub.
+# Firma: se ci sono i segreti ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS e
+# ANDROID_KEY_PASSWORD l'APK è firmato con quella chiave (gli aggiornamenti si installano sopra). Senza, è firmato con
+# una chiave di debug diversa a ogni build: va bene per provare, non per aggiornare.
+name: Android
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+    paths-ignore: ["Server/**", "WebApp/**"]
+  pull_request:
+    paths: ["Android/**", ".github/workflows/android.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    name: Test e APK
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: Android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+      - name: Chiave di firma (se configurata)
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE" ]; then
+            echo "$KEYSTORE" | base64 -d > release.jks
+            printf 'storeFile=release.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' "$STORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" > keystore.properties
+          fi
+      - name: Versione
+        id: v
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"; else echo "version=" >> "$GITHUB_OUTPUT"; fi
+      - name: Test e build
+        run: ./gradlew --no-daemon testDebugUnitTest assembleRelease ${{ steps.v.outputs.version && format('-PappVersion={0}', steps.v.outputs.version) || '' }}
+      - name: Nome dell'APK
+        run: cp app/build/outputs/apk/release/app-release.apk "platea-${{ steps.v.outputs.version || 'edge' }}.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: platea-android
+          path: Android/platea-*.apk
+          retention-days: 14
+      - name: Allega alla release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --title "Platea ${{ steps.v.outputs.version }}" --generate-notes
+          gh release upload "$GITHUB_REF_NAME" "platea-${{ steps.v.outputs.version }}.apk" --clobber

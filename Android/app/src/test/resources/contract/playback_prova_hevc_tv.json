@@ -1,0 +1,32 @@
+{
+ "session_id": "e80723fae527504e58f2af19",
+ "stream_token": "<token>",
+ "method": "transcode",
+ "reasons": [
+  "VideoCodecNotSupported"
+ ],
+ "chain": "HEVC 10 bit → H.264 1080p · Software",
+ "stream_url": null,
+ "hls_url": "/api/v1/hls/e80723fae527504e58f2af19/main.m3u8?t=x",
+ "file_id": "426abdefd27ee139",
+ "duration_ms": 30021,
+ "start_ms": 0,
+ "audio_index": 1,
+ "subtitle": {
+  "delivery": "none"
+ },
+ "subtitle_default": null,
+ "audio_tracks": [
+  {
+   "index": 1,
+   "codec": "aac",
+   "channels": 1,
+   "language": null,
+   "default": false
+  }
+ ],
+ "subtitles": [],
+ "trickplay": null,
+ "max_bitrate": null,
+ "container": "mkv"
+}

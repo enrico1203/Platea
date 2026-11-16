@@ -1,0 +1,58 @@
+{
+ "items": [
+  {
+   "id": "eb3f869e88d4e907",
+   "name": "Film",
+   "kind": "movies",
+   "item_count": 3,
+   "paths": [
+    "/media/Film"
+   ],
+   "scan_profile": "local",
+   "language": "it-IT",
+   "country": "IT",
+   "scan_interval_minutes": 60,
+   "probe_concurrency": 4,
+   "probe_per_minute": null,
+   "probe_window_start": null,
+   "probe_window_end": null,
+   "probe_pause_on_play": false,
+   "extract_keyframes": true,
+   "trickplay": false,
+   "created_at": 1794861758952,
+   "last_scan_at": 1794861758967,
+   "last_scan_status": "ok",
+   "last_scan_message": "3 file in 4 cartelle, 3 nuovi, 0 modificati, 0 spostati, 0 mancanti, 0 non riconosciuti, 11 ms",
+   "missing_held": 0,
+   "file_count": 3,
+   "probe_pending": 0
+  },
+  {
+   "id": "426abdefd27ee139",
+   "name": "Serie",
+   "kind": "shows",
+   "item_count": 1,
+   "paths": [
+    "/media/Serie"
+   ],
+   "scan_profile": "local",
+   "language": "it-IT",
+   "country": "IT",
+   "scan_interval_minutes": 60,
+   "probe_concurrency": 4,
+   "probe_per_minute": null,
+   "probe_window_start": null,
+   "probe_window_end": null,
+   "probe_pause_on_play": false,
+   "extract_keyframes": true,
+   "trickplay": false,
+   "created_at": 1794861758955,
+   "last_scan_at": 1794861758967,
+   "last_scan_status": "ok",
+   "last_scan_message": "2 file in 3 cartelle, 2 nuovi, 0 modificati, 0 spostati, 0 mancanti, 0 non riconosciuti, 5 ms",
+   "missing_held": 0,
+   "file_count": 2,
+   "probe_pending": 0
+  }
+ ]
+}

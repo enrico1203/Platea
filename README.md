@@ -7,16 +7,25 @@ Platea is an open source media server for movies and TV shows, written in Rust, 
 | App | Devices | Status |
 | --- | --- | --- |
 | Platea web app | Any browser on a computer, tablet or phone. Can be installed as a web app. | Works |
+| Platea for Android | Android phones and tablets, Android TV, Google TV, Fire TV (Fire OS) | New, see [Android app](#android-app) |
 | [Infuse](https://firecore.com/infuse) | iPhone, iPad, Apple TV, Mac | Works (tested with Infuse 8.5 on iPhone) |
 | [Swiftfin](https://github.com/jellyfin/Swiftfin) | iPhone, iPad, Apple TV | Works (tested with Swiftfin 1.7 on iPhone) |
 | [Findroid](https://github.com/jarnedemeulemeester/findroid) | Android phones and tablets | Should work, not tested yet |
 | [Jellyfin for Android TV](https://github.com/jellyfin/jellyfin-androidtv) | Android TV, Google TV, Fire TV | Should work, not tested yet |
 | Official "Jellyfin" app | Phones, desktop | Does not work, see below |
-| Native Platea apps | Android, Android TV, iOS | Planned |
+| Native Platea app for iOS | iPhone, iPad, Apple TV | Planned |
 
 Infuse and the Jellyfin apps connect to Platea as if it were a Jellyfin server: use the server address on port 8096 (or a hostname that points to it) and your Platea username and password. Platea reports itself as Jellyfin 12.1 and implements the part of the Jellyfin API these apps use. Infuse always plays the original file. For the other apps Platea reads the device profile and remuxes or transcodes to HLS when the app can't play a format.
 
 The official "Jellyfin" app for phones and desktops doesn't draw its own screens. It loads the Jellyfin web interface from the server at `/web/`, which Platea doesn't include, so it stops with a 404 error. The Android TV app is a native app and is not affected.
+
+## Android app
+
+One app for phones, tablets and TVs (Android 5.1 or later, so Fire TV sticks with Fire OS 5 and newer). On a TV it switches to a remote-friendly layout and offers sign-in with a 6-digit code, so you don't have to type a password with the remote: confirm the code from the web app (Account › Connect a device, or `<server>/link`) or from the app on your phone.
+
+The app tells the server which codecs the device decodes and which audio formats the TV or receiver takes in passthrough (AC3, E-AC3, DTS, TrueHD). With ExoPlayer reading MKV, MP4 and TS directly, most files play as they are; the rest are remuxed or transcoded by the server. Screens: home, libraries with filters, search, title pages with seasons, episodes, extras and cast, people, genres, playlists, account and playback preferences. The player has subtitles and audio tracks, quality, chapters, previews on the seek bar, next episode, picture-in-picture on phones and remote control from the dashboard.
+
+Download the APK from the [releases](https://github.com/enrico1203/Platea/releases). On a Fire TV, install it with the Downloader app or `adb install`. Fire TV models with Vega OS (Fire TV Stick 4K Select and newer) don't run Android apps.
 
 ## Quick start
 
@@ -319,6 +328,9 @@ cp .env.example .env
 docker compose up -d --build                  # server on :8096, web app on :8080
 scripts/cargo.sh test                         # server tests
 scripts/nodes-test/run.sh                     # end-to-end test: server and two nodes in containers
+scripts/gradle.sh assembleDebug               # Android app (JDK and Android SDK in a container)
+python3 scripts/android-test/contract.py --work /tmp/at --keep   # test server + API responses for the app tests
+scripts/gradle.sh testDebugUnitTest -PplateaServer=http://127.0.0.1:18196   # app tests and screenshots
 docker run --rm -v "$PWD/WebApp:/app" -w /app node:22-alpine npm run typecheck
 ```
 
@@ -328,6 +340,7 @@ Server/       Rust workspace
   crates/platea-playback   direct play, remux or transcode decision
   crates/platea-server     the server binary
 WebApp/       React, Vite, TypeScript, TanStack Query, hls.js
+Android/      Kotlin, Jetpack Compose, Media3 (ExoPlayer): phones, tablets, Android TV, Fire TV
 scripts/      cargo in Docker, schema and API client generation, test tools
 docs/         project plan and brand identity (Italian)
 ```
@@ -354,6 +367,7 @@ Platea builds on, or works with, these projects. Their names belong to their own
 | [Infuse](https://firecore.com/infuse) | Video player by Firecore for Apple devices | Proprietary (Firecore, LLC) |
 | [Findroid](https://github.com/jarnedemeulemeester/findroid) | Jellyfin app for Android | [GPL-3.0](https://github.com/jarnedemeulemeester/findroid/blob/main/LICENSE) |
 | [Jellyfin for Android TV](https://github.com/jellyfin/jellyfin-androidtv) | Jellyfin app for Android TV and Fire TV | [GPL-2.0](https://github.com/jellyfin/jellyfin-androidtv/blob/master/LICENSE) |
+| [AndroidX Media3 (ExoPlayer)](https://github.com/androidx/media), [Jetpack Compose](https://developer.android.com/compose), [OkHttp](https://github.com/square/okhttp), [Coil](https://github.com/coil-kt/coil) | Player and libraries of the Android app | [Apache-2.0](https://github.com/androidx/media/blob/release/LICENSE) |
 | [The Movie Database (TMDB)](https://www.themoviedb.org) | Metadata and images. This product uses the TMDB API but is not endorsed or certified by TMDB. The attribution with the TMDB logo is on the About page of the web app. | [API terms](https://www.themoviedb.org/api-terms-of-use) |
 | [rclone](https://rclone.org) | Mounting cloud storage, and the remote control used by scans | [MIT](https://github.com/rclone/rclone/blob/master/COPYING) |
 | [Kodi](https://kodi.tv), [Plex](https://www.plex.tv) | The `.nfo` and `.plexmatch` file formats | |

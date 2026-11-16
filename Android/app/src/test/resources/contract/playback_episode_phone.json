@@ -1,0 +1,42 @@
+{
+ "session_id": "30b6eca47518a21da0c760a1",
+ "stream_token": "<token>",
+ "method": "direct_play",
+ "reasons": [],
+ "chain": "MKV · H.264 · AAC 1.0",
+ "stream_url": "/api/v1/stream/30b6eca47518a21da0c760a1?t=x",
+ "hls_url": null,
+ "file_id": "7f09ba6f7691100a",
+ "duration_ms": 20021,
+ "start_ms": 0,
+ "audio_index": 1,
+ "subtitle": {
+  "delivery": "none"
+ },
+ "subtitle_default": null,
+ "audio_tracks": [
+  {
+   "index": 1,
+   "codec": "aac",
+   "channels": 1,
+   "language": null,
+   "default": false
+  }
+ ],
+ "subtitles": [
+  {
+   "index": 1000,
+   "codec": "subrip",
+   "language": "it",
+   "title": "Serie di Prova S01E01.it.srt",
+   "external": true,
+   "forced": false,
+   "default": false,
+   "image": false,
+   "url": "/api/v1/subtitles/30b6eca47518a21da0c760a1/1000.vtt?t=x"
+  }
+ ],
+ "trickplay": null,
+ "max_bitrate": null,
+ "container": "mkv"
+}

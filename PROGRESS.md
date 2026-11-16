@@ -445,7 +445,7 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
    `BootConfig::check_writable` all'avvio prova scrittura e apertura e dice il file e il `chown` da fare.
    [x] Documentazione: README con reverse proxy (Caddy, nginx), aggiornamento, ep:/NFO episodi, funzioni nuove.
    **Decisione dell'utente (15/11/2026): solo Docker. Niente binari per Windows/macOS/Linux per ora.**
-7. Fase 6: [x] documento OpenAPI con gli schemi dei dati, generati dai tipi TypeScript della web UI
+7. Fase 6: [x] app Android nativa (16/11/2026, vedi Registro). [x] documento OpenAPI con gli schemi dei dati, generati dai tipi TypeScript della web UI
    (`scripts/openapi-schemas.sh` → `api/openapi_schemas.json`, tabella route→schemi in `api/openapi_map.rs`, test che
    route e riferimenti esistano), `operationId` dal percorso; `scripts/generate-clients.sh` valida il documento e
    genera i client Kotlin e Swift (openapi-generator 7.12, in `clients/`, non versionato). Restano le app Android/TV
@@ -477,6 +477,35 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-16 — **App Android nativa** (`Android/`, richiesta dell'utente: "completa con tutte le schermate e il player,
+  per telefoni, tablet e Android TV tipo Fire Stick"). Una sola app Kotlin + Jetpack Compose + Media3 (ExoPlayer),
+  minSdk 22 (Fire OS 5), pacchetto `app.platea`. Su TV (leanback/Fire TV/niente touch) barra laterale, focus visibile
+  col telecomando, accesso con Quick Connect come prima scelta; su tablet barra laterale, su telefono barra in basso.
+  Schermate: collegamento al server (prova https, :8096, :8080), server irraggiungibile, login con messaggio, Quick
+  Connect, Home (in scena, continua a guardare, prossimi episodi, aggiunti per libreria, ordine delle preferenze),
+  Librerie, Libreria (ordine, filtri, decennio, qualità, genere, lettere, ricerca, pagine col cursore), generi/studi,
+  Ricerca divisa per libreria, Scheda (film/serie/stagione/episodio/collezione: riprendi/dall'inizio, trailer su
+  YouTube, visto, preferito, playlist, download col DownloadManager, stagioni, episodi mancanti, extra, dettagli
+  tecnici per versione, cast, simili), Persona, Playlist (riproduci tutto, sposta, togli, rinomina, condividi,
+  elimina), Account (preferenze salvate come oggetto intero, home, tema, collega un dispositivo, dispositivi,
+  password, cambia server, esci), Informazioni (profilo del dispositivo).
+  Player (`player/`): attività a sé, orizzontale sui telefoni, immersivo, picture-in-picture, MediaSession. Profilo dal
+  `MediaCodecList` (H.264/HEVC/AV1/VP9 con 10 bit e risoluzione massima) + passthrough AC3/E-AC3/DTS/TrueHD +
+  HDR dello schermo (`data/Profile.kt`). Direct play di MKV/MP4, HLS per remux/transcodifica, sottotitoli WebVTT
+  esterni (a immagine: nuova decisione impressa), audio cambiato nel file in direct play, qualità, capitoli,
+  anteprime trickplay, doppio tocco, D-pad (OK play/pausa, ←/→ salti, barra con punto d'arrivo), tasti media,
+  ripiego automatico sulla transcodifica (errore o traccia non decodificabile), riapertura su 410, avanzamento ogni
+  10 s, stop, episodio/voce successiva con conto alla rovescia, comandi dalla dashboard (WebSocket).
+  Build: `scripts/gradle.sh` (immagine `Android/docker`, JDK 17 + SDK 35). Prove: niente KVM qui, quindi niente
+  emulatore. `scripts/android-test/contract.py` avvia un server di prova separato (porta 18196, solo `./media`),
+  72 controlli sull'API come la usa l'app (anche decisioni: telefono HEVC → direct play, Fire TV vecchio → transcodifica,
+  MKV+AC3 su telefono → remux con AAC) e salva le risposte in `Android/app/src/test/resources/contract/` (token tolti);
+  `ContractTest` le decodifica coi modelli dell'app (6/6, anche in CI). `ScreensTest` (Robolectric + Roborazzi)
+  disegna le schermate vere sulla JVM collegate al server di prova, per telefono, tablet e TV (33/33), immagini in
+  `Android/app/build/screens/`. CI: `.github/workflows/android.yml` (test + APK; con un tag allega platea-X.Y.Z.apk
+  alla release). APK di rilascio ~3,2 MB. **Da provare dall'utente su dispositivi veri** (telefono, Fire TV).
+  Firma: per ora chiave di debug; per aggiornamenti senza disinstallare servono i segreti ANDROID_KEYSTORE_* (vedi
+  il workflow). Amministrazione: resta nella web UI (non nell'app).
 - 2026-11-16 — Versione 0.1.6 (insieme alle voci sotto): Panoramica › Risorse con i grafici di CPU (macchina e
   Platea, cgroup del container compreso FFmpeg), rete del container (inviati/ricevuti), memoria e riproduzioni/
   transcodifiche; ultima ora (ogni 5 s) o 24 ore (media al minuto), solo in memoria (`src/metrics.rs`,

@@ -1,0 +1,45 @@
+{
+ "id": "eb3f869e88d4e907",
+ "username": "admin",
+ "is_admin": true,
+ "device_name": "Pixel di prova",
+ "permissions": {
+  "all_libraries": true,
+  "library_ids": [],
+  "allow_remux": true,
+  "allow_transcode": true,
+  "max_bitrate": null,
+  "max_streams": null,
+  "allow_remote": true,
+  "manage_devices": true,
+  "expires_at": null,
+  "expired": false,
+  "allow_download": true,
+  "block_unrated": false,
+  "access_schedule": [],
+  "within_schedule": true
+ },
+ "avatar": null,
+ "preferences": {
+  "audio_language": "",
+  "subtitle_language": "",
+  "subtitle_mode": "default",
+  "autoplay_next": true,
+  "autoplay_countdown_seconds": 10,
+  "skip_back_seconds": 10,
+  "skip_forward_seconds": 30,
+  "subtitle_size": "m",
+  "subtitle_background": false,
+  "home_sections": [
+   "resume",
+   "next_up",
+   "recent"
+  ],
+  "home_hidden_libraries": [],
+  "hide_played_in_recent": false,
+  "theme": "auto",
+  "remember_tracks": true,
+  "max_bitrate_local": 0,
+  "max_bitrate_remote": 0
+ }
+}

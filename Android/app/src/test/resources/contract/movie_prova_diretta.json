@@ -1,0 +1,91 @@
+{
+ "id": "eb3f869e88d4e907",
+ "library_id": "eb3f869e88d4e907",
+ "kind": "movie",
+ "title": "Prova Diretta",
+ "original_title": null,
+ "year": 2020,
+ "index_number": null,
+ "index_end": null,
+ "parent_index_number": null,
+ "parent_id": null,
+ "series_id": null,
+ "series_title": null,
+ "overview": null,
+ "runtime_ms": 40000,
+ "community_rating": null,
+ "official_rating": null,
+ "premiere_date": null,
+ "end_date": null,
+ "status": null,
+ "available": true,
+ "match_state": "pending",
+ "added_at": 1794861758956,
+ "images": {
+  "poster": null,
+  "poster_color": null,
+  "backdrop": null,
+  "still": null,
+  "logo": null
+ },
+ "user_data": {
+  "position_ms": 0,
+  "played": false,
+  "play_count": 0,
+  "favorite": false,
+  "last_played_at": null
+ },
+ "child_count": null,
+ "unplayed_count": null,
+ "tagline": null,
+ "extras": [],
+ "manual_collection": false,
+ "trailers": [],
+ "genres": [],
+ "studios": [],
+ "people": [],
+ "external_ids": {},
+ "files": [
+  {
+   "id": "eb3f869e88d4e907",
+   "name": "Prova Diretta (2020).mp4",
+   "version_label": null,
+   "container": "mp4",
+   "size": 13757375,
+   "duration_ms": 40000,
+   "bitrate": 2751475,
+   "state": "present",
+   "probe_state": "done",
+   "probe_error": null,
+   "video": [
+    {
+     "index": 0,
+     "codec": "h264",
+     "profile": "high",
+     "level": 31,
+     "bit_depth": 8,
+     "width": 1280,
+     "height": 720,
+     "frame_rate": 25.0,
+     "hdr": null,
+     "bitrate": 2617009
+    }
+   ],
+   "audio": [
+    {
+     "index": 1,
+     "codec": "aac",
+     "channels": 1,
+     "channel_layout": "mono",
+     "bitrate": 128069,
+     "language": null,
+     "title": null,
+     "default": true
+    }
+   ],
+   "subtitles": []
+  }
+ ],
+ "collections": [],
+ "locked_fields": []
+}

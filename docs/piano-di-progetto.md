@@ -905,8 +905,8 @@ Criterio di uscita: obiettivi di prestazione raggiunti e nessun problema di sicu
 ### Fase 6 — App native
 
 - [x] Client API per Kotlin e Swift generati dal documento OpenAPI (`scripts/generate-clients.sh`)
-- [ ] App Android in Kotlin: login, librerie, ricerca, dettaglio, player Media3
-- [ ] Interfaccia da telecomando per Android TV e Fire TV con Fire OS
+- [x] App Android in Kotlin: login, librerie, ricerca, dettaglio, player Media3
+- [x] Interfaccia da telecomando per Android TV e Fire TV con Fire OS
 - [ ] App Apple in Swift con Liquid Glass, da iOS 26.1: iPhone, iPad e Mac
 - [ ] Player Apple: AVPlayer più il motore per i formati che non apre
 - [ ] Profilo dispositivo costruito dai decoder reali di ogni dispositivo
