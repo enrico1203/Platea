@@ -477,6 +477,10 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-16 — Versione 0.1.4: partenza più rapida con i file ricevuti dal server. Il blocco sotto un lettore fermo
+  (FFmpeg che apre un MKV salta a inizio, indice in fondo, punto di ripresa) passa davanti alla lettura anticipata e
+  la sospende finché non arriva; prima aspettava i 4 blocchi già in viaggio a ogni salto. Avviso "il nodo non
+  raggiunge il server" sul nodo solo in debug (il server lo segnala quando cambia).
 - 2026-11-16 — Versione 0.1.3: nodi (parità al nodo, prova di collegamento, lettura a blocchi, push dal server).
 - 2026-11-16 — Nodi: il server prova se il nodo lo raggiunge (`POST /node/v1/probe`, ogni 5 min, 15 s se fallisce) e
   lo mostra nella scheda; un nodo che non lo raggiunge non riceve transcodifiche di file che non ha in copia (prima:

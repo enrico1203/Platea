@@ -90,7 +90,8 @@ pub async fn run(state: Shared, j: Job) {
         }
         let chunk = w.chunk_size.max(1);
         for i in w.chunks {
-            while set.len() >= j.parallel {
+            // Il nodo regola quanti blocchi chiedere (anche gli urgenti oltre il limite): qui solo un tetto di sicurezza.
+            while set.len() >= j.parallel + 4 {
                 if let Some(Ok(Ok(n))) = set.join_next().await {
                     sent += n;
                 }

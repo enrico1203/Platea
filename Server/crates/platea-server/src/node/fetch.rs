@@ -28,6 +28,8 @@ const MIN_FREE: u64 = 10 << 30;
 fn reserve(dir: &std::path::Path) -> u64 {
     crate::sysinfo::disk_bytes(dir).map(|t| (t / 10).min(MIN_FREE)).unwrap_or(MIN_FREE)
 }
+/// Blocchi urgenti (lettori fermi) chiesti insieme oltre il limite dei blocchi in parallelo.
+const URGENT_MAX: usize = 4;
 /// Errori di fila prima di arrendersi (FFmpeg riceve un errore e il server sposta la sessione).
 const MAX_ERRORS: u32 = 12;
 /// Attesa massima di un blocco da parte di FFmpeg.
@@ -262,7 +264,7 @@ impl Fetcher {
                     return Some(PushWants { chunk_size: CHUNK, chunks: vec![], complete: true });
                 }
                 let free = st.parallel.saturating_sub(st.pushed.len());
-                let todo = wanted(&st, &e, free);
+                let todo = wanted(&st, &e, free, true);
                 if !todo.is_empty() {
                     for &i in &todo {
                         st.chunks[i as usize] = Chunk::Fetching;
@@ -373,8 +375,9 @@ impl Fetcher {
                     }
                     (vec![], None)
                 } else {
-                    let free_slots = if tokio::time::Instant::now() < retry_at { 0 } else { st.parallel.saturating_sub(set.len()) };
-                    let todo = wanted(&st, &e, free_slots);
+                    let pause = tokio::time::Instant::now() < retry_at;
+                    let free_slots = if pause { 0 } else { st.parallel.saturating_sub(set.len()) };
+                    let todo = wanted(&st, &e, free_slots, !pause);
                     for &i in &todo {
                         st.chunks[i as usize] = Chunk::Fetching;
                     }
@@ -433,10 +436,10 @@ impl Fetcher {
 }
 
 /// Blocchi da chiedere: prima quelli sotto i lettori, poi la finestra di lettura anticipata (o tutto il file).
-fn wanted(st: &EntryState, e: &Entry, max: usize) -> Vec<u64> {
-    if max == 0 {
-        return vec![];
-    }
+/// I blocchi sotto un lettore (FFmpeg è fermo ad aspettarli) passano sempre, anche oltre `max`: altrimenti ogni salto
+/// nel file (apertura di un MKV: inizio, indice in fondo, punto di ripresa) aspetterebbe i blocchi della lettura
+/// anticipata già in viaggio. `urgent` falso (pausa dopo un errore) = solo entro `max`.
+fn wanted(st: &EntryState, e: &Entry, max: usize, urgent: bool) -> Vec<u64> {
     let n = e.chunks();
     let mut positions: Vec<u64> = st.cursors.values().copied().collect();
     if positions.is_empty() {
@@ -453,9 +456,17 @@ fn wanted(st: &EntryState, e: &Entry, max: usize) -> Vec<u64> {
             out.push(i);
         }
     };
-    // Il blocco che i lettori aspettano adesso viene prima di tutto.
-    for p in &positions {
-        push(p / CHUNK, &mut out);
+    // Il blocco che i lettori aspettano adesso viene prima di tutto (solo lettori veri, non l'ultima posizione).
+    if urgent {
+        for p in st.cursors.values() {
+            if out.len() < URGENT_MAX {
+                push(p / CHUNK, &mut out);
+            }
+        }
+    }
+    // Con un lettore fermo non si aggiunge altra lettura anticipata: la banda va al blocco che serve adesso.
+    if !out.is_empty() {
+        return out;
     }
     for p in &positions {
         let first = p / CHUNK;
@@ -608,16 +619,33 @@ mod tests {
     fn readahead_follows_the_reader() {
         let e = entry(100 * CHUNK, SourceMode::Readahead, 4 * CHUNK);
         let mut st = e.st.lock().unwrap();
-        assert_eq!(wanted(&st, &e, 8), vec![0, 1, 2, 3]);
-        // Salto avanti: il blocco del salto per primo, poi la finestra da lì; niente da prima.
+        assert_eq!(wanted(&st, &e, 8, true), vec![0, 1, 2, 3]);
+        // Salto avanti: il blocco sotto il lettore da solo (urgente), poi la finestra da lì; niente da prima.
         st.cursors.insert(1, 50 * CHUNK + 10);
-        assert_eq!(wanted(&st, &e, 8), vec![50, 51, 52, 53]);
+        assert_eq!(wanted(&st, &e, 8, true), vec![50]);
         st.chunks[50] = Chunk::Ready;
+        assert_eq!(wanted(&st, &e, 8, true), vec![51, 52, 53]);
         st.chunks[51] = Chunk::Fetching;
-        assert_eq!(wanted(&st, &e, 2), vec![52, 53]);
+        assert_eq!(wanted(&st, &e, 1, true), vec![52]);
         // Fine del file: la finestra si ferma lì.
         st.cursors.insert(1, 99 * CHUNK);
-        assert_eq!(wanted(&st, &e, 8), vec![99]);
+        assert_eq!(wanted(&st, &e, 8, true), vec![99]);
+    }
+
+    #[test]
+    fn blocked_reader_jumps_the_queue() {
+        let e = entry(100 * CHUNK, SourceMode::Readahead, 8 * CHUNK);
+        let mut st = e.st.lock().unwrap();
+        // Tutti gli slot occupati dalla lettura anticipata: il blocco di un lettore fermo passa lo stesso.
+        st.cursors.insert(1, 90 * CHUNK);
+        assert_eq!(wanted(&st, &e, 0, true), vec![90]);
+        // In pausa dopo un errore no.
+        assert_eq!(wanted(&st, &e, 0, false), Vec::<u64>::new());
+        // Due lettori fermi (inizio del file e indice in fondo): tutti e due subito.
+        st.cursors.insert(2, 0);
+        let mut w = wanted(&st, &e, 0, true);
+        w.sort_unstable();
+        assert_eq!(w, vec![0, 90]);
     }
 
     #[test]
@@ -625,7 +653,8 @@ mod tests {
         let e = entry(6 * CHUNK + 1, SourceMode::Full, 0);
         let mut st = e.st.lock().unwrap();
         st.cursors.insert(1, 4 * CHUNK);
-        assert_eq!(wanted(&st, &e, 10), vec![4, 5, 6, 0, 1, 2, 3]);
-        assert_eq!(wanted(&st, &e, 0), Vec::<u64>::new());
+        st.chunks[4] = Chunk::Ready;
+        assert_eq!(wanted(&st, &e, 10, true), vec![5, 6, 0, 1, 2, 3]);
+        assert_eq!(wanted(&st, &e, 0, true), Vec::<u64>::new());
     }
 }

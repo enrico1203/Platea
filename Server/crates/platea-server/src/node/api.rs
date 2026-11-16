@@ -141,7 +141,8 @@ async fn probe(Json(req): Json<ProbeReq>) -> ApiResult<Json<ProbeReply>> {
         },
     };
     if let Some(e) = &error {
-        tracing::warn!(url = %base, error = %e, "il nodo non raggiunge il server");
+        // Lo segnala il server quando cambia: qui ogni 15 s riempirebbe il log del nodo.
+        tracing::debug!(url = %base, error = %e, "il nodo non raggiunge il server");
     }
     Ok(Json(ProbeReply { ok: error.is_none(), error, ms }))
 }
