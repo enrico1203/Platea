@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { JobProgress } from "../../components/JobProgress";
+import { LineChart } from "../../components/LineChart";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronUp, Square, MessageSquare, Play as PlayIcon, Pause as PauseIcon } from "lucide-react";
@@ -124,6 +125,57 @@ export function SessionRow({ s, fetchedAt, onStop }: { s: SessionView; fetchedAt
   );
 }
 
+interface MetricSample { t: number; cpu_host: number; cpu_app: number; rx_bps: number; tx_bps: number; mem_host: number; mem_app: number; streams: number; transcodes: number }
+interface Metrics { range: "1h" | "24h"; interval_ms: number; cpus: number; memory_total: number | null; samples: MetricSample[] }
+
+/** Grafici delle risorse: CPU, rete, memoria e riproduzioni, ultima ora (ogni 5 s) o ultime 24 ore (al minuto). */
+function Resources() {
+  const { t, tag, bytes, num } = useI18n();
+  const [range, setRange] = useState<"1h" | "24h">("1h");
+  const { data } = useQuery({
+    queryKey: ["admin", "metrics", range],
+    queryFn: () => api<Metrics>(`/api/v1/admin/metrics?range=${range}`),
+    refetchInterval: range === "1h" ? 5_000 : 60_000,
+  });
+  const fmtTime = new Intl.DateTimeFormat(tag, { hour: "2-digit", minute: "2-digit" });
+  const rate = (bps: number) => {
+    const nf = (d: number) => new Intl.NumberFormat(tag, { maximumFractionDigits: d });
+    if (bps >= 1e9) return `${nf(1).format(bps / 1e9)} Gb/s`;
+    if (bps >= 1e6) return `${nf(bps >= 1e7 ? 0 : 1).format(bps / 1e6)} Mb/s`;
+    if (bps >= 1e3) return `${nf(0).format(bps / 1e3)} kb/s`;
+    return "0";
+  };
+  const pct = (v: number) => `${num(v, v > 0 && v < 10 ? 1 : 0)}%`;
+  const smp = data?.samples ?? [];
+  const times = smp.map((x) => x.t);
+  const common = { times, timeLabel: (ms: number) => fmtTime.format(new Date(ms)), gapMs: (data?.interval_ms ?? 5000) * 3 };
+  return (
+    <section className="pl-panel panel-pad stack">
+      <div className="row" style={{ justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+        <span className="pl-eyebrow">{t("admin.overview.metrics.title")}</span>
+        <div className="row" style={{ gap: 6 }} role="group" aria-label={t("admin.overview.metrics.range")}>
+          {(["1h", "24h"] as const).map((r) => (
+            <button key={r} className={`chip chip--plain${range === r ? " on" : ""}`} aria-pressed={range === r} onClick={() => setRange(r)}>{t(`admin.overview.metrics.r${r}` as MessageKey)}</button>
+          ))}
+        </div>
+      </div>
+      {smp.length < 2 ? <Empty>{t("admin.overview.metrics.collecting")}</Empty> : (
+        <div className="charts">
+          <LineChart {...common} title={t("admin.overview.metrics.cpu", { cpus: data!.cpus })} max={100} format={pct}
+            series={[{ name: t("admin.overview.metrics.machine"), values: smp.map((x) => x.cpu_host), color: 1 }, { name: "Platea", values: smp.map((x) => x.cpu_app), color: 2 }]} />
+          <LineChart {...common} title={t("admin.overview.metrics.network")} format={rate}
+            series={[{ name: t("admin.overview.metrics.sent"), values: smp.map((x) => x.tx_bps), color: 1 }, { name: t("admin.overview.metrics.received"), values: smp.map((x) => x.rx_bps), color: 2 }]} />
+          <LineChart {...common} title={t("admin.overview.metrics.memory", { total: bytes(data!.memory_total) })} max={data!.memory_total ?? undefined} format={(v) => (v ? bytes(v) : "0")}
+            series={[{ name: t("admin.overview.metrics.machine"), values: smp.map((x) => x.mem_host), color: 1 }, { name: "Platea", values: smp.map((x) => x.mem_app), color: 2 }]} />
+          <LineChart {...common} title={t("admin.overview.metrics.playback")} integer format={(v) => num(v)}
+            series={[{ name: t("admin.overview.metrics.streams"), values: smp.map((x) => x.streams), color: 1 }, { name: t("admin.overview.metrics.transcodes"), values: smp.map((x) => x.transcodes), color: 2 }]} />
+        </div>
+      )}
+      <span className="t-small subtle">{t("admin.overview.metrics.note")}</span>
+    </section>
+  );
+}
+
 export default function Overview() {
   const { t, num, bytes, bitrate, duration } = useI18n();
   const qc = useQueryClient();
@@ -152,6 +204,7 @@ export default function Overview() {
         <div className="stat"><span className="pl-eyebrow">{t("admin.overview.memory")}</span><span className="t-numeral">{bytes(s.memory_rss_bytes)}</span><span className="t-small subtle">{t("admin.overview.load", { load: s.load_1m != null ? num(s.load_1m, 2) : "—", cpus: s.cpus })} · {t("admin.overview.uptime", { time: duration(s.uptime_ms) })}</span></div>
         <div className="stat"><span className="pl-eyebrow">{t("admin.overview.library")}</span><span className="t-numeral">{num(data.library.files)}</span><span className="t-small subtle">{t("admin.overview.librarySplit", { m: data.library.movies, s: data.library.series, e: data.library.episodes })}</span>{data.library.review > 0 && <Link to="/admin/review" className="t-small">{t("admin.overview.toReview", { count: data.library.review })}</Link>}</div>
       </div>
+      <Resources />
       <section><JobProgress hideEmpty /></section>
       <section>
         <div className="pl-panel">

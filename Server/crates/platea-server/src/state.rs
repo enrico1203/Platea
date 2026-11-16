@@ -31,6 +31,8 @@ pub struct AppState {
     pub sessions: SessionManager,
     /// Nodi: registro, stato dal vivo, scelta di esecutori e copie.
     pub nodes: crate::nodes::NodeManager,
+    /// Storico delle risorse per i grafici della Panoramica.
+    pub metrics: crate::metrics::Metrics,
     pub tmdb: Tmdb,
     pub server_id: String,
     /// Codice di primo avvio: presente finché la procedura guidata non crea l'amministratore.

@@ -477,6 +477,12 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-16 — Versione 0.1.6 (insieme alle voci sotto): Panoramica › Risorse con i grafici di CPU (macchina e
+  Platea, cgroup del container compreso FFmpeg), rete del container (inviati/ricevuti), memoria e riproduzioni/
+  transcodifiche; ultima ora (ogni 5 s) o 24 ore (media al minuto), solo in memoria (`src/metrics.rs`,
+  `GET /api/v1/admin/metrics`, componente `LineChart`, colori validati per daltonismo). Attività: 50 righe per pagina,
+  ricerca per testo e filtro per utente in Riproduzioni e Registro (`page`, `q`, `user_id`). Pagina della persona
+  divisa per libreria come la ricerca.
 - 2026-11-16 — Versione 0.1.6: nella scheda del nodo, se il nodo non raggiunge il server ma i file glieli manda il
   server (modalità automatica o "il server manda"), niente più rosso: "File da transcodificare · Li manda il server"
   con una nota. Rosso solo con "Il nodo legge dal server". Stesso criterio nella prova di velocità e nel log (INFO).

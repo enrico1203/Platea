@@ -18,6 +18,7 @@ mod jobs;
 mod logs;
 mod maintenance;
 mod metadata;
+mod metrics;
 mod mkv;
 mod mp4;
 mod net;
@@ -158,6 +159,7 @@ async fn run(boot: boot::BootConfig) -> anyhow::Result<()> {
         ffmpeg,
         sessions: Default::default(),
         nodes: Default::default(),
+        metrics: Default::default(),
         server_id,
         setup_code: Mutex::new(None),
         image_downloads: Semaphore::new(4),
@@ -189,6 +191,7 @@ async fn run(boot: boot::BootConfig) -> anyhow::Result<()> {
     state.nodes.reload(&state.db).await?;
     tokio::spawn(sessions::run_maintenance(state.clone()));
     tokio::spawn(nodes::run_health(state.clone()));
+    tokio::spawn(metrics::run(state.clone()));
     tokio::spawn(watch::run(state.clone()));
     // Prova delle GPU in sottofondo: l'API è pronta subito.
     {

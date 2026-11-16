@@ -517,3 +517,40 @@ a.person:focus-visible .person__img { outline: 2px solid var(--focus); outline-o
 @media (max-width: 600px) {
   .node-folder { grid-template-columns: 1fr; }
 }
+
+/* Grafici (Panoramica › Risorse). Colori: palette categoriale validata (CVD) per tema scuro e chiaro. */
+:root, [data-theme="dark"] { --chart-1: #3987e5; --chart-2: #d95926; }
+[data-theme="light"] { --chart-1: #2a78d6; --chart-2: #eb6834; }
+.charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: var(--space-5); }
+.chart { margin: 0; min-width: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.chart__head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px var(--space-3); align-items: baseline; }
+.chart__title { font: 600 14px/20px var(--font-sans); color: var(--ink); }
+.chart__legend { display: flex; flex-wrap: wrap; gap: 4px var(--space-3); font-size: 13px; color: var(--ink-muted); }
+.chart__legend strong, .chart__tip strong { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.chart__key { display: inline-flex; align-items: center; gap: 6px; }
+.chart__swatch { width: 10px; height: 3px; border-radius: 2px; display: inline-block; flex: none; }
+.chart__swatch--1 { background: var(--chart-1); }
+.chart__swatch--2 { background: var(--chart-2); }
+.chart__plot { position: relative; width: 100%; min-width: 0; }
+.chart__plot svg { display: block; overflow: visible; touch-action: pan-y; }
+.chart__grid { stroke: var(--line); stroke-width: 1; }
+.chart__axis { fill: var(--ink-subtle); font: 11px var(--font-sans); font-variant-numeric: tabular-nums; }
+.chart__line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart__line--1 { stroke: var(--chart-1); }
+.chart__line--2 { stroke: var(--chart-2); }
+.chart__cross { stroke: var(--line-control); stroke-width: 1; stroke-dasharray: 3 3; }
+.chart__dot { stroke: var(--surface-1); stroke-width: 2; }
+.chart__dot--1 { fill: var(--chart-1); }
+.chart__dot--2 { fill: var(--chart-2); }
+.chart__tip { position: absolute; top: 0; width: 168px; box-sizing: border-box; pointer-events: none; background: var(--surface-2); border-radius: var(--radius-sm); box-shadow: var(--shadow-pop); padding: 6px 10px; font-size: 12px; color: var(--ink-muted); display: flex; flex-direction: column; gap: 2px; }
+.chart__tip-time { color: var(--ink); font-weight: 600; }
+.chart__tip-row { display: flex; align-items: center; gap: 6px; }
+.chart__tip-row strong { margin-left: auto; }
+.chip--plain { text-transform: none; }
+
+/* Attività: filtri e pagine. */
+.activity-filters { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: var(--space-3); align-items: end; }
+@media (max-width: 640px) { .activity-filters { grid-template-columns: 1fr; } }
+.pager { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.list-row .spacer { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 900px) { .pager { padding-bottom: 56px; } }

@@ -19,6 +19,7 @@ use serde_json::{json, Value};
 
 pub fn routes(api: Api) -> Api {
     api.get("/api/v1/admin/overview", "Amministrazione", Access::Admin, "Riproduzioni attive, risorse, lavori, avvisi", overview)
+        .get("/api/v1/admin/metrics", "Amministrazione", Access::Admin, "Storico di CPU, rete, memoria e riproduzioni (1h o 24h)", metrics)
         .get("/api/v1/admin/sessions", "Amministrazione", Access::Admin, "Riproduzioni attive con metodo e motivo", sessions)
         .delete("/api/v1/admin/sessions/{id}", "Amministrazione", Access::Admin, "Interrompe una riproduzione", kill_session)
         .post(
@@ -526,40 +527,102 @@ async fn match_pending(State(state): State<Shared>, _a: AdminUser) -> ApiResult<
 #[serde(default)]
 struct PageQuery {
     limit: Option<i64>,
+    /// Vecchio scorrimento: righe con id minore di questo.
     before: Option<i64>,
+    /// Pagina (da 1). Con `page` la risposta ha anche `total`.
+    page: Option<i64>,
+    /// Testo da cercare (messaggio dell'attività; titolo, client o dispositivo dello storico).
+    q: Option<String>,
+    /// Utente (id pubblico, come in `/api/v1/users`).
+    user_id: Option<String>,
+}
+
+impl PageQuery {
+    fn like(&self) -> Option<String> {
+        let q = self.q.as_deref().map(str::trim).filter(|q| !q.is_empty())?;
+        let esc = q.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+        Some(format!("%{esc}%"))
+    }
+
+    /// Id interno dell'utente cercato; un id non valido non trova niente.
+    fn user(&self, state: &Shared) -> Option<i64> {
+        let u = self.user_id.as_deref().filter(|u| !u.is_empty())?;
+        Some(state.ids.decode(u).unwrap_or(-1))
+    }
+
+    fn offset(&self, limit: i64) -> i64 {
+        (self.page.unwrap_or(1).max(1) - 1) * limit
+    }
 }
 
 async fn activity(State(state): State<Shared>, _a: AdminUser, Query(q): Query<PageQuery>) -> ApiResult<Json<Value>> {
-    let limit = clamp_limit(q.limit, 100);
+    let limit = clamp_limit(q.limit, 50);
+    let like = q.like();
+    let user = q.user(&state);
+    let filter = "a.id < ?1 AND (?2 IS NULL OR a.message LIKE ?2 ESCAPE '\\' OR a.kind LIKE ?2 ESCAPE '\\' OR a.ip LIKE ?2 ESCAPE '\\')
+         AND (?3 IS NULL OR a.user_id = ?3)";
     let rows: Vec<(i64, i64, Option<i64>, String, String, Option<String>, Option<String>)> = sqlx::query_as(&format!(
         "SELECT a.id, a.at, a.user_id, a.kind, a.message, a.ip, u.username FROM activity_log a LEFT JOIN users u ON u.id = a.user_id
-         WHERE a.id < ? ORDER BY a.id DESC LIMIT {limit}"
+         WHERE {filter} ORDER BY a.id DESC LIMIT {limit} OFFSET {}",
+        q.offset(limit)
     ))
     .bind(q.before.unwrap_or(i64::MAX))
+    .bind(&like)
+    .bind(user)
     .fetch_all(&state.db.read)
     .await?;
-    Ok(Json(
-        json!({ "items": rows.into_iter().map(|(id, at, _uid, kind, msg, ip, user)| json!({ "id": id, "at": at, "kind": kind, "message": msg, "ip": ip, "user": user })).collect::<Vec<_>>() }),
-    ))
+    let total: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM activity_log a WHERE {filter}"))
+        .bind(q.before.unwrap_or(i64::MAX))
+        .bind(&like)
+        .bind(user)
+        .fetch_one(&state.db.read)
+        .await?;
+    Ok(Json(json!({
+        "items": rows.into_iter().map(|(id, at, uid, kind, msg, ip, user)| json!({ "id": id, "at": at, "kind": kind, "message": msg, "ip": ip, "user": user, "user_id": uid.map(|u| state.ids.encode(u)) })).collect::<Vec<_>>(),
+        "total": total,
+        "page": q.page.unwrap_or(1).max(1),
+        "limit": limit,
+    })))
 }
 
 async fn history(State(state): State<Shared>, _a: AdminUser, Query(q): Query<PageQuery>) -> ApiResult<Json<Value>> {
-    let limit = clamp_limit(q.limit, 100);
-    let rows: Vec<(i64, Option<String>, Option<String>, Option<String>, Option<String>, String, Option<String>, i64, Option<i64>, i64)> =
+    let limit = clamp_limit(q.limit, 50);
+    let like = q.like();
+    let user = q.user(&state);
+    let filter = "h.id < ?1 AND (?2 IS NULL OR i.title LIKE ?2 ESCAPE '\\' OR h.client LIKE ?2 ESCAPE '\\' OR h.device_name LIKE ?2 ESCAPE '\\'
+         OR EXISTS (SELECT 1 FROM items s WHERE s.id = i.parent_id AND (s.title LIKE ?2 ESCAPE '\\' OR EXISTS (SELECT 1 FROM items r WHERE r.id = s.parent_id AND r.title LIKE ?2 ESCAPE '\\'))))
+         AND (?3 IS NULL OR h.user_id = ?3)";
+    let rows: Vec<(i64, Option<String>, Option<String>, Option<String>, Option<String>, String, Option<String>, i64, Option<i64>, i64, Option<i64>)> =
         sqlx::query_as(&format!(
-            "SELECT h.id, u.username, i.title, h.client, h.device_name, h.method, h.reason, h.started_at, h.ended_at, h.watched_ms
+            "SELECT h.id, u.username, i.title, h.client, h.device_name, h.method, h.reason, h.started_at, h.ended_at, h.watched_ms, h.item_id
          FROM playback_history h LEFT JOIN users u ON u.id = h.user_id LEFT JOIN items i ON i.id = h.item_id
-         WHERE h.id < ? ORDER BY h.id DESC LIMIT {limit}"
+         WHERE {filter} ORDER BY h.id DESC LIMIT {limit} OFFSET {}",
+            q.offset(limit)
         ))
         .bind(q.before.unwrap_or(i64::MAX))
+        .bind(&like)
+        .bind(user)
         .fetch_all(&state.db.read)
+        .await?;
+    let total: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM playback_history h LEFT JOIN items i ON i.id = h.item_id WHERE {filter}"))
+        .bind(q.before.unwrap_or(i64::MAX))
+        .bind(&like)
+        .bind(user)
+        .fetch_one(&state.db.read)
         .await?;
     let stats: Vec<(String, i64)> = sqlx::query_as("SELECT method, COUNT(*) FROM playback_history WHERE started_at > ? GROUP BY method")
         .bind(now_ms() - 30 * 86_400_000)
         .fetch_all(&state.db.read)
         .await?;
+    let out: Vec<Value> = rows
+        .into_iter()
+        .map(|(id, u, t, c, d, m, r, st, e, w, item)| json!({ "id": id, "user": u, "title": t, "client": c, "device_name": d, "method": m, "reasons": r.map(|x| x.split(',').map(String::from).collect::<Vec<_>>()).unwrap_or_default(), "started_at": st, "ended_at": e, "watched_ms": w, "item_id": item }))
+        .collect();
     Ok(Json(json!({
-        "items": rows.into_iter().map(|(id, u, t, c, d, m, r, s, e, w)| json!({ "id": id, "user": u, "title": t, "client": c, "device_name": d, "method": m, "reasons": r.map(|x| x.split(',').map(String::from).collect::<Vec<_>>()).unwrap_or_default(), "started_at": s, "ended_at": e, "watched_ms": w })).collect::<Vec<_>>(),
+        "items": out,
+        "total": total,
+        "page": q.page.unwrap_or(1).max(1),
+        "limit": limit,
         "last_30_days": stats.into_iter().collect::<std::collections::HashMap<_, _>>(),
     })))
 }
@@ -834,4 +897,23 @@ async fn jobs_progress(State(state): State<Shared>, _a: AdminUser) -> ApiResult<
         })
         .collect();
     Ok(Json(json!({ "scans": scans, "queues": queues, "paused_until": state.jobs.paused_until() })))
+}
+
+#[derive(Deserialize)]
+struct MetricsQuery {
+    range: Option<String>,
+}
+
+/// Storico delle risorse: `range=1h` (un campione ogni 5 s, predefinito) o `range=24h` (media di ogni minuto).
+async fn metrics(State(state): State<Shared>, _a: AdminUser, Query(q): Query<MetricsQuery>) -> ApiResult<Json<Value>> {
+    let long = q.range.as_deref() == Some("24h");
+    let (total, _) = crate::sysinfo::meminfo();
+    Ok(Json(json!({
+        "range": if long { "24h" } else { "1h" },
+        "interval_ms": if long { crate::metrics::COARSE_MS } else { crate::metrics::FINE_MS },
+        "cpus": crate::metrics::host_cpus(),
+        "memory_total": total,
+        "now": now_ms(),
+        "samples": state.metrics.series(long),
+    })))
 }
