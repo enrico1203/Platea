@@ -477,6 +477,9 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-16 — Versione 0.1.5: prova di velocità tra server e nodo (pulsante Velocità nella scheda del nodo).
+  Tre misure da 5 s con dati casuali: server → nodo, nodo → server, il nodo legge dal server (token monouso su
+  `/api/v1/node-speed/`), più la latenza. Ultimo risultato nella scheda. Prova end-to-end: 84/84.
 - 2026-11-16 — Versione 0.1.4: partenza più rapida con i file ricevuti dal server. Il blocco sotto un lettore fermo
   (FFmpeg che apre un MKV salta a inizio, indice in fondo, punto di ripresa) passa davanti alla lettura anticipata e
   la sospende finché non arriva; prima aspettava i 4 blocchi già in viaggio a ogni salto. Avviso "il nodo non

@@ -24,12 +24,14 @@ pub fn routes(api: Api) -> Api {
         .patch("/api/v1/admin/nodes/{id}", "Nodi", Access::Admin, "Modifica un nodo (ruoli, bilanciamento, regole, GPU)", update)
         .delete("/api/v1/admin/nodes/{id}", "Nodi", Access::Admin, "Elimina un nodo", remove)
         .post("/api/v1/admin/nodes/{id}/check", "Nodi", Access::Admin, "Prova subito il collegamento", check)
+        .post("/api/v1/admin/nodes/{id}/speed-test", "Nodi", Access::Admin, "Prova di velocità tra server e nodo (circa 15 secondi)", speed_test)
         .post("/api/v1/admin/nodes/{id}/hw-test", "Nodi", Access::Admin, "Prova le GPU del nodo", hw_test)
         .get("/api/v1/admin/nodes/{id}/logs", "Nodi", Access::Admin, "Ultime righe del log del nodo", logs)
         .post("/api/v1/admin/nodes/{id}/restart", "Nodi", Access::Admin, "Riavvia il nodo", restart)
         .post("/api/v1/admin/nodes/{id}/stop-sessions", "Nodi", Access::Admin, "Ferma le riproduzioni servite dal nodo", stop_sessions)
         .get("/api/v1/admin/nodes/{id}/browse", "Nodi", Access::Admin, "Sfoglia le cartelle del nodo", browse)
         .put("/api/v1/admin/nodes/{id}/paths", "Nodi", Access::Admin, "Cartelle delle librerie in copia sul nodo (con verifica)", set_paths)
+        .get("/api/v1/node-speed/{token}", "Nodi", Access::Public, "Dati casuali per la prova di velocità di un nodo (token monouso)", speed_source)
         .get("/api/v1/node-source/{token}", "Nodi", Access::Public, "File letto da un nodo che transcodifica (token della sessione)", source)
 }
 
@@ -105,6 +107,7 @@ async fn view(state: &Shared, r: &NodeRow) -> ApiResult<Value> {
         "active_streams": cdn.get(&r.id).copied().unwrap_or(0),
         "server_url": server_base,
         "server_reach": if r.is_local { None } else { live.reach.clone() },
+        "speed": live.speed,
         "paths": paths.into_iter().map(|(lp, p, at, err)| json!({ "library_path_id": lp, "node_path": p, "verified_at": at, "verify_error": err })).collect::<Vec<_>>(),
     }))
 }
@@ -361,6 +364,29 @@ async fn hw_test(State(state): State<Shared>, _a: AdminUser, Path(id): Path<i64>
         crate::nodes::store_status(&state, r.id, st);
     }
     Ok(Json(view(&state, &r).await?))
+}
+
+async fn speed_test(State(state): State<Shared>, _a: AdminUser, Path(id): Path<i64>) -> ApiResult<Json<Value>> {
+    let r = remote(&state, id)?;
+    if !state.nodes.online(r.id) {
+        return Err(ApiError::coded(StatusCode::CONFLICT, "NodeUnavailable", "Il nodo non è online"));
+    }
+    let res = crate::nodes::speed::run(&state, &r)
+        .await
+        .ok_or_else(|| ApiError::coded(StatusCode::CONFLICT, "SpeedTestRunning", "C'è già una prova di velocità in corso su questo nodo"))?;
+    Ok(Json(json!({ "result": res, "node": view(&state, &r).await? })))
+}
+
+/// Dati casuali per la prova "il nodo legge dal server". Il token vale una volta e per poco.
+async fn speed_source(Path(token): Path<String>) -> ApiResult<Response> {
+    if !crate::nodes::speed::take_token(&token) {
+        return Err(ApiError::Unauthorized);
+    }
+    Ok(Response::builder()
+        .header(axum::http::header::CONTENT_TYPE, "application/octet-stream")
+        .header(axum::http::header::CACHE_CONTROL, "no-store")
+        .body(axum::body::Body::from_stream(crate::nodes::speed::timed(std::time::Duration::from_secs(crate::nodes::speed::SECONDS + 5))))
+        .unwrap())
 }
 
 #[derive(Deserialize)]

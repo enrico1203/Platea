@@ -111,6 +111,28 @@ impl NodeClient {
             .map(|_| ())
     }
 
+    pub async fn health(&self) -> Result<(), NodeCallError> {
+        Self::check(self.req(reqwest::Method::GET, "/node/v1/health", Duration::from_secs(5)).send().await).await.map(|_| ())
+    }
+
+    /// Prova di velocità server → nodo: il server manda dati per `dur`, il nodo misura.
+    pub async fn speed_sink(&self, dur: Duration) -> Result<super::speed::Measure, NodeCallError> {
+        let body = reqwest::Body::wrap_stream(super::speed::timed(dur));
+        Self::json(self.req(reqwest::Method::POST, "/node/v1/speed/sink", dur + Duration::from_secs(20)).body(body).send().await).await
+    }
+
+    /// Prova di velocità nodo → server: dati casuali dal nodo (si legge solo per il tempo della misura).
+    pub async fn speed_source(&self, bytes: u64) -> Result<reqwest::Response, NodeCallError> {
+        let timeout = Duration::from_secs(super::speed::SECONDS + 20);
+        Self::check(self.req(reqwest::Method::GET, &format!("/node/v1/speed/source?bytes={bytes}"), timeout).send().await).await
+    }
+
+    /// Il nodo scarica dal server a `req.url` e dice quanto ha ricevuto.
+    pub async fn speed_pull(&self, req: &super::speed::PullReq) -> Result<super::speed::Measure, NodeCallError> {
+        let timeout = Duration::from_secs(req.seconds + 30);
+        Self::json(self.req(reqwest::Method::POST, "/node/v1/speed/pull", timeout).json(req).send().await).await
+    }
+
     pub async fn push_config(&self, c: &PushConfig) -> Result<(), NodeCallError> {
         Self::check(self.req(reqwest::Method::PUT, "/node/v1/config", Duration::from_secs(5)).json(c).send().await).await.map(|_| ())
     }

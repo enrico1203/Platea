@@ -266,6 +266,25 @@ def main():
     st, r, _ = api.get(f"/api/v1/admin/nodes/{node_by_name(api, 'due')['id']}/browse?path=/etc")
     check("sfoglia fuori dalle radici rifiutato", st != 200, r)
 
+    # --- prova di velocità
+    print("== prova di velocità", flush=True)
+    nid1 = node_by_name(api, "uno")["id"]
+    t0 = time.time()
+    st, r, _ = api.post(f"/api/v1/admin/nodes/{nid1}/speed-test")
+    took = time.time() - t0
+    sp = (r or {}).get("result") or {}
+    ok_dir = lambda d: bool(d) and d.get("error") is None and (d.get("mbps") or 0) > 1 and d.get("bytes", 0) > 0
+    print(f"   velocità: {sp.get('to_node', {}).get('mbps')} / {sp.get('from_node', {}).get('mbps')} / {(sp.get('node_reads') or {}).get('mbps')} Mbit/s, latenza {sp.get('latency_ms')} ms, {took:.1f} s", flush=True)
+    check("velocità server → nodo", st == 200 and ok_dir(sp.get("to_node")), sp.get("to_node"))
+    check("velocità nodo → server", st == 200 and ok_dir(sp.get("from_node")), sp.get("from_node"))
+    check("velocità del nodo che legge dal server", st == 200 and ok_dir(sp.get("node_reads")) and sp.get("server_url", "").endswith(":8096"), sp.get("node_reads"))
+    check(f"prova di velocità in tempo ({took:.1f} s)", took < 30 and sp.get("latency_ms") is not None, took)
+    check("ultima prova nella scheda del nodo", (node_by_name(api, "uno").get("speed") or {}).get("at") == sp.get("at"), node_by_name(api, "uno").get("speed"))
+    st, _, _ = api.get("/api/v1/node-speed/inventato")
+    check("dati della prova solo con token", st == 401, st)
+    st, r, _ = api.post(f"/api/v1/admin/nodes/{node_by_name(api, 'local')['id']}/speed-test")
+    check("niente prova di velocità su questo server", st != 200, (st, r))
+
     # --- pesi: server di riserva (priorità 2), uno 90, due 10, senza preferenza per la copia locale
     print("== bilanciamento", flush=True)
     api.req("PUT", "/api/v1/admin/settings/nodes", {"prefer_local_copy": False})
@@ -355,6 +374,9 @@ def main():
     reach = r.get("server_reach") or {}
     check("prova: il nodo non raggiunge un indirizzo sbagliato", st == 200 and reach.get("ok") is False and reach.get("error"), reach)
     check("il server lo segnala nei log", "il nodo non raggiunge il server" in logs_of(SRV), "")
+    st, r, _ = api.post(f"/api/v1/admin/nodes/{node_by_name(api, 'uno')['id']}/speed-test")
+    nr = ((r or {}).get("result") or {}).get("node_reads") or {}
+    check("prova di velocità: lettura dal server a un indirizzo sbagliato segnalata", st == 200 and nr.get("error") and ((r["result"].get("from_node") or {}).get("mbps") or 0) > 0, r and r.get("result"))
     # "Il nodo legge dal server": escluso subito invece di fallire dopo l'avvio.
     patch_node(api, "uno", {"config": {**cfg1, "source_transport": "pull"}})
     wait(lambda: node_by_name(api, "uno")["config_synced"], 20, what="config pull")

@@ -166,6 +166,8 @@ In Administration › Nodes › Add node, enter a name, the node address (for ex
 
 For a GPU node, press GPU test › Test now on its card. It encodes and decodes real video and shows what works. The GPU backend, device, limits and preset of the node are set in its Edit dialog and sent to the node automatically.
 
+To check the link, press Speed on the card. In about 15 seconds it measures server → node, node → server and the node reading from the server address, in Mbit/s. A 4K remux needs roughly 80–100 Mbit/s.
+
 The node reads files from the server at the address it sees the server coming from, on port 8096. If that's not reachable (another port, a reverse proxy), set it in Settings › Nodes › Server address for nodes, for example `http://100.64.0.1:8096`.
 
 #### 3. Folder copies (optional)

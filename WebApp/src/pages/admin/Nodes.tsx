@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, RefreshCw, FlaskConical, ScrollText, Power, Square, PauseCircle, PlayCircle, FolderOpen, ChevronLeft } from "lucide-react";
+import { Plus, Pencil, Trash2, RefreshCw, FlaskConical, ScrollText, Power, Square, PauseCircle, PlayCircle, FolderOpen, ChevronLeft, Gauge } from "lucide-react";
 import { api, ApiError } from "../../api/client";
 import { Alert, Badge, Confirm, Dialog, Empty, SelectField, Switch, TextField, toast } from "../../components/ui";
 import { CapsMatrix, type Capabilities } from "../../components/CapsMatrix";
@@ -19,13 +19,15 @@ interface NodeStatus {
   peer_ip: string | null; media_roots: string[]; uptime_ms: number;
 }
 interface ServerReach { url: string; ok: boolean | null; error: string | null; ms: number; checked_at: number }
+interface SpeedDir { mbps: number | null; bytes: number; ms: number; error: string | null }
+interface SpeedResult { at: number; latency_ms: number | null; to_node: SpeedDir; from_node: SpeedDir; node_reads: SpeedDir | null; server_url: string | null }
 interface NodePath { library_path_id: number; node_path: string; verified_at: number | null; verify_error: string | null }
 interface NodeView {
   id: number; name: string; is_local: boolean; url: string; key_set: boolean; enabled: boolean; draining: boolean;
   role_transcode: boolean; role_cdn: boolean; tc_priority: number; tc_weight: number; tc_max_sessions: number; rules: Rules;
   cdn_priority: number; cdn_weight: number; cdn_max_streams: number; config: NodeConfig; public_url: string;
   health: Health; last_error: string | null; last_ok: number | null; latency_ms: number; breaker_until: number | null; config_synced: boolean;
-  status: NodeStatus | null; active_transcodes: number; active_streams: number; server_url: string | null; server_reach: ServerReach | null; paths: NodePath[];
+  status: NodeStatus | null; active_transcodes: number; active_streams: number; server_url: string | null; server_reach: ServerReach | null; speed?: SpeedResult | null; paths: NodePath[];
 }
 interface LibraryPath { id: number; library_id: number; library: string; path: string }
 interface NodesData { nodes: NodeView[]; library_paths: LibraryPath[]; libraries: { id: number; name: string }[]; protocol: number }
@@ -58,6 +60,7 @@ function NodeCard({ n, data, onEdit, onChanged }: { n: NodeView; data: NodesData
   const [err, setErr] = useState<string | null>(null);
   const [caps, setCaps] = useState(false);
   const [logs, setLogs] = useState(false);
+  const [speed, setSpeed] = useState(false);
   const [confirm, setConfirm] = useState<null | "delete" | "restart" | "stop">(null);
   const st = n.status;
   const act = async (key: string, fn: () => Promise<unknown>, okMsg?: string) => {
@@ -108,6 +111,7 @@ function NodeCard({ n, data, onEdit, onChanged }: { n: NodeView; data: NodesData
           </span>
           {n.server_reach?.url === n.server_url && n.server_reach.ok === false && <span className="t-small">{t("admin.nodes.reachBadHint", { error: n.server_reach.error ?? "" })}</span>}
         </dd></>}
+        {n.speed && <><dt>{t("admin.nodes.speedTest")}</dt><dd>{t("admin.nodes.speedSummary", { up: mbps(n.speed.to_node), down: mbps(n.speed.from_node) })} <span className="t-small muted">· {relative(n.speed.at)}</span></dd></>}
         {folders.length > 0 && <><dt>{t("admin.nodes.folders")}</dt><dd className="stack" style={{ gap: 2 }}>{folders.map((f) => (
           <span key={f.library_path_id} className="t-small"><span className="t-mono-sm">{f.node_path}</span> ← {f.label} {f.verify_error ? <Badge tone="danger">{t("admin.nodes.folderBad")}</Badge> : <Badge tone="direct">{t("admin.nodes.folderOk")}</Badge>}</span>
         ))}</dd></>}
@@ -116,6 +120,7 @@ function NodeCard({ n, data, onEdit, onChanged }: { n: NodeView; data: NodesData
         <button className="pl-btn pl-btn--secondary" onClick={onEdit}><Pencil />{t("common.edit")}</button>
         {!n.is_local && <button className="pl-btn pl-btn--ghost" disabled={busy !== null} onClick={() => act("check", () => api(`/api/v1/admin/nodes/${n.id}/check`, { method: "POST" }))}><RefreshCw />{busy === "check" ? t("admin.nodes.checking") : t("admin.nodes.check")}</button>}
         <button className="pl-btn pl-btn--ghost" disabled={!st} onClick={() => setCaps(true)}><FlaskConical />{t("admin.nodes.gpuTest")}</button>
+        {!n.is_local && <button className="pl-btn pl-btn--ghost" disabled={n.health !== "online"} onClick={() => setSpeed(true)}><Gauge />{t("admin.nodes.speedTest")}</button>}
         <button className="pl-btn pl-btn--ghost" disabled={!n.is_local && n.health !== "online"} onClick={() => setLogs(true)}><ScrollText />{t("admin.nodes.logs")}</button>
         <button className="pl-btn pl-btn--ghost" disabled={busy !== null} onClick={() => act("drain", () => api(`/api/v1/admin/nodes/${n.id}`, { method: "PATCH", body: { draining: !n.draining } }), n.draining ? t("admin.nodes.resumed") : t("admin.nodes.drained"))}>
           {n.draining ? <PlayCircle /> : <PauseCircle />}{n.draining ? t("admin.nodes.resume") : t("admin.nodes.drain")}
@@ -126,6 +131,7 @@ function NodeCard({ n, data, onEdit, onChanged }: { n: NodeView; data: NodesData
       </div>
       {caps && st && <CapsDialog n={n} onClose={() => setCaps(false)} onChanged={onChanged} />}
       {logs && <LogsDialog n={n} onClose={() => setLogs(false)} />}
+      {speed && <SpeedDialog n={n} onClose={() => setSpeed(false)} onChanged={onChanged} />}
       {confirm === "delete" && <Confirm danger title={t("admin.nodes.deleteTitle", { name: n.name })} message={t("admin.nodes.deleteMessage")} confirmLabel={t("common.delete")} onClose={() => setConfirm(null)} onConfirm={() => act("delete", () => api(`/api/v1/admin/nodes/${n.id}`, { method: "DELETE" }))} />}
       {confirm === "restart" && <Confirm title={t("admin.nodes.restartTitle", { name: n.name })} message={t("admin.nodes.restartMessage")} confirmLabel={t("admin.nodes.restart")} onClose={() => setConfirm(null)} onConfirm={() => act("restart", () => api(`/api/v1/admin/nodes/${n.id}/restart`, { method: "POST" }), t("admin.nodes.restarting"))} />}
       {confirm === "stop" && <Confirm danger title={t("admin.nodes.stopTitle")} message={t("admin.nodes.stopMessage")} confirmLabel={t("admin.nodes.stopSessions")} onClose={() => setConfirm(null)} onConfirm={() => act("stop", () => api(`/api/v1/admin/nodes/${n.id}/stop-sessions`, { method: "POST" }))} />}
@@ -157,6 +163,50 @@ function CapsDialog({ n, onClose, onChanged }: { n: NodeView; onClose: () => voi
       </dl>}
       {caps && <CapsMatrix caps={caps} />}
       {caps && !caps.selected && <Alert>{n.is_local ? t("admin.transcode.noGpuHelp") : t("admin.nodes.noGpuHelp")}</Alert>}
+    </Dialog>
+  );
+}
+
+const mbps = (d: SpeedDir) => (d.mbps != null ? `${d.mbps.toLocaleString(undefined, { maximumFractionDigits: 1 })} Mbit/s` : "—");
+
+function SpeedRow({ label, hint, d }: { label: string; hint: string; d: SpeedDir | null }) {
+  return (
+    <>
+      <dt>{label}<span className="t-small muted" style={{ display: "block" }}>{hint}</span></dt>
+      <dd>{d == null ? "—" : d.error ? <Badge tone="danger">{d.error}</Badge> : <strong className="node-speed">{mbps(d)}</strong>}</dd>
+    </>
+  );
+}
+
+function SpeedDialog({ n, onClose, onChanged }: { n: NodeView; onClose: () => void; onChanged: () => void }) {
+  const { t, relative } = useI18n();
+  const name = useNodeName();
+  const [res, setRes] = useState<SpeedResult | null>(n.speed ?? null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const run = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const r = await api<{ result: SpeedResult }>(`/api/v1/admin/nodes/${n.id}/speed-test`, { method: "POST" });
+      setRes(r.result);
+      onChanged();
+    } catch (e) { setErr((e as ApiError).message); } finally { setBusy(false); }
+  };
+  return (
+    <Dialog title={`${t("admin.nodes.speedTitle")} · ${name(n)}`} onClose={onClose} footer={<>
+      <button className="pl-btn pl-btn--ghost" onClick={onClose}>{t("common.close")}</button>
+      <button className="pl-btn pl-btn--primary" disabled={busy} onClick={run}><Gauge />{busy ? t("admin.nodes.speedRunning") : t("admin.nodes.speedRun")}</button>
+    </>}>
+      <p className="t-small muted" style={{ margin: 0 }}>{t("admin.nodes.speedIntro", { seconds: 5 })}</p>
+      {err && <Alert tone="danger">{err}</Alert>}
+      {res && <dl className="kv">
+        <SpeedRow label={t("admin.nodes.speedToNode")} hint={t("admin.nodes.speedToNodeHint")} d={res.to_node} />
+        <SpeedRow label={t("admin.nodes.speedFromNode")} hint={t("admin.nodes.speedFromNodeHint")} d={res.from_node} />
+        <SpeedRow label={t("admin.nodes.speedNodeReads")} hint={res.server_url ? t("admin.nodes.speedNodeReadsHint", { url: res.server_url }) : t("admin.nodes.speedNoServerUrl")} d={res.node_reads} />
+        <dt>{t("admin.nodes.speedLatency")}</dt><dd>{res.latency_ms == null ? "—" : res.latency_ms < 1 ? "< 1 ms" : `${res.latency_ms} ms`}</dd>
+      </dl>}
+      {res && <p className="t-small muted" style={{ margin: 0 }}>{t("admin.nodes.speedLast", { time: relative(res.at) })} · {t("admin.nodes.speedNeed")}</p>}
     </Dialog>
   );
 }

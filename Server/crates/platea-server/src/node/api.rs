@@ -42,12 +42,19 @@ pub fn router(state: NodeShared) -> Router {
         .route("/node/v1/push/{id}/chunk/{n}", put(push_chunk))
         .layer(axum::extract::DefaultBodyLimit::max((super::fetch::CHUNK + (1 << 20)) as usize))
         .layer(middleware::from_fn_with_state(state.clone(), auth));
+    // Prova di velocità: corpi grandi in arrivo, senza il limite delle altre richieste.
+    let speed = Router::new()
+        .route("/node/v1/speed/sink", post(speed_sink))
+        .route("/node/v1/speed/source", get(speed_source))
+        .route("/node/v1/speed/pull", post(speed_pull))
+        .layer(middleware::from_fn_with_state(state.clone(), auth));
     Router::new()
         .route("/node/v1/health", get(|| async { Json(json!({ "ok": true, "protocol": crate::nodes::proto::PROTOCOL })) }))
         .route("/node/v1/d/{exp}/{sig}/{name}", get(direct).head(direct))
         .route("/node/v1/local-source/{token}", get(local_source).head(local_source))
         .merge(protected)
         .merge(push)
+        .merge(speed)
         .fallback(|| async { ApiError::not_found("Percorso") })
         .with_state(state)
 }
@@ -145,6 +152,47 @@ async fn probe(Json(req): Json<ProbeReq>) -> ApiResult<Json<ProbeReply>> {
         tracing::debug!(url = %base, error = %e, "il nodo non raggiunge il server");
     }
     Ok(Json(ProbeReply { ok: error.is_none(), error, ms }))
+}
+
+/// Prova di velocità server → nodo: riceve e misura.
+async fn speed_sink(body: Body) -> Json<crate::nodes::speed::Measure> {
+    let dur = Duration::from_secs(crate::nodes::speed::SECONDS + 10);
+    Json(crate::nodes::speed::receive(body.into_data_stream(), dur).await)
+}
+
+#[derive(Deserialize)]
+struct SpeedQuery {
+    bytes: Option<u64>,
+}
+
+/// Prova di velocità nodo → server: dati casuali (il server smette di leggere dopo qualche secondo).
+async fn speed_source(Query(q): Query<SpeedQuery>) -> Response {
+    let total = q.bytes.unwrap_or(256 << 20).min(crate::nodes::speed::MAX_BYTES);
+    Response::builder()
+        .header(header::CONTENT_TYPE, "application/octet-stream")
+        .header(header::CONTENT_LENGTH, total)
+        .header(header::CACHE_CONTROL, "no-store")
+        .body(Body::from_stream(crate::nodes::speed::sized(total)))
+        .unwrap()
+}
+
+/// Prova di velocità "il nodo legge dal server": scarica dall'indirizzo del server per qualche secondo.
+async fn speed_pull(Json(req): Json<crate::nodes::speed::PullReq>) -> ApiResult<Json<crate::nodes::speed::Measure>> {
+    let url = req.url.trim();
+    if !(url.starts_with("http://") || url.starts_with("https://")) || url.len() > 1024 || !url.contains("/api/v1/node-speed/") {
+        return Err(ApiError::BadRequest("Indirizzo non valido".into()));
+    }
+    static HTTP: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    let http = HTTP.get_or_init(crate::nodes::client::http_client);
+    let secs = req.seconds.clamp(1, 30);
+    let m = match http.get(url).timeout(Duration::from_secs(secs + 15)).send().await {
+        Err(e) => crate::nodes::speed::Measure { error: Some(crate::nodes::client::short(&e)), ..Default::default() },
+        Ok(r) if !r.status().is_success() => {
+            crate::nodes::speed::Measure { error: Some(format!("risposta {} dal server", r.status().as_u16())), ..Default::default() }
+        }
+        Ok(r) => crate::nodes::speed::receive(r.bytes_stream(), Duration::from_secs(secs)).await,
+    };
+    Ok(Json(m))
 }
 
 #[derive(Deserialize)]

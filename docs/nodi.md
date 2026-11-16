@@ -132,8 +132,18 @@ Offline e ritorno online finiscono nell'attività e nei webhook (eventi `node.of
 ## Dalla dashboard
 
 Per ogni nodo: stato, latenza, versione, GPU in uso, transcodifiche e letture in corso, slot GPU/CPU, carico, RAM,
-spazio per i segmenti, cartelle in copia. Azioni: Modifica, Prova collegamento, Prova GPU, Log, Svuota/Riprendi,
+spazio per i segmenti, cartelle in copia. Azioni: Modifica, Prova collegamento, Prova GPU, Velocità, Log, Svuota/Riprendi,
 Ferma riproduzioni, Riavvia, Elimina. Nel pannello delle riproduzioni: "Eseguita da" e "Letta da".
+
+**Velocità** misura la banda con dati casuali, 5 secondi per misura (circa 15 secondi in tutto, una prova alla volta
+per nodo):
+
+- *Server → nodo*: il server manda dati al nodo (come quando gli manda il file da transcodificare);
+- *Nodo → server*: il server scarica dal nodo (segmenti transcodificati, file delle copie);
+- *Il nodo legge dal server*: il nodo scarica dall'indirizzo del server con cui legge i file (token monouso su
+  `/api/v1/node-speed/`). Se qui c'è un errore, quell'indirizzo non va: vedi Impostazioni › Nodi.
+
+L'ultimo risultato resta nella scheda del nodo fino al riavvio del server. Un 4K in remux vuole circa 80–100 Mbit/s.
 
 ## Come funziona
 

@@ -7,6 +7,7 @@ pub mod hls;
 pub mod proto;
 pub mod push;
 pub mod route;
+pub mod speed;
 
 use crate::state::Shared;
 use crate::util::now_ms;
@@ -85,6 +86,8 @@ pub struct Live {
     pub failures: VecDeque<i64>,
     /// Ultima prova del nodo verso il server (l'indirizzo da cui legge i file).
     pub reach: Option<Reach>,
+    /// Ultima prova di velocità (solo in memoria).
+    pub speed: Option<speed::SpeedResult>,
 }
 
 /// Esito della prova "il nodo raggiunge il server".
@@ -111,6 +114,7 @@ impl Default for Live {
             breaker_until: 0,
             failures: VecDeque::new(),
             reach: None,
+            speed: None,
         }
     }
 }
