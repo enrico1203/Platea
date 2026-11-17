@@ -854,12 +854,16 @@ const en = {
     },
     apiKeys: {
       title: "API keys",
-      help: "For integrations (Sonarr, Radarr, scripts): a key with the scan scope can only start scans.",
+      help: "For integrations (Sonarr, Radarr, scripts): a key with the scan scope can only start scans. A key with the admin scope, sent in the X-Platea-Key header, acts as an administrator on the whole API.",
       empty: "No keys.",
       name: "Integration name",
       create: "Create key",
       created: "Copy the key now: it won't be shown again.",
       lastUsed: "last used {when}",
+      scope: "Scope",
+      scopeScan: "scan: scans only",
+      scopeAdmin: "admin: whole API",
+      adminWarning: "An admin key can do anything an administrator can (users, settings, backups). Only give it to management panels you trust.",
     },
     system: {
       title: "System",

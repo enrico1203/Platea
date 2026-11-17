@@ -855,12 +855,16 @@ const it = {
     },
     apiKeys: {
       title: "Chiavi API",
-      help: "Per le integrazioni (Sonarr, Radarr, script): una chiave con ambito scan può solo avviare scansioni.",
+      help: "Per le integrazioni (Sonarr, Radarr, script): una chiave con ambito scan può solo avviare scansioni. Una chiave con ambito admin, nell'intestazione X-Platea-Key, vale come un amministratore su tutta l'API.",
       empty: "Nessuna chiave.",
       name: "Nome dell'integrazione",
       create: "Crea chiave",
       created: "Copia la chiave adesso: non verrà più mostrata.",
       lastUsed: "ultimo uso {when}",
+      scope: "Ambito",
+      scopeScan: "scan: solo scansioni",
+      scopeAdmin: "admin: tutta l'API",
+      adminWarning: "Una chiave admin può fare tutto quello che fa un amministratore (utenti, impostazioni, backup). Dalla solo ai pannelli di gestione di cui ti fidi.",
     },
     system: {
       title: "Sistema",

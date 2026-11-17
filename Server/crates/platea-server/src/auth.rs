@@ -83,6 +83,27 @@ impl Permissions {
     pub fn expired(&self) -> bool {
         self.expires_at.is_some_and(|e| now_ms() >= e)
     }
+
+    /// Nessun limite: i permessi di chi agisce come amministratore senza essere un utente (chiave API `admin`).
+    pub fn admin() -> Self {
+        Permissions {
+            all_libraries: true,
+            library_ids: Vec::new(),
+            allow_remux: true,
+            allow_transcode: true,
+            max_bitrate: None,
+            max_streams: None,
+            allow_remote: true,
+            manage_devices: true,
+            expires_at: None,
+            max_rating_age: None,
+            allow_download: true,
+            block_unrated: false,
+            schedule: Vec::new(),
+            blocked_genre_ids: Vec::new(),
+            allowed_genre_ids: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -453,6 +474,10 @@ impl FromRequestParts<Shared> for AuthUser {
     type Rejection = ApiError;
 
     async fn from_request_parts(parts: &mut Parts, state: &Shared) -> Result<Self, Self::Rejection> {
+        // Integrazioni con chiave API di ambito `admin` (pannelli di gestione degli account): agiscono come un amministratore.
+        if let Some(key) = parts.headers.get("x-platea-key").and_then(|v| v.to_str().ok()).map(|v| v.trim().to_string()) {
+            return resolve_admin_key(state, &key, peer_ip(state, parts)).await;
+        }
         let token =
             extract_token(parts).or_else(|| query_param(parts, "api_key")).or_else(|| query_param(parts, "apikey")).or_else(|| query_param(parts, "token"));
         let Some(token) = token else {
@@ -486,7 +511,40 @@ impl FromRequestParts<Shared> for AdminUser {
 /// Chiave nell'intestazione `X-Platea-Key` o nel parametro `key`.
 pub struct ScanAccess;
 
-pub const API_SCOPES: &[&str] = &["scan"];
+/// Ambiti delle chiavi API: `scan` avvia solo le scansioni; `admin` vale come un amministratore su tutta l'API
+/// (gestione utenti, sessioni, dispositivi) e serve ai pannelli esterni che creano e gestiscono gli account.
+pub const API_SCOPES: &[&str] = &["scan", "admin"];
+
+/// Utente sintetico di una chiave API con ambito `admin`: amministratore, nessun token né dispositivo.
+/// `user_id` 0 non corrisponde a nessun utente; il nome compare nel registro delle attività.
+async fn resolve_admin_key(state: &Shared, key: &str, ip: Option<IpAddr>) -> ApiResult<AuthUser> {
+    if key.len() < 16 || key.len() > 200 {
+        return Err(ApiError::Unauthorized);
+    }
+    let row: Option<(i64, String, String)> =
+        sqlx::query_as("SELECT id, name, scopes FROM api_keys WHERE key_hash = ?").bind(sha256_hex(key)).fetch_optional(&state.db.read).await?;
+    let Some((id, name, scopes)) = row else {
+        return Err(ApiError::Unauthorized);
+    };
+    if !scopes.split(',').any(|s| s == "admin") {
+        return Err(ApiError::Forbidden("Questa chiave API non ha l'ambito admin".into()));
+    }
+    let db = state.db.clone();
+    tokio::spawn(async move {
+        let _ = sqlx::query("UPDATE api_keys SET last_used_at = ? WHERE id = ?").bind(now_ms()).bind(id).execute(&db.write).await;
+    });
+    Ok(AuthUser {
+        user_id: 0,
+        token_id: 0,
+        username: format!("API {name}"),
+        is_admin: true,
+        perms: Permissions::admin(),
+        device_id: String::new(),
+        device_name: name,
+        client: "api-key".into(),
+        ip,
+    })
+}
 
 impl FromRequestParts<Shared> for ScanAccess {
     type Rejection = ApiError;
@@ -497,7 +555,7 @@ impl FromRequestParts<Shared> for ScanAccess {
             let row: Option<(i64, String)> =
                 sqlx::query_as("SELECT id, scopes FROM api_keys WHERE key_hash = ?").bind(sha256_hex(k.trim())).fetch_optional(&state.db.read).await?;
             return match row {
-                Some((id, scopes)) if scopes.split(',').any(|s| s == "scan") => {
+                Some((id, scopes)) if scopes.split(',').any(|s| s == "scan" || s == "admin") => {
                     let db = state.db.clone();
                     tokio::spawn(async move {
                         let _ = sqlx::query("UPDATE api_keys SET last_used_at = ? WHERE id = ?").bind(now_ms()).bind(id).execute(&db.write).await;

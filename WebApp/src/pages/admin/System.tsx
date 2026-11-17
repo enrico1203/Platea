@@ -2,7 +2,7 @@ import { useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, Upload, Plus, Trash2, RotateCcw, Gauge } from "lucide-react";
 import { api, ApiError, download, getToken, mediaUrl, serverUrl } from "../../api/client";
-import { Alert, Confirm, Empty, TextField, toast } from "../../components/ui";
+import { Alert, Confirm, Empty, SelectField, TextField, toast } from "../../components/ui";
 import { useState } from "react";
 import { useI18n } from "../../i18n";
 
@@ -57,6 +57,7 @@ function ApiKeys() {
   const { t, relative } = useI18n();
   const qc = useQueryClient();
   const [name, setName] = useState("");
+  const [scope, setScope] = useState("scan");
   const [created, setCreated] = useState<string | null>(null);
   const { data } = useQuery({ queryKey: ["admin", "api-keys"], queryFn: () => api<{ items: { id: string; name: string; scopes: string[]; created_at: number; last_used_at: number | null }[] }>("/api/v1/admin/api-keys").then((r) => r.items) });
   return (
@@ -73,14 +74,18 @@ function ApiKeys() {
       ))}
       <form className="row" style={{ alignItems: "flex-end" }} onSubmit={async (e) => {
         e.preventDefault();
-        const r = await api<{ key: string }>("/api/v1/admin/api-keys", { body: { name, scopes: ["scan"] } });
+        const r = await api<{ key: string }>("/api/v1/admin/api-keys", { body: { name, scopes: [scope] } });
         setCreated(r.key);
         setName("");
+        setScope("scan");
         qc.invalidateQueries({ queryKey: ["admin", "api-keys"] });
       }}>
         <div className="spacer"><TextField label={t("admin.apiKeys.name")} placeholder="Sonarr" value={name} onChange={(e) => setName(e.target.value)} /></div>
+        <SelectField label={t("admin.apiKeys.scope")} value={scope} onChange={setScope}
+          options={[{ value: "scan", label: t("admin.apiKeys.scopeScan") }, { value: "admin", label: t("admin.apiKeys.scopeAdmin") }]} />
         <button className="pl-btn pl-btn--secondary" disabled={!name.trim()}><Plus />{t("admin.apiKeys.create")}</button>
       </form>
+      {scope === "admin" && <Alert tone="warning">{t("admin.apiKeys.adminWarning")}</Alert>}
       <pre className="t-mono" style={{ margin: 0, padding: 12, background: "var(--surface-2)", borderRadius: 10, overflowX: "auto" }}>{`curl -X POST <server>/api/v1/scan/path \\
   -H "X-Platea-Key: <chiave>" -H "Content-Type: application/json" \\
   -d '{"path": "/media/Film/Nuovo film (2026)"}'`}</pre>

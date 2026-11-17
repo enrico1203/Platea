@@ -477,6 +477,14 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-17 — **Chiavi API con ambito `admin` (0.1.7)**. Prima le chiavi avevano solo l'ambito `scan`: un pannello
+  esterno che crea e gestisce gli account (utenti, password, stream, librerie, blocco, sessioni, dispositivi) doveva
+  fare il login con un amministratore. Ora una chiave può avere ambito `admin`: nell'intestazione `X-Platea-Key` vale
+  come un amministratore su tutta l'API (`resolve_admin_key` in `auth.rs`, utente sintetico `user_id` 0 di nome
+  "API <nome chiave>", che compare nel registro attività). Vale anche per le scansioni. In Sistema › Chiavi API si
+  sceglie l'ambito, con avviso per `admin`. README aggiornato. Provato dal vivo: creazione utente, password (login ok),
+  `max_streams`, `library_ids` senza la libreria 4k, `allow_transcode`, `disabled`, sessioni, dispositivi, eliminazione;
+  una chiave `scan` riceve 403 "Questa chiave API non ha l'ambito admin".
 - 2026-11-16 notte — **App Android provata sugli emulatori e ridisegnata** (richiesta dell'utente: "verifica con
   l'emulatore, sistema tutti i problemi, migliora la grafica"). Prove sul Mac dell'utente: emulatori telefono
   (API 36), tablet (API 36) e Android TV (API 34), server di prova dall'immagine ghcr con media sintetici e un TMDB

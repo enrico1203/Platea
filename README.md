@@ -240,7 +240,11 @@ curl -X POST http://<host>:8096/api/v1/scan/path \
   -d '{"path": "/media/movies/New Movie (2026)"}'
 ```
 
-API keys are created in Administration › System.
+API keys are created in Administration › System. A key has a scope: `scan` can only start scans, `admin` acts as an administrator on the whole API (users, sessions, devices). Use an `admin` key for external panels that create and manage accounts, and send it in the `X-Platea-Key` header:
+
+```sh
+curl http://<host>:8096/api/v1/users -H "X-Platea-Key: <admin api key>"
+```
 
 ### Remote access with a Cloudflare tunnel
 
