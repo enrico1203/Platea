@@ -3,8 +3,8 @@
     <string name="about">Informazioni</string>
     <string name="about_device">Questo dispositivo</string>
     <string name="about_licenses">Open source</string>
-    <string name="about_licenses_text">Platea è software libero con licenza AGPL-3.0. L\'app usa AndroidX, Jetpack Compose, Media3 (ExoPlayer), OkHttp, Coil e kotlinx.serialization (Apache 2.0), e il carattere Geist (SIL OFL 1.1).</string>
-    <string name="about_text">Platea riproduce la tua libreria dal tuo server. Il server decide come arriva ogni file su questo dispositivo: così com\'è (direct play), con un contenitore nuovo (remux) o ricodificato (transcodifica).</string>
+    <string name="about_licenses_text">%1$s è software libero con licenza AGPL-3.0. L\'app usa AndroidX, Jetpack Compose, Media3 (ExoPlayer), OkHttp, Coil e kotlinx.serialization (Apache 2.0), e il carattere Geist (SIL OFL 1.1).</string>
+    <string name="about_text">%1$s riproduce la tua libreria dal tuo server. Il server decide come arriva ogni file su questo dispositivo: così com\'è (direct play), con un contenitore nuovo (remux) o ricodificato (transcodifica).</string>
     <string name="about_tmdb">Questo prodotto usa l\'API di TMDB ma non è approvato né certificato da TMDB.</string>
     <string name="about_tmdb_title">Metadati</string>
     <string name="account_expired">Il tuo account è scaduto</string>
@@ -19,8 +19,8 @@
     <string name="collection_titles">Titoli della collezione</string>
     <string name="connect_action">Collegati</string>
     <string name="connect_address">Indirizzo del server</string>
-    <string name="connect_failed">Nessun server Platea risponde a questo indirizzo. Controlla indirizzo e porta (8096 predefinita).</string>
-    <string name="connect_hint">Scrivi l\'indirizzo del tuo server Platea, per esempio 192.168.1.10:8096 o https://platea.esempio.it.</string>
+    <string name="connect_failed">Nessun server risponde a questo indirizzo. Controlla indirizzo e porta (8096 predefinita).</string>
+    <string name="connect_hint">Scrivi l\'indirizzo del tuo server, per esempio 192.168.1.10:8096 o https://platea.esempio.it.</string>
     <string name="connect_recent">Server usati di recente</string>
     <string name="connect_title">Collegati a un server</string>
     <string name="create">Crea</string>

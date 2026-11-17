@@ -78,14 +78,14 @@ const it = {
   },
   connect: {
     title: "Collega un server",
-    unreachable: "Non riesco a raggiungere il server Platea a questo indirizzo.",
+    unreachable: "Non riesco a raggiungere il server a questo indirizzo.",
     address: "Indirizzo del server",
     hint: "Vuoto = lo stesso indirizzo di questa pagina.",
     connect: "Collega",
   },
   setup: {
     title: "Configurazione iniziale",
-    welcome: "Benvenuto in Platea",
+    welcome: "Benvenuto in {app}",
     codeHelp: "Il server ha scritto nei log un codice di primo avvio. Serve a impedire che qualcun altro sulla rete configuri il server prima di te.",
     code: "Codice di primo avvio",
     adminTitle: "Account amministratore",
@@ -108,7 +108,7 @@ const it = {
     transcodeHelp: "Il server prova la GPU con un secondo di video vero: conta solo ciò che funziona davvero su questa macchina.",
     doneTitle: "Fatto",
     doneHelp: "La scansione è partita. La home si riempie mentre arrivano i metadati.",
-    open: "Apri Platea",
+    open: "Apri {app}",
   },
   hero: {
     resume: "Stavi guardando",
@@ -384,6 +384,9 @@ const it = {
     tmdbDisclaimer: "Questo prodotto usa l'API di TMDB ma non è approvato né certificato da TMDB.",
     components: "Componenti",
     componentsText: "FFmpeg (jellyfin-ffmpeg) per analisi e transcodifica, SQLite, React, hls.js, icone Lucide, font Geist (SIL OFL).",
+    tagline: "Media server open source",
+    taglineWhite: "Media server",
+    sourceCode: "Codice sorgente",
   },
   admin: {
     progress: {
@@ -402,6 +405,7 @@ const it = {
     },
     overview: {
       metrics: {
+        app: "{app}",
         title: "Risorse",
         range: "Periodo",
         r1h: "Ultima ora",
@@ -416,7 +420,7 @@ const it = {
         received: "Ricevuti",
         streams: "In corso",
         transcodes: "Transcodifiche",
-        note: "Platea comprende server e FFmpeg. La rete è quella del container di Platea (client, nodi, metadati): i mount rclone passano dalla macchina e qui non si vedono. Lo storico resta in memoria e riparte quando il server si riavvia.",
+        note: "{app} comprende server e FFmpeg. La rete è quella del container di {app} (client, nodi, metadati): i mount rclone passano dalla macchina e qui non si vedono. Lo storico resta in memoria e riparte quando il server si riavvia.",
       },
       title: "Panoramica",
       streams: "Riproduzioni",
@@ -631,7 +635,7 @@ const it = {
     nodes: {
       title: "Nodi",
       add: "Aggiungi nodo",
-      intro: "Un nodo è un'altra macchina con Platea in modalità nodo, raggiunta in LAN o con Tailscale. Può transcodificare al posto del server (ad esempio con una GPU) e può avere in copia alcune cartelle delle librerie, da cui leggere i file con bilanciamento e ripiego. Se un nodo ha la cartella, transcodifica leggendo il file in locale.",
+      intro: "Un nodo è un'altra macchina con {app} in modalità nodo, raggiunta in LAN o con Tailscale. Può transcodificare al posto del server (ad esempio con una GPU) e può avere in copia alcune cartelle delle librerie, da cui leggere i file con bilanciamento e ripiego. Se un nodo ha la cartella, transcodifica leggendo il file in locale.",
       empty: "Nessun nodo: tutto gira su questo server. Aggiungine uno con l'indirizzo e la chiave mostrata nel suo log.",
       installTitle: "Come installare un nodo",
       installHelp: "Sulla macchina del nodo, con Docker: stessa immagine del server, avviata con il comando node. Le cartelle dei media servono solo per le copie (CDN), sempre in sola lettura. Espone la porta 8097: tienila sulla LAN o su Tailscale, non su Internet.",
@@ -822,6 +826,15 @@ const it = {
       dockerHelp: "Aggiungi al servizio server del file docker-compose.yml:",
     },
     settings: {
+      logo: {
+        title: "Logo",
+        help: "SVG, PNG, JPEG o WebP, al massimo 5 MB. Prende il posto del marchio nella web UI, nella scheda del browser e nell'icona dell'app. Per l'icona su iPhone e Android meglio un PNG quadrato di almeno 512 px. Un logo largo (con il nome dentro) si mostra senza il nome accanto.",
+        upload: "Carica un logo",
+        replace: "Sostituisci",
+        remove: "Togli il logo",
+        saved: "Logo salvato",
+        removed: "Logo tolto",
+      },
       title: "Impostazioni",
       saved: "Impostazioni salvate. Valgono subito.",
       restart: "richiede un riavvio",
@@ -927,6 +940,10 @@ const it = {
       ordered: "In ordine (il primo finché ha posto)",
     },
     general: {
+      white_label: "Nascondi Platea",
+      white_label_hint: "Il nome del server (e il logo, se caricato) prende il posto di Platea ovunque: pagina di accesso, icona dell'app sulla schermata Home, pagina Informazioni, documentazione dell'API, app compatibili con Jellyfin, notifiche. Senza logo si usa l'iniziale del nome.",
+      source_url: "Indirizzo del codice sorgente",
+      source_url_hint: "Mostrato nella pagina Informazioni. La licenza AGPL chiede di offrire il codice a chi usa il server via rete se lo hai modificato.",
       quick_connect: "Quick Connect",
       quick_connect_hint: "Accesso con un codice di 6 cifre confermato da un dispositivo già collegato: comodo sui televisori. Spento, i codici vengono rifiutati.",
       lockout_after_failures: "Blocco dopo tentativi falliti",

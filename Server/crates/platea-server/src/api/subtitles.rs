@@ -20,7 +20,7 @@ const FIRST_INDEX: i64 = 2000;
 
 pub fn routes(api: Api) -> Api {
     api.post("/api/v1/items/{id}/subtitles", "Metadati", Access::Admin, "Carica un sottotitolo (SRT, VTT, ASS) per un film o episodio", upload)
-        .delete("/api/v1/items/{id}/subtitles/{index}", "Metadati", Access::Admin, "Toglie un sottotitolo aggiunto da Platea", remove)
+        .delete("/api/v1/items/{id}/subtitles/{index}", "Metadati", Access::Admin, "Toglie un sottotitolo aggiunto dal server", remove)
         .get("/api/v1/items/{id}/subtitles/search", "Metadati", Access::Admin, "Cerca sottotitoli su OpenSubtitles", search)
         .post("/api/v1/items/{id}/subtitles/download", "Metadati", Access::Admin, "Scarica un sottotitolo da OpenSubtitles", download)
 }
@@ -147,7 +147,7 @@ async fn upload(
 
 async fn remove(State(state): State<Shared>, _a: AdminUser, Path((id, index)): Path<(String, i64)>) -> ApiResult<Json<Value>> {
     if index < FIRST_INDEX {
-        return Err(ApiError::BadRequest("Si possono togliere solo i sottotitoli aggiunti da Platea".into()));
+        return Err(ApiError::BadRequest("Si possono togliere solo i sottotitoli aggiunti dal server".into()));
     }
     let iid = state.ids.decode(&id).ok_or_else(|| ApiError::not_found("Elemento"))?;
     let rows: Vec<(i64, String)> = sqlx::query_as(

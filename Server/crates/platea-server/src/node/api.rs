@@ -141,10 +141,10 @@ async fn probe(Json(req): Json<ProbeReq>) -> ApiResult<Json<ProbeReply>> {
     let ms = t0.elapsed().as_millis() as u64;
     let error = match res {
         Err(e) => Some(crate::nodes::client::short(&e)),
-        Ok(r) if !r.status().is_success() => Some(format!("risposta {} (è davvero Platea?)", r.status().as_u16())),
+        Ok(r) if !r.status().is_success() => Some(format!("risposta {} (è davvero un nodo?)", r.status().as_u16())),
         Ok(r) => match r.json::<Value>().await {
             Ok(v) if v.get("status").is_some() => None,
-            _ => Some("risposta che non viene da Platea".into()),
+            _ => Some("risposta che non viene da un nodo".into()),
         },
     };
     if let Some(e) = &error {

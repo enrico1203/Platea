@@ -339,7 +339,7 @@ fun AccountScreen() {
                     LinkRow(Icons.AutoMirrored.Filled.Logout, stringResource(R.string.logout), color = tokens.danger) { scope.launch { Session.logout() } }
                 }
             }
-            Text("Platea ${BuildConfig.VERSION_NAME} · ${Api.clientName}", style = app.platea.ui.theme.Mono.regular, color = tokens.inkSubtle, modifier = Modifier.padding(horizontal = 4.dp))
+            Text("${Session.info?.appName ?: "Platea"} ${BuildConfig.VERSION_NAME} · ${Api.clientName.replace(Regex("^Platea\\b"), Session.info?.appName ?: "Platea")}", style = app.platea.ui.theme.Mono.regular, color = tokens.inkSubtle, modifier = Modifier.padding(horizontal = 4.dp))
         }
     }
 }
@@ -393,13 +393,14 @@ fun AboutScreen() {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         PageTitle(stringResource(R.string.about), back = true)
         Column(Modifier.padding(horizontal = pagePadding()).widthIn(max = 760.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Section("Platea") {
-                Text(stringResource(R.string.about_text), style = MaterialTheme.typography.bodyMedium, color = tokens.inkMuted)
+            val appName = Session.info?.appName ?: "Platea"
+            Section(appName) {
+                Text(stringResource(R.string.about_text, appName), style = MaterialTheme.typography.bodyMedium, color = tokens.inkMuted)
                 Text("App ${BuildConfig.VERSION_NAME} · Server ${Session.info?.version ?: "?"}", style = MaterialTheme.typography.bodySmall, color = tokens.inkSubtle)
             }
             Section(stringResource(R.string.about_device)) {
                 Profile.build(LocalContext.current, null)
-                (listOf(Api.deviceName, Api.clientName) + Profile.summary).forEach {
+                (listOf(Api.deviceName, Api.clientName.replace(Regex("^Platea\\b"), appName)) + Profile.summary).forEach {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = tokens.inkMuted)
                 }
             }
@@ -407,7 +408,7 @@ fun AboutScreen() {
                 Text(stringResource(R.string.about_tmdb), style = MaterialTheme.typography.bodySmall, color = tokens.inkMuted)
             }
             Section(stringResource(R.string.about_licenses)) {
-                Text(stringResource(R.string.about_licenses_text), style = MaterialTheme.typography.bodySmall, color = tokens.inkMuted)
+                Text(stringResource(R.string.about_licenses_text, appName), style = MaterialTheme.typography.bodySmall, color = tokens.inkMuted)
             }
             Spacer(Modifier.height(32.dp))
         }

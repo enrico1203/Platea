@@ -77,14 +77,14 @@ const en = {
   },
   connect: {
     title: "Connect a server",
-    unreachable: "Can't reach a Platea server at this address.",
+    unreachable: "Can't reach a server at this address.",
     address: "Server address",
     hint: "Empty = the same address as this page.",
     connect: "Connect",
   },
   setup: {
     title: "Initial setup",
-    welcome: "Welcome to Platea",
+    welcome: "Welcome to {app}",
     codeHelp: "The server wrote a first-run code in its logs. It stops anyone else on the network from setting up the server before you.",
     code: "First-run code",
     adminTitle: "Administrator account",
@@ -107,7 +107,7 @@ const en = {
     transcodeHelp: "The server tests the GPU with one second of real video: only what actually works on this machine counts.",
     doneTitle: "Done",
     doneHelp: "The scan has started. Home fills up as metadata arrives.",
-    open: "Open Platea",
+    open: "Open {app}",
   },
   hero: {
     resume: "You were watching",
@@ -383,6 +383,9 @@ const en = {
     tmdbDisclaimer: "This product uses the TMDB API but is not endorsed or certified by TMDB.",
     components: "Components",
     componentsText: "FFmpeg (jellyfin-ffmpeg) for analysis and transcoding, SQLite, React, hls.js, Lucide icons, Geist font (SIL OFL).",
+    tagline: "Open source media server",
+    taglineWhite: "Media server",
+    sourceCode: "Source code",
   },
   admin: {
     progress: {
@@ -401,6 +404,7 @@ const en = {
     },
     overview: {
       metrics: {
+        app: "{app}",
         title: "Resources",
         range: "Period",
         r1h: "Last hour",
@@ -415,7 +419,7 @@ const en = {
         received: "Received",
         streams: "Playing",
         transcodes: "Transcodes",
-        note: "Platea includes the server and FFmpeg. Network is the Platea container's traffic (clients, nodes, metadata): rclone mounts go through the host and don't show here. History is kept in memory and restarts with the server.",
+        note: "{app} includes the server and FFmpeg. Network is the {app} container's traffic (clients, nodes, metadata): rclone mounts go through the host and don't show here. History is kept in memory and restarts with the server.",
       },
       title: "Overview",
       streams: "Streams",
@@ -630,7 +634,7 @@ const en = {
     nodes: {
       title: "Nodes",
       add: "Add node",
-      intro: "A node is another machine running Platea in node mode, reached over the LAN or Tailscale. It can transcode instead of the server (for example with a GPU) and can hold copies of some library folders, so files are read from it with load balancing and failover. When a node has the folder, it transcodes reading the file locally.",
+      intro: "A node is another machine running {app} in node mode, reached over the LAN or Tailscale. It can transcode instead of the server (for example with a GPU) and can hold copies of some library folders, so files are read from it with load balancing and failover. When a node has the folder, it transcodes reading the file locally.",
       empty: "No nodes: everything runs on this server. Add one with its address and the key shown in its log.",
       installTitle: "How to install a node",
       installHelp: "On the node machine, with Docker: same image as the server, started with the node command. Media folders are only needed for copies (CDN), always read-only. It listens on port 8097: keep it on the LAN or Tailscale, not on the Internet.",
@@ -821,6 +825,15 @@ const en = {
       dockerHelp: "Add to the server service in docker-compose.yml:",
     },
     settings: {
+      logo: {
+        title: "Logo",
+        help: "SVG, PNG, JPEG or WebP, up to 5 MB. It replaces the mark in the web UI, the browser tab and the app icon. For the iPhone and Android icon, a square PNG of at least 512 px works best. A wide logo (with the name in it) is shown without the name next to it.",
+        upload: "Upload a logo",
+        replace: "Replace",
+        remove: "Remove logo",
+        saved: "Logo saved",
+        removed: "Logo removed",
+      },
       title: "Settings",
       saved: "Settings saved. They apply right away.",
       restart: "requires a restart",
@@ -926,6 +939,10 @@ const en = {
       ordered: "In order (first one while it has room)",
     },
     general: {
+      white_label: "Hide Platea",
+      white_label_hint: "The server name (and the logo, if uploaded) replaces Platea everywhere: sign-in page, app icon on the home screen, About page, API docs, Jellyfin-compatible apps, notifications. Without a logo, the first letter of the name is used.",
+      source_url: "Source code address",
+      source_url_hint: "Shown on the About page. If you modified the code, the AGPL license asks you to offer it to people using the server over the network.",
       quick_connect: "Quick Connect",
       quick_connect_hint: "Sign in with a 6-digit code confirmed from a device that's already signed in: handy on TVs. When off, codes are refused.",
       lockout_after_failures: "Lock out after failed attempts",

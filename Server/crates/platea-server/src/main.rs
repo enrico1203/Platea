@@ -166,6 +166,7 @@ async fn run(boot: boot::BootConfig) -> anyhow::Result<()> {
         image_resizes: Semaphore::new(std::thread::available_parallelism().map(|n| n.get()).unwrap_or(2).clamp(1, 4)),
         extractions: Semaphore::new(2),
         started_at: util::now_ms(),
+        branding: api::branding::Branding::load(&boot.data_dir).await,
     });
 
     // Primo avvio: codice nei log, chiesto dalla procedura guidata.

@@ -18,7 +18,13 @@ data class SystemInfo(
     @SerialName("setup_required") val setupRequired: Boolean = false,
     @SerialName("quick_connect") val quickConnect: Boolean = false,
     @SerialName("login_message") val loginMessage: String? = null,
-)
+    /** Personalizzazione: con white_label l'app mostra nome e logo del server al posto di Platea. */
+    @SerialName("white_label") val whiteLabel: Boolean = false,
+    val logo: String? = null,
+) {
+    /** Nome da mostrare al posto di "Platea" (marchio e testi). */
+    val appName: String get() = if (whiteLabel) name.ifBlank { "Platea" } else "Platea"
+}
 
 @Serializable
 data class UserRef(val id: String, val username: String, @SerialName("is_admin") val isAdmin: Boolean = false)

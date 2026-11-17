@@ -8,6 +8,7 @@
  * - Plurali: una foglia può essere `{ one, other, ... }` e si sceglie con `Intl.PluralRules` dal parametro `count`.
  * - Interpolazione: `{nome}` nel testo, valori passati in `params`.
  * - Numeri, date, durate e bitrate seguono la lingua attiva (`Intl`).
+ * - `{app}` è sempre il nome del server (Platea, o quello scelto dall'amministratore): mai scrivere "Platea" nei testi.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import it from "./it";
@@ -62,6 +63,8 @@ export interface I18n {
   /** Tag BCP 47 per Intl (es. it-IT). */
   tag: string;
   setLocale: (l: LocaleCode) => void;
+  /** Nome del server per `{app}` nei testi; lo imposta la sessione. */
+  setAppName: (name: string) => void;
   t: (key: MessageKey, params?: Params) => string;
   num: (n: number, digits?: number) => string;
   bytes: (n: number | null | undefined) => string;
@@ -86,6 +89,9 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     return () => { alive = false; };
   }, [locale]);
 
+  const [appName, setAppNameState] = useState("Platea");
+  const setAppName = useCallback((n: string) => setAppNameState(n.trim() || "Platea"), []);
+
   const setLocale = useCallback((l: LocaleCode) => {
     try { localStorage.setItem(STORAGE_KEY, l); } catch { /* ignora */ }
     setLocaleState(l);
@@ -96,7 +102,8 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     const tag = LOCALES[locale].tag;
     const plural = new Intl.PluralRules(tag);
     const fallback = it as unknown as Dict;
-    const t = (key: MessageKey, params?: Params) => {
+    const t = (key: MessageKey, p?: Params) => {
+      const params: Params = { app: appName, ...p };
       const leaf = lookup(dict, key) ?? lookup(fallback, key);
       if (leaf == null) return key;
       if (typeof leaf === "string") return interpolate(leaf, params);
@@ -151,8 +158,8 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       if (abs < 86400) return rtf.format(Math.round(diff / 3600), "hour");
       return rtf.format(Math.round(diff / 86400), "day");
     };
-    return { locale, tag, setLocale, t, num, bytes, bitrate, duration, clock, date, dateTime, relative };
-  }, [dict, locale, setLocale]);
+    return { locale, tag, setLocale, setAppName, t, num, bytes, bitrate, duration, clock, date, dateTime, relative };
+  }, [dict, locale, setLocale, setAppName, appName]);
 
   if (!value) return null;
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

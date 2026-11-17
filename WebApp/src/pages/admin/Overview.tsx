@@ -8,6 +8,7 @@ import { api, imageUrl } from "../../api/client";
 import type { Overview as OverviewT, SessionView } from "../../api/types";
 import { Alert, Empty, MethodBadge, toast } from "../../components/ui";
 import { useI18n, type MessageKey } from "../../i18n";
+import { useClientLabel } from "../../components/Logo";
 
 /** Orologio che avanza ogni secondo: posizioni e durate restano vive tra un aggiornamento e l'altro. */
 function useNow(): number {
@@ -34,6 +35,7 @@ function resolution(w: number, h: number) {
 
 export function SessionRow({ s, fetchedAt, onStop }: { s: SessionView; fetchedAt: number; onStop?: () => void }) {
   const { t, tag, bitrate, bytes, clock, duration } = useI18n();
+  const clientLabel = useClientLabel();
   const [open, setOpen] = useState(false);
   const now = useNow();
   // Ora del server stimata: l'orologio del browser può essere sfasato.
@@ -69,7 +71,7 @@ export function SessionRow({ s, fetchedAt, onStop }: { s: SessionView; fetchedAt
         <div className="pl-session__thumb" style={s.poster_url ? { backgroundImage: `url(${imageUrl(s.poster_url)})`, backgroundSize: "cover" } : undefined} />
         <div style={{ minWidth: 0 }}>
           <div className="pl-session__title"><Link to={`/item/${s.item_id}`}>{s.title}</Link>{s.subtitle ? ` · ${s.subtitle}` : ""}</div>
-          <div className="pl-session__who">{s.user} · {s.device_name} · {s.client}</div>
+          <div className="pl-session__who">{s.user} · {s.device_name} · {clientLabel(s.client)}</div>
           <div className="pl-session__state">
             <span className={`pl-session__dot${playing ? " is-playing" : stale ? " is-stale" : ""}`} aria-hidden />
             <span>{status}</span>
@@ -162,11 +164,11 @@ function Resources() {
       {smp.length < 2 ? <Empty>{t("admin.overview.metrics.collecting")}</Empty> : (
         <div className="charts">
           <LineChart {...common} title={t("admin.overview.metrics.cpu", { cpus: data!.cpus })} max={100} format={pct}
-            series={[{ name: t("admin.overview.metrics.machine"), values: smp.map((x) => x.cpu_host), color: 1 }, { name: "Platea", values: smp.map((x) => x.cpu_app), color: 2 }]} />
+            series={[{ name: t("admin.overview.metrics.machine"), values: smp.map((x) => x.cpu_host), color: 1 }, { name: t("admin.overview.metrics.app"), values: smp.map((x) => x.cpu_app), color: 2 }]} />
           <LineChart {...common} title={t("admin.overview.metrics.network")} format={rate}
             series={[{ name: t("admin.overview.metrics.sent"), values: smp.map((x) => x.tx_bps), color: 1 }, { name: t("admin.overview.metrics.received"), values: smp.map((x) => x.rx_bps), color: 2 }]} />
           <LineChart {...common} title={t("admin.overview.metrics.memory", { total: bytes(data!.memory_total) })} max={data!.memory_total ?? undefined} format={(v) => (v ? bytes(v) : "0")}
-            series={[{ name: t("admin.overview.metrics.machine"), values: smp.map((x) => x.mem_host), color: 1 }, { name: "Platea", values: smp.map((x) => x.mem_app), color: 2 }]} />
+            series={[{ name: t("admin.overview.metrics.machine"), values: smp.map((x) => x.mem_host), color: 1 }, { name: t("admin.overview.metrics.app"), values: smp.map((x) => x.mem_app), color: 2 }]} />
           <LineChart {...common} title={t("admin.overview.metrics.playback")} integer format={(v) => num(v)}
             series={[{ name: t("admin.overview.metrics.streams"), values: smp.map((x) => x.streams), color: 1 }, { name: t("admin.overview.metrics.transcodes"), values: smp.map((x) => x.transcodes), color: 2 }]} />
         </div>

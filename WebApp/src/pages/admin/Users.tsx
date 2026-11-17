@@ -6,6 +6,7 @@ import type { Device, Library, Page, ScheduleSlot, UserAdmin } from "../../api/t
 import { Alert, Badge, Confirm, Dialog, Empty, MethodBadge, SelectField, Switch, TextField, toast } from "../../components/ui";
 import { useSession } from "../../session";
 import { useI18n } from "../../i18n";
+import { useClientLabel } from "../../components/Logo";
 
 function toDateInput(ms: number): string {
   const d = new Date(ms);
@@ -189,6 +190,7 @@ function ScheduleEditor({ value, onChange }: { value: ScheduleSlot[]; onChange: 
 /** Dispositivi di un utente: cosa usa, da dove, cosa guarda o ha guardato, e scollegamento. */
 function UserDevices({ user, onClose }: { user: UserAdmin; onClose: () => void }) {
   const { t, relative, dateTime } = useI18n();
+  const clientLabel = useClientLabel();
   const qc = useQueryClient();
   const { data: devices } = useQuery({ queryKey: ["admin", "devices", user.id], queryFn: () => api<{ items: Device[] }>(`/api/v1/users/${user.id}/devices`).then((r) => r.items) });
   const refresh = () => { qc.invalidateQueries({ queryKey: ["admin", "devices", user.id] }); qc.invalidateQueries({ queryKey: ["admin", "users"] }); };
@@ -202,7 +204,7 @@ function UserDevices({ user, onClose }: { user: UserAdmin; onClose: () => void }
             <div className="device" key={d.id}>
               <div className="device__main">
                 <div className="t-label">{d.device_name}</div>
-                <div className="t-small muted">{d.client}{d.client_version ? ` ${d.client_version}` : ""}</div>
+                <div className="t-small muted">{clientLabel(d.client)}{d.client_version ? ` ${d.client_version}` : ""}</div>
                 {d.playing && (
                   <div className="t-small device__playing">
                     {d.playing.paused ? t("admin.users.devicePaused") : t("admin.users.deviceWatching")}: {d.playing.title}{d.playing.subtitle ? ` · ${d.playing.subtitle}` : ""} <MethodBadge method={d.playing.method} />

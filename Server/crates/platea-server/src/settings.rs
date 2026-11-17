@@ -45,6 +45,14 @@ pub struct GeneralSettings {
     /// CSS aggiunto alla web UI per tutti gli utenti.
     #[schemars(title = "CSS personalizzato")]
     pub custom_css: String,
+    /// Il nome del server (e il logo, se caricato) prende il posto di Platea ovunque: web UI, icona dell'app,
+    /// pagina Informazioni, documentazione dell'API, client compatibili con Jellyfin, notifiche.
+    #[schemars(title = "Nascondi Platea")]
+    pub white_label: bool,
+    /// Indirizzo del codice sorgente, mostrato nella pagina Informazioni. Con la licenza AGPL va indicato se si
+    /// modifica il codice e lo si offre ad altri via rete.
+    #[schemars(title = "Indirizzo del codice sorgente")]
+    pub source_url: String,
 }
 
 impl Default for GeneralSettings {
@@ -60,6 +68,8 @@ impl Default for GeneralSettings {
             lockout_after_failures: 0,
             login_message: String::new(),
             custom_css: String::new(),
+            white_label: false,
+            source_url: String::new(),
         }
     }
 }

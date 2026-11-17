@@ -200,11 +200,54 @@ private const val MARK_P = "M14 10h28a10 10 0 0 1 10 10v5.5a10 10 0 0 1-10 10H22
 private const val MARK_SCREEN = "M24,16h20a2,2 0 0 1 2,2v9.5a2,2 0 0 1 -2,2h-20a2,2 0 0 1 -2,-2v-9.5a2,2 0 0 1 2,-2z"
 
 /**
- * Marchio: la P nel colore del testo del tema, l'occhiello è lo schermo blu. `mono` lascia l'occhiello vuoto
- * (stati vuoti, in `ink-subtle`, come vuole il marchio).
+ * Marchio del server: il logo caricato dall'amministratore; senza logo la P (nel colore del testo del tema,
+ * l'occhiello è lo schermo blu), oppure l'iniziale del nome se il server nasconde Platea. `mono` lascia l'occhiello
+ * vuoto (stati vuoti, in `ink-subtle`, come vuole il marchio).
  */
 @Composable
 fun Mark(size: Dp = 32.dp, mono: Boolean = false, color: Color = if (mono) tokens.inkSubtle else tokens.ink) {
+    val state by app.platea.data.Session.state.collectAsState()
+    val info = when (val s = state) {
+        is app.platea.data.SessionState.LoggedIn -> s.info
+        is app.platea.data.SessionState.LoggedOut -> s.info
+        else -> null
+    }
+    val logo = info?.logo
+    if (logo != null) {
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        val req = remember(logo) {
+            coil.request.ImageRequest.Builder(ctx).data(app.platea.data.Api.url(logo)).decoderFactory(coil.decode.SvgDecoder.Factory()).build()
+        }
+        coil.compose.AsyncImage(
+            model = req,
+            contentDescription = null,
+            contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+            alpha = if (mono) 0.5f else 1f,
+            modifier = Modifier.height(size).widthIn(max = size * 4),
+        )
+        return
+    }
+    if (info?.whiteLabel == true) {
+        Monogram(info.name, size, mono)
+        return
+    }
+    PlateaMark(size, mono, color)
+}
+
+/** Iniziale del nome su un quadrato arrotondato: il marchio neutro quando il server nasconde Platea e manca un logo. */
+@Composable
+private fun Monogram(name: String, size: Dp, mono: Boolean) {
+    val initial = name.firstOrNull { it.isLetterOrDigit() }?.uppercase() ?: "•"
+    Box(
+        Modifier.size(size).background(if (mono) tokens.inkSubtle.copy(alpha = 0.35f) else tokens.blue, RoundedCornerShape(size * 14 / 64)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(initial, color = Color.White, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, fontSize = with(androidx.compose.ui.platform.LocalDensity.current) { (size * 0.53f).toSp() })
+    }
+}
+
+@Composable
+private fun PlateaMark(size: Dp, mono: Boolean, color: Color) {
     val blue = tokens.blue
     val paths = remember {
         val p = androidx.compose.ui.graphics.vector.PathParser().parsePathString(MARK_P).toPath().apply { fillType = androidx.compose.ui.graphics.PathFillType.EvenOdd }

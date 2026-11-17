@@ -121,6 +121,7 @@ The [`docker-compose.yml`](docker-compose.yml) in this repository is more comple
 - Seek bar thumbnails, chapters, subtitles uploaded by an admin or downloaded from OpenSubtitles, shared playlists.
 - Webhooks for Discord, ntfy or any URL: playback, new titles, sign-ins and mount problems.
 - Everything is configured from the web dashboard. There are no config files to edit after the first start.
+- Your own brand. Set the server name and upload a logo in Settings › General, then turn on "Hide Platea": the web app, its home screen icon, the About page, the API docs, Jellyfin apps and notifications show only your name and logo. The Android app shows them after it connects.
 
 ## Configuration
 

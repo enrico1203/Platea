@@ -1,11 +1,23 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, deviceId, deviceName, getToken, onUnauthorized, setToken, serverUrl } from "./api/client";
 import { connectEvents, disconnectEvents, subscribe } from "./api/events";
 import type { Me, SystemInfo } from "./api/types";
+import { useI18n } from "./i18n";
+
+/** Nome, logo e personalizzazione del server: dall'ultima risposta, o dall'ultima vista se il server non risponde. */
+export interface Brand { name: string; white_label: boolean; logo: string | null }
+const BRAND_KEY = "platea.brand";
+function cachedBrand(): Brand | null {
+  try {
+    const b = JSON.parse(localStorage.getItem(BRAND_KEY) ?? "null") as Brand | null;
+    return b && typeof b.name === "string" ? b : null;
+  } catch { return null; }
+}
 
 interface SessionCtx {
   info: SystemInfo | null;
+  brand: Brand | null;
   me: Me | null;
   loading: boolean;
   error: boolean;
@@ -21,6 +33,7 @@ const Ctx = createContext<SessionCtx | null>(null);
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
+  const { setAppName } = useI18n();
   const [info, setInfo] = useState<SystemInfo | null>(null);
   const [me, setMe] = useState<Me | null>(null);
   const [loading, setLoading] = useState(true);
@@ -65,10 +78,39 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     try { setInfo(await api<SystemInfo>("/api/v1/system/info")); } catch { /* resta il nome precedente */ }
   }, []);
 
-  // Il nome del server anche nel titolo della scheda del browser.
+  const [brand, setBrand] = useState<Brand | null>(cachedBrand);
   useEffect(() => {
-    if (info?.name.trim()) document.title = info.name.trim();
-  }, [info?.name]);
+    if (!info) return;
+    const b: Brand = { name: info.name, white_label: !!info.white_label, logo: info.logo ?? null };
+    setBrand(b);
+    try { localStorage.setItem(BRAND_KEY, JSON.stringify(b)); } catch { /* ignora */ }
+  }, [info]);
+
+  // Il nome del server nel titolo della scheda e in ogni testo (`{app}`).
+  useEffect(() => {
+    if (!brand) return;
+    if (brand.name.trim()) document.title = brand.name.trim();
+    setAppName(brand.name);
+  }, [brand, setAppName]);
+
+  // Icona della scheda: al caricamento la mette nginx; qui si aggiorna dopo un cambio di logo, nome o personalizzazione.
+  const iconKey = info ? `${info.logo ?? ""}|${info.white_label ? info.name : ""}` : null;
+  const lastIconKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (iconKey == null || !info) return;
+    const first = lastIconKey.current == null;
+    lastIconKey.current = iconKey;
+    if (first && document.querySelector("link[rel='icon']")) return;
+    const href = info.logo ? `${serverUrl()}${info.logo}` : info.white_label ? `${serverUrl()}/api/v1/branding/icon.svg?n=${encodeURIComponent(info.name)}` : "/platea-app-icon.svg";
+    let l = document.querySelector<HTMLLinkElement>("link[rel='icon']");
+    if (!l) {
+      l = document.createElement("link");
+      l.rel = "icon";
+      document.head.appendChild(l);
+    }
+    l.removeAttribute("type");
+    l.href = href;
+  }, [iconKey]);
 
   useEffect(() => {
     reload();
@@ -133,7 +175,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     qc.clear();
   }, [qc]);
 
-  return <Ctx.Provider value={{ info, me, loading, error, login, acceptToken, logout, reload, refreshInfo }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ info, brand, me, loading, error, login, acceptToken, logout, reload, refreshInfo }}>{children}</Ctx.Provider>;
 }
 
 export function useSession() {

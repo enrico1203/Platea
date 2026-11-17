@@ -477,6 +477,27 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-17 sera — **Personalizzazione completa: nome, logo, "Nascondi Platea" (0.1.8)**. Richiesta dell'utente: col
+  nome scelto dall'amministratore (es. "itdrive") non si deve capire che il server è Platea, e si può cambiare il logo.
+  Server: `api/branding.rs` (logo in `data/branding/`: SVG com'è, raster → `logo.png` + icone quadrate 192/512;
+  servito con CSP sandbox; versione in `logo.json`, in memoria in `AppState.branding`), impostazioni
+  `general.white_label` e `general.source_url`. `/api/v1/system/info` ha `white_label`, `logo`, `source_url`; `product`
+  diventa il nome del server. Testata di index.html (titolo, descrizione, favicon, apple-touch-icon) e manifest
+  generati dal server: nginx li inserisce con **SSI** (`<!--# include virtual="/api/v1/branding/head.html" -->`
+  in `index.html`, `ssi on` in `location /`) e inoltra `/manifest.webmanifest`; con `PLATEA_WEB_DIR` il server sostituisce
+  il segnaposto da sé. Senza logo e con Platea nascosto: icona con l'iniziale (`/api/v1/branding/icon.svg`).
+  Tolti gli altri "Platea" visibili: OpenAPI (titolo col nome), Jellyfin (`PlateaVersion` via, provider di
+  autenticazione con i nomi di Jellyfin), mittente Discord dei webhook, messaggi su sottotitoli, ripristino, nodi.
+  Web UI: `{app}` in ogni testo (`setAppName` in i18n, impostato dalla sessione), `Mark` = logo / iniziale / P,
+  logo largo senza il nome accanto, ultimo marchio visto in `localStorage` (`platea.brand`) per la pagina di
+  collegamento, pannello Logo in Impostazioni › Generali, "Platea Web" mostrato col nome del server, file scaricati
+  `<nome>-backup.db`. Android: `Mark` mostra logo (coil-svg) o iniziale, Informazioni col nome del server.
+  Restano visibili solo a chi cerca: immagini Docker, comando `platea`, `X-Platea-Key`, chiavi del browser, nome e
+  icona dell'app Android nel launcher, nomi dei file interni (platea.db, backup).
+  Provato su uno stack di prova (porte 18080/18096, dati in scratchpad): SSI e manifest col nome e col logo, icone
+  512 PNG, monogramma, OpenAPI, System/Info/Public; browser (Playwright) su desktop e telefono: login, home,
+  Informazioni, Impostazioni senza "Platea" nel testo.
+
 - 2026-11-17 — **Chiavi API con ambito `admin` (0.1.7)**. Prima le chiavi avevano solo l'ambito `scan`: un pannello
   esterno che crea e gestisce gli account (utenti, password, stream, librerie, blocco, sessioni, dispositivi) doveva
   fare il login con un amministratore. Ora una chiave può avere ambito `admin`: nell'intestazione `X-Platea-Key` vale

@@ -104,7 +104,7 @@ pub async fn validate(path: &Path) -> anyhow::Result<()> {
         .await
         .context("lettura del database")?;
     if ok < 3 {
-        bail!("Il database non è una copia di Platea");
+        bail!("Il file non è una copia valida del database");
     }
     let integrity: String = sqlx::query_scalar("PRAGMA quick_check").fetch_one(&mut conn).await?;
     if integrity != "ok" {

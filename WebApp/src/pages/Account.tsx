@@ -8,12 +8,14 @@ import { Avatar, useLibraries } from "../components/Layout";
 import { LinkDevice } from "../components/QuickConnect";
 import { useSession } from "../session";
 import { useI18n } from "../i18n";
+import { useClientLabel } from "../components/Logo";
 import { LOCALES, type LocaleCode } from "../i18n/locales";
 import { getTheme, setTheme, type Theme } from "../lib/theme";
 import { DEFAULT_PREFS, LANGUAGES, languageName, savePrefs } from "../lib/prefs";
 
 export default function Account() {
   const { t, locale, setLocale, relative, date, tag, bitrate } = useI18n();
+  const clientLabel = useClientLabel();
   const { me, logout, reload, info } = useSession();
   const qc = useQueryClient();
   const { data: libs } = useLibraries();
@@ -175,7 +177,7 @@ export default function Account() {
           <div className="list-row" key={d.id}>
             <div className="spacer">
               <div className="t-label">{d.device_name} {d.current && <Badge tone="direct">{t("account.thisDevice")}</Badge>}</div>
-              <div className="t-small subtle">{d.client} {d.client_version} · {t("account.lastUsed", { when: relative(d.last_used_at) })}{d.last_ip ? ` · ${d.last_ip}` : ""}</div>
+              <div className="t-small subtle">{clientLabel(d.client)} {d.client_version} · {t("account.lastUsed", { when: relative(d.last_used_at) })}{d.last_ip ? ` · ${d.last_ip}` : ""}</div>
             </div>
             {!d.current && (
               <button className="pl-btn pl-btn--danger pl-btn--sm" onClick={async () => {

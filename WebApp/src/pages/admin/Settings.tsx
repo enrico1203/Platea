@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Trash2, Upload } from "lucide-react";
+import { Mark } from "../../components/Logo";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError } from "../../api/client";
+import { api, ApiError, getToken, serverUrl } from "../../api/client";
 import { Alert, SelectField, Switch, TextField, toast, TextAreaField } from "../../components/ui";
 import { useI18n, type MessageKey } from "../../i18n";
 import { useSession } from "../../session";
@@ -93,6 +95,40 @@ function GroupForm({ group, schema, values, onSaved }: { group: string; schema: 
   );
 }
 
+/** Logo del server (Impostazioni › Generali): sostituisce il marchio nella web UI, nella scheda e nell'icona dell'app. */
+function LogoPanel() {
+  const { t } = useI18n();
+  const { info, refreshInfo } = useSession();
+  const file = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  return (
+    <section className="pl-panel panel-pad stack">
+      <h2 className="t-h3">{t("admin.settings.logo.title")}</h2>
+      <p className="t-small muted" style={{ margin: 0 }}>{t("admin.settings.logo.help")}</p>
+      {error && <Alert tone="danger">{error}</Alert>}
+      <div className="row" style={{ flexWrap: "wrap" }}>
+        <div className="logo-preview"><Mark size={48} /></div>
+        <button className="pl-btn pl-btn--secondary" disabled={busy} onClick={() => file.current?.click()}><Upload />{t(info?.logo ? "admin.settings.logo.replace" : "admin.settings.logo.upload")}</button>
+        {info?.logo && <button className="pl-btn pl-btn--ghost" disabled={busy} onClick={async () => { await api("/api/v1/admin/branding/logo", { method: "DELETE" }); await refreshInfo(); toast(t("admin.settings.logo.removed")); }}><Trash2 />{t("admin.settings.logo.remove")}</button>}
+      </div>
+      <input ref={file} type="file" accept="image/svg+xml,image/png,image/jpeg,image/webp" hidden onChange={async (e) => {
+        const f = e.target.files?.[0];
+        e.target.value = "";
+        if (!f) return;
+        setBusy(true);
+        setError(null);
+        try {
+          const res = await fetch(serverUrl() + "/api/v1/admin/branding/logo", { method: "POST", headers: { Authorization: `Bearer ${getToken() ?? ""}`, "Content-Type": f.type || "application/octet-stream" }, body: f });
+          if (!res.ok) throw new Error(((await res.json().catch(() => null)) as { message?: string } | null)?.message ?? res.statusText);
+          await refreshInfo();
+          toast(t("admin.settings.logo.saved"));
+        } catch (err) { setError((err as Error).message); } finally { setBusy(false); }
+      }} />
+    </section>
+  );
+}
+
 export default function Settings() {
   const { t } = useI18n();
   const { group } = useParams();
@@ -112,6 +148,7 @@ export default function Settings() {
           return <button key={x} role="tab" className={`tab${x === g ? " active" : ""}`} onClick={() => nav(`/admin/settings/${x}`)}>{l === k ? data.schema[x].title ?? x : l}</button>;
         })}
       </div>
+      {g === "general" && <LogoPanel />}
       <section className="pl-panel panel-pad">
         <GroupForm group={g} schema={data.schema[g]} values={data.values[g]} onSaved={() => { qc.invalidateQueries({ queryKey: ["admin", "settings"] }); if (g === "general") refreshInfo(); }} />
       </section>

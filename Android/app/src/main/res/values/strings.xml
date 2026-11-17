@@ -3,8 +3,8 @@
     <string name="about">About</string>
     <string name="about_device">This device</string>
     <string name="about_licenses">Open source</string>
-    <string name="about_licenses_text">Platea is free software under the AGPL-3.0 license. This app uses AndroidX, Jetpack Compose, Media3 (ExoPlayer), OkHttp, Coil and kotlinx.serialization (Apache 2.0), and the Geist typeface (SIL OFL 1.1).</string>
-    <string name="about_text">Platea plays your library from your own server. The server decides how each file reaches this device: as it is (direct play), with a new container (remux) or re-encoded (transcode).</string>
+    <string name="about_licenses_text">%1$s is free software under the AGPL-3.0 license. This app uses AndroidX, Jetpack Compose, Media3 (ExoPlayer), OkHttp, Coil and kotlinx.serialization (Apache 2.0), and the Geist typeface (SIL OFL 1.1).</string>
+    <string name="about_text">%1$s plays your library from your own server. The server decides how each file reaches this device: as it is (direct play), with a new container (remux) or re-encoded (transcode).</string>
     <string name="about_tmdb">This product uses the TMDB API but is not endorsed or certified by TMDB.</string>
     <string name="about_tmdb_title">Metadata</string>
     <string name="account_expired">Your account has expired</string>
@@ -19,8 +19,8 @@
     <string name="collection_titles">In this collection</string>
     <string name="connect_action">Connect</string>
     <string name="connect_address">Server address</string>
-    <string name="connect_failed">No Platea server answered at this address. Check the address and the port (8096 by default).</string>
-    <string name="connect_hint">Enter the address of your Platea server, for example 192.168.1.10:8096 or https://platea.example.com.</string>
+    <string name="connect_failed">No server answered at this address. Check the address and the port (8096 by default).</string>
+    <string name="connect_hint">Enter the address of your server, for example 192.168.1.10:8096 or https://platea.example.com.</string>
     <string name="connect_recent">Recent servers</string>
     <string name="connect_title">Connect to a server</string>
     <string name="create">Create</string>

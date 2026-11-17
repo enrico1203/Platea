@@ -23,7 +23,7 @@ const MAX_IN_FLIGHT: usize = 32;
 pub fn body_for(url: &str, event: &str, text: &str, server: &str, data: &Value) -> (String, &'static str) {
     if url.contains("discord.com/api/webhooks") || url.contains("discordapp.com/api/webhooks") {
         let content: String = format!("**{server}** · {text}").chars().take(1900).collect();
-        return (json!({ "content": content, "username": "Platea" }).to_string(), "application/json");
+        return (json!({ "content": content, "username": server }).to_string(), "application/json");
     }
     if url.contains("ntfy.") {
         return (format!("{server}: {text}"), "text/plain; charset=utf-8");

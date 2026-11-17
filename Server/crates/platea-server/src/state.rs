@@ -42,6 +42,8 @@ pub struct AppState {
     /// Estrazioni di sottotitoli e keyframe su richiesta: risorsa scarsa.
     pub extractions: Semaphore,
     pub started_at: i64,
+    /// Logo caricato dall'amministratore (Impostazioni › Generali).
+    pub branding: crate::api::branding::Branding,
 }
 
 pub type Shared = Arc<AppState>;

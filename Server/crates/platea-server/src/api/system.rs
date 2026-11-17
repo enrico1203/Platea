@@ -29,7 +29,11 @@ async fn info(State(state): State<Shared>) -> Json<Value> {
         "name": s.general.server_name,
         "id": state.server_id,
         "version": VERSION,
-        "product": "Platea",
+        "product": super::branding::product_name(&state),
+        // Personalizzazione: con white_label i client non mostrano Platea da nessuna parte.
+        "white_label": s.general.white_label,
+        "logo": super::branding::logo_url(&state),
+        "source_url": Some(s.general.source_url.trim()).filter(|u| !u.is_empty()),
         "api": "v1",
         "setup_required": setup_required,
         "quick_connect": s.general.quick_connect,

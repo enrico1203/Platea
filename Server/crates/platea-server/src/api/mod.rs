@@ -4,6 +4,7 @@
 
 pub mod admin;
 pub mod auth;
+pub mod branding;
 pub mod collections;
 pub mod download;
 pub mod events;
@@ -170,6 +171,7 @@ fn openapi(docs: &[RouteDoc]) -> Value {
 pub fn router(state: Shared) -> Router {
     let api = Api::new();
     let api = system::routes(api);
+    let api = branding::routes(api);
     let api = setup::routes(api);
     let api = auth::routes(api);
     let api = users::routes(api);
@@ -185,9 +187,17 @@ pub fn router(state: Shared) -> Router {
     let api = nodes::routes(api);
     let api = events::routes(api);
     let doc = openapi(&api.docs);
-    let doc_route = axum::routing::get(move || {
-        let d = doc.clone();
-        async move { axum::Json(d) }
+    let doc_route = axum::routing::get(move |State(state): State<Shared>| {
+        let mut d = doc.clone();
+        async move {
+            // Con Platea nascosto la documentazione porta il nome del server.
+            if state.settings.get().general.white_label {
+                let name = branding::display_name(&state);
+                d["info"]["title"] = json!(format!("{name} API"));
+                d["info"]["description"] = json!(format!("API pubblica di {name}. Tutti i client (web UI, app, script) usano questa API."));
+            }
+            axum::Json(d)
+        }
     });
 
     // Limite di 16 MB a tutte le richieste tranne il caricamento di un database da ripristinare.
@@ -204,8 +214,13 @@ pub fn router(state: Shared) -> Router {
         .fallback(fallback);
 
     if let Some(dir) = state.boot.web_dir.clone() {
-        let index = dir.join("index.html");
-        app = app.fallback_service(tower_http::services::ServeDir::new(dir).fallback(tower_http::services::ServeFile::new(index)));
+        // index.html e manifest portano nome e icone del server: li genera il server, il resto sono file statici.
+        let index = axum::routing::get(branding::index_html).with_state(state.clone());
+        app = app
+            .route("/", axum::routing::get(branding::index_html))
+            .route("/index.html", axum::routing::get(branding::index_html))
+            .route("/manifest.webmanifest", axum::routing::get(branding::manifest))
+            .fallback_service(tower_http::services::ServeDir::new(dir).append_index_html_on_directories(false).fallback(index));
     }
 
     app.layer(middleware::from_fn_with_state(state.clone(), cors))

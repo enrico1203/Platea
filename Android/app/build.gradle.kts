@@ -10,7 +10,7 @@ plugins {
 
 // Versione: dal tag della release (-PappVersion=0.1.7), altrimenti quella del server in sviluppo.
 // versionCode cresce con la versione (0.1.7 → 107), così un APK nuovo si installa sopra il vecchio.
-val appVersion = (project.findProperty("appVersion") as String?)?.removePrefix("v") ?: "0.1.7"
+val appVersion = (project.findProperty("appVersion") as String?)?.removePrefix("v") ?: "0.1.8"
 val appVersionCode = appVersion.split(".").map { it.toIntOrNull() ?: 0 }.let { (it.getOrElse(0) { 0 } * 10000) + (it.getOrElse(1) { 0 } * 100) + it.getOrElse(2) { 0 } }
 
 // Firma di rilascio facoltativa: keystore.properties (non versionato) con storeFile, storePassword, keyAlias, keyPassword.
@@ -117,6 +117,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("io.coil-kt:coil-compose:2.7.0")
+    implementation("io.coil-kt:coil-svg:2.7.0")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.14.1")

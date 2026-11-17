@@ -4,13 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#050608" />
-    <meta name="description" content="Open source media server" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <link rel="icon" type="image/svg+xml" href="/platea-app-icon.svg" />
-    <link rel="apple-touch-icon" href="/icon-192.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <title>Platea</title>
+    <!-- Titolo, descrizione e icone col nome e il logo del server: nginx li inserisce con SSI. -->
+    <!--# config errmsg="" -->
+    <!--# include virtual="/api/v1/branding/head.html" -->
   </head>
   <body>
     <div id="root" class="pl-root"></div>

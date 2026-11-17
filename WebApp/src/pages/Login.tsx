@@ -20,7 +20,7 @@ export default function Login() {
     return (
       <div className="center">
         <div className="auth-card">
-          <div className="row"><Mark size={40} /><div><div className="t-h2">{info?.name ?? "Platea"}</div><div className="t-small subtle">Open source media server</div></div></div>
+          <div className="row"><Mark size={40} /><div><div className="t-h2">{info?.name || "Platea"}</div><div className="t-small subtle">{t(info?.white_label ? "about.taglineWhite" : "about.tagline")}</div></div></div>
           <QuickConnectLogin onToken={async (tok) => { await acceptToken(tok); nav("/", { replace: true }); }} onCancel={() => setQc(false)} />
         </div>
       </div>
@@ -44,7 +44,7 @@ export default function Login() {
           }
         }}
       >
-        <div className="row"><Mark size={40} /><div><div className="t-h2">{info?.name ?? "Platea"}</div><div className="t-small subtle">Open source media server</div></div></div>
+        <div className="row"><Mark size={40} /><div><div className="t-h2">{info?.name || "Platea"}</div><div className="t-small subtle">{t(info?.white_label ? "about.taglineWhite" : "about.tagline")}</div></div></div>
         {info?.login_message && <div className="login-message">{info.login_message}</div>}
         {error && <Alert tone="danger">{error}</Alert>}
         <TextField label={t("auth.username")} autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} autoFocus required />

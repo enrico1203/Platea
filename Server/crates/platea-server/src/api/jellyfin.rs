@@ -9,7 +9,7 @@ use crate::api::auth::{do_login, LoginReq};
 use crate::auth::AuthUser;
 use crate::error::{ApiError, ApiResult};
 use crate::sessions::{stop_session, PlaySession, SessionManager};
-use crate::state::{Shared, VERSION};
+use crate::state::Shared;
 use crate::util::{iso, now_ms};
 use axum::body::Body;
 use axum::extract::{ConnectInfo, Path, Query, State};
@@ -362,7 +362,6 @@ async fn system_info(State(state): State<Shared>, _u: AuthUser) -> Json<Value> {
         "IsShuttingDown": false,
         "EncoderLocation": "System",
         "SystemArchitecture": std::env::consts::ARCH,
-        "PlateaVersion": VERSION,
     }))
 }
 
@@ -442,8 +441,8 @@ async fn user_dto(state: &Shared, user_id: i64) -> ApiResult<Value> {
             "EnableContentDownloading": is_admin != 0 || allow_download != 0,
             "EnableRemoteAccess": true,
             "EnableUserPreferenceAccess": true,
-            "AuthenticationProviderId": "Platea",
-            "PasswordResetProviderId": "Platea",
+            "AuthenticationProviderId": "Jellyfin.Server.Implementations.Users.DefaultAuthenticationProvider",
+            "PasswordResetProviderId": "Jellyfin.Server.Implementations.Users.DefaultPasswordResetProvider",
         },
     }))
 }

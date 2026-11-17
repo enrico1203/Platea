@@ -5,9 +5,12 @@ import { api, ApiError, download, getToken, mediaUrl, serverUrl } from "../../ap
 import { Alert, Confirm, Empty, SelectField, TextField, toast } from "../../components/ui";
 import { useState } from "react";
 import { useI18n } from "../../i18n";
+import { useServerName } from "../../components/Logo";
 
 export default function System() {
   const { t, bytes, relative } = useI18n();
+  // Nomi dei file scaricati dal nome del server: "itdrive-backup.db".
+  const slug = useServerName().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "server";
   const qc = useQueryClient();
   const file = useRef<HTMLInputElement>(null);
   const { data } = useQuery({ queryKey: ["admin", "system"], queryFn: () => api<{ version: string; server_id: string; data_dir: string; cache_dir: string; transcode_dir: string; database_bytes: number; started_at: number }>("/api/v1/admin/system") });
@@ -34,8 +37,8 @@ export default function System() {
         <h2 className="t-h3">{t("admin.system.backup")}</h2>
         <p className="t-small muted" style={{ margin: 0 }}>{t("admin.system.backupHelp")}</p>
         <div className="row">
-          <button className="pl-btn pl-btn--secondary" onClick={() => download("/api/v1/admin/backup", "platea-backup.db", "POST")}><Download />{t("admin.system.downloadDb")}</button>
-          <button className="pl-btn pl-btn--secondary" onClick={() => download("/api/v1/admin/settings/export", "platea-config.json")}><Download />{t("admin.system.exportConfig")}</button>
+          <button className="pl-btn pl-btn--secondary" onClick={() => download("/api/v1/admin/backup", `${slug}-backup.db`, "POST")}><Download />{t("admin.system.downloadDb")}</button>
+          <button className="pl-btn pl-btn--secondary" onClick={() => download("/api/v1/admin/settings/export", `${slug}-config.json`)}><Download />{t("admin.system.exportConfig")}</button>
           <button className="pl-btn pl-btn--secondary" onClick={() => file.current?.click()}><Upload />{t("admin.system.importConfig")}</button>
           <input ref={file} type="file" accept="application/json" hidden onChange={async (e) => {
             const f = e.target.files?.[0];
