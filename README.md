@@ -38,7 +38,7 @@ What it does:
 - On a TV it uses a side menu, large focus marks for the remote and sign-in with a code. On tablets it uses the side menu too.
 - Dark theme by default, like the web app. Light, or the system setting, can be chosen in Account.
 
-Updating: release APKs are meant to install over the previous version, keeping your server and sign-in. That needs every release signed with the same key (the `ANDROID_KEYSTORE_*` secrets of the Android workflow). Until that key is set up, each build has its own key and Android refuses the update: uninstall the old app first, then sign in again.
+Updating: release APKs are signed with the same Platea key, so a new version installs over the previous one and keeps your server and sign-in. APKs built before 17 November 2026 (0.1.6 and older) used a temporary key: if you have one of those, uninstall it once, install the new APK and sign in again; later updates install normally.
 
 Fire TV models with Vega OS (Fire TV Stick 4K Select and newer) don't run Android apps.
 

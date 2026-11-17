@@ -501,9 +501,10 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
   librerie come card con lo sfondo di un titolo recente, campi `surface-2`, account a righe (scelte a destra,
   Altro con Informazioni/Cambia server/Esci), stati vuoti col marchio monocromatico, Play del player con la luce.
   Test: 6 di contratto + 33 schermate (telefono, tablet, TV) verdi; APK di rilascio ~3,7 MB provato (login, direct
-  play MP4, remux MKV+AC3). **Firma:** il repository non ha ancora i segreti `ANDROID_KEYSTORE_*`, quindi ogni APK
-  della CI ha una chiave diversa e per aggiornare bisogna disinstallare: serve una chiave di rilascio decisa
-  dall'utente.
+  play MP4, remux MKV+AC3). **Firma:** il 2026-11-17, su autorizzazione dell'utente, creata la chiave di rilascio
+  (RSA 4096, alias `platea`) e caricati i segreti `ANDROID_KEYSTORE_*`: da qui in poi gli APK della CI sono tutti
+  firmati con la stessa chiave e gli aggiornamenti si installano sopra. Chi ha un APK precedente deve disinstallarlo
+  una volta. La chiave non è nel repository (dove sta: `PROGRESS.local.md`).
 
 - 2026-11-16 — **App Android nativa** (`Android/`, richiesta dell'utente: "completa con tutte le schermate e il player,
   per telefoni, tablet e Android TV tipo Fire Stick"). Una sola app Kotlin + Jetpack Compose + Media3 (ExoPlayer),
