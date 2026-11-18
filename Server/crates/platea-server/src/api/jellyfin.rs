@@ -120,6 +120,7 @@ pub fn router() -> Router<Shared> {
         .route("/Movies/Recommendations", get(empty_array))
         .route("/Playlists", get(empty_items))
         .route("/Devices", get(empty_items))
+        .route("/Devices/Options", post(ok_empty))
         .route("/MediaSegments/{item}", get(empty_items))
         .route("/Localization/Options", get(localization_options))
         .route("/Localization/Cultures", get(localization_cultures))
@@ -174,6 +175,8 @@ const NS_ITEM: &str = "0000000000000000";
 const NS_LIBRARY: &str = "1000000000000000";
 const NS_USER: &str = "2000000000000000";
 const NS_PERSON: &str = "3000000000000000";
+/// Solo in uscita (Studios[].Id): Platea non ha pagine degli studi.
+const NS_STUDIO: &str = "4000000000000000";
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Ref {
@@ -408,6 +411,41 @@ async fn user_dto(state: &Shared, user_id: i64) -> ApiResult<Value> {
         crate::prefs::SubtitleMode::None => "None",
         crate::prefs::SubtitleMode::Smart => "Smart",
     };
+    // UserPolicy: l'SDK Kotlin di Jellyfin (Findroid) vuole tutti i campi non nullable.
+    let policy = json!({
+        "IsAdministrator": is_admin != 0,
+        "IsHidden": true,
+        "IsDisabled": false,
+        "EnableAllFolders": true,
+        "EnableMediaPlayback": is_admin != 0 || expires.is_none_or(|e| now_ms() < e),
+        "EnableAudioPlaybackTranscoding": true,
+        "EnableVideoPlaybackTranscoding": true,
+        "EnablePlaybackRemuxing": true,
+        "EnableContentDownloading": is_admin != 0 || allow_download != 0,
+        "EnableRemoteAccess": true,
+        "EnableUserPreferenceAccess": true,
+        "EnableCollectionManagement": false,
+        "EnableSubtitleManagement": false,
+        "EnableLyricManagement": false,
+        "EnableRemoteControlOfOtherUsers": false,
+        "EnableSharedDeviceControl": false,
+        "EnableLiveTvManagement": false,
+        "EnableLiveTvAccess": false,
+        "ForceRemoteSourceTranscoding": false,
+        "EnableContentDeletion": false,
+        "EnableSyncTranscoding": false,
+        "EnableMediaConversion": false,
+        "EnableAllDevices": true,
+        "EnableAllChannels": true,
+        "InvalidLoginAttemptCount": 0,
+        "LoginAttemptsBeforeLockout": -1,
+        "MaxActiveSessions": 0,
+        "EnablePublicSharing": false,
+        "RemoteClientBitrateLimit": 0,
+        "SyncPlayAccess": "None",
+        "AuthenticationProviderId": "Jellyfin.Server.Implementations.Users.DefaultAuthenticationProvider",
+        "PasswordResetProviderId": "Jellyfin.Server.Implementations.Users.DefaultPasswordResetProvider",
+    });
     Ok(json!({
         "Name": name,
         "ServerId": state.server_id,
@@ -425,25 +463,17 @@ async fn user_dto(state: &Shared, user_id: i64) -> ApiResult<Value> {
             "SubtitleMode": sub_mode,
             "HidePlayedInLatest": prefs.hide_played_in_recent,
             "EnableNextEpisodeAutoPlay": prefs.autoplay_next,
+            "DisplayMissingEpisodes": false,
+            "GroupedFolders": [],
+            "DisplayCollectionsView": false,
+            "EnableLocalPassword": false,
+            "RememberAudioSelections": true,
+            "RememberSubtitleSelections": true,
             "OrderedViews": [],
             "LatestItemsExcludes": [],
             "MyMediaExcludes": [],
         },
-        "Policy": {
-            "IsAdministrator": is_admin != 0,
-            "IsHidden": true,
-            "IsDisabled": false,
-            "EnableAllFolders": true,
-            "EnableMediaPlayback": is_admin != 0 || expires.is_none_or(|e| now_ms() < e),
-            "EnableAudioPlaybackTranscoding": true,
-            "EnableVideoPlaybackTranscoding": true,
-            "EnablePlaybackRemuxing": true,
-            "EnableContentDownloading": is_admin != 0 || allow_download != 0,
-            "EnableRemoteAccess": true,
-            "EnableUserPreferenceAccess": true,
-            "AuthenticationProviderId": "Jellyfin.Server.Implementations.Users.DefaultAuthenticationProvider",
-            "PasswordResetProviderId": "Jellyfin.Server.Implementations.Users.DefaultPasswordResetProvider",
-        },
+        "Policy": policy,
     }))
 }
 
@@ -501,7 +531,13 @@ async fn auth_result(
             "ApplicationVersion": version,
             "ServerId": state.server_id,
             "SupportsRemoteControl": false,
+            "SupportsMediaControl": false,
             "PlayableMediaTypes": ["Video"],
+            "SupportedCommands": [],
+            "IsActive": true,
+            "HasCustomDeviceName": false,
+            "LastActivityDate": iso(now_ms()),
+            "LastPlaybackCheckIn": iso(now_ms()),
         },
         "AccessToken": token,
         "ServerId": state.server_id,
@@ -622,7 +658,8 @@ async fn library_dto(state: &Shared, id: i64, name: &str, kind: &str) -> Value {
         "LocationType": "FileSystem",
         "ImageTags": {},
         "BackdropImageTags": [],
-        "UserData": { "PlaybackPositionTicks": 0, "PlayCount": 0, "IsFavorite": false, "Played": false, "Key": format!("lib{id}") },
+        "MediaType": "Unknown",
+        "UserData": { "PlaybackPositionTicks": 0, "PlayCount": 0, "IsFavorite": false, "Played": false, "Key": format!("lib{id}"), "ItemId": guid(state, NS_LIBRARY, id) },
     })
 }
 
@@ -983,6 +1020,12 @@ async fn media_sources(state: &Shared, item: i64) -> ApiResult<Vec<Value>> {
                     "BitRate": sbr,
                     "IsTextSubtitleStream": kind == "subtitle" && !platea_playback::is_image_subtitle(&codec),
                     "SupportsExternalStream": kind == "subtitle",
+                    "IsInterlaced": false,
+                    "IsHearingImpaired": false,
+                    "IsOriginal": false,
+                    "AudioSpatialFormat": "None",
+                    "VideoRange": "Unknown",
+                    "VideoRangeType": "Unknown",
                 });
                 let o = s.as_object_mut().unwrap();
                 if kind == "video" {
@@ -1044,6 +1087,13 @@ async fn media_sources(state: &Shared, item: i64) -> ApiResult<Vec<Value>> {
             "RequiresClosing": false,
             "RequiresLooping": false,
             "SupportsProbing": false,
+            "ReadAtNativeFramerate": false,
+            "IgnoreDts": false,
+            "IgnoreIndex": false,
+            "GenPtsInput": false,
+            "UseMostCompatibleTranscodingProfile": false,
+            "HasSegments": false,
+            "TranscodingSubProtocol": "http",
             "MediaStreams": ms,
             "DirectStreamUrl": format!("/Videos/{}/stream.{}?static=true&MediaSourceId={}", item_guid(state, item), container.unwrap_or(ext), state.ids.encode(fid)),
         }));
@@ -1122,7 +1172,7 @@ async fn detail_dto(state: &Shared, user: &AuthUser, id: i64) -> ApiResult<Value
         .bind(meta_id)
         .fetch_all(&state.db.read)
         .await?;
-    let studios: Vec<String> = sqlx::query_scalar("SELECT s.name FROM item_studios x JOIN studios s ON s.id = x.studio_id WHERE x.item_id = ?")
+    let studios: Vec<(i64, String)> = sqlx::query_as("SELECT s.id, s.name FROM item_studios x JOIN studios s ON s.id = x.studio_id WHERE x.item_id = ?")
         .bind(meta_id)
         .fetch_all(&state.db.read)
         .await?;
@@ -1139,7 +1189,7 @@ async fn detail_dto(state: &Shared, user: &AuthUser, id: i64) -> ApiResult<Value
     let trailers: Vec<Value> = trailers.and_then(|t| serde_json::from_str::<Vec<Value>>(&t).ok()).unwrap_or_default();
     let o = v.as_object_mut().unwrap();
     o.insert("Genres".into(), json!(genres));
-    o.insert("Studios".into(), json!(studios.iter().map(|s| json!({ "Name": s })).collect::<Vec<_>>()));
+    o.insert("Studios".into(), json!(studios.iter().map(|(sid, s)| json!({ "Name": s, "Id": guid(state, NS_STUDIO, *sid) })).collect::<Vec<_>>()));
     o.insert("Taglines".into(), json!(tagline.into_iter().collect::<Vec<_>>()));
     // Trailer YouTube: Infuse e le app Jellyfin li mostrano come "Trailer".
     o.insert(
@@ -2011,7 +2061,7 @@ async fn set_flag(state: &Shared, user: &AuthUser, item: &str, field: &str, on: 
     }
     tx.commit().await?;
     state.events.to_user(user.user_id, "user_data.changed", json!({}));
-    Ok(Json(json!({ "Played": field == "played" && on, "IsFavorite": field == "favorite" && on, "Key": item, "ItemId": item })))
+    Ok(Json(user_data_dto(state, user, item).await?))
 }
 
 async fn played_add_u(State(s): State<Shared>, u: AuthUser, Path((_x, i)): Path<(String, String)>) -> ApiResult<Json<Value>> {

@@ -477,6 +477,17 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-18 — **Findroid (Android): login e API conformi all'SDK Kotlin di Jellyfin (0.1.9)**. Findroid dava "errore
+  sconosciuto" subito dopo il login (200): l'SDK Kotlin di Jellyfin 1.9.4 (API 12.4) rifiuta le risposte se manca un
+  campo non nullable. Mancavano: UserConfiguration/UserPolicy (DisplayMissingEpisodes, SyncPlayAccess, …),
+  SessionInfo (SupportedCommands, IsActive, …), nelle sorgenti (GenPtsInput, HasSegments, TranscodingSubProtocol…),
+  nei flussi (IsInterlaced, VideoRange anche per audio/sottotitoli, AudioSpatialFormat…), `Studios[].Id`
+  (prefisso GUID `4000…`, solo in uscita), MediaType e UserData.ItemId delle librerie; preferiti/visti ora
+  restituiscono lo UserItemDataDto completo; aggiunto `POST /Devices/Options`. Nuovo `scripts/jellyfin-check.py`:
+  confronta le risposte con lo schema OpenAPI di Jellyfin. Le 37 chiamate di Findroid (presi dal suo
+  `JellyfinRepositoryImpl`) passano con 0 problemi su un server di prova con copia del DB.
+  Nota: `/tmp` dell'host è un tmpfs da 7,9 GB: le copie del DB (4 GB) vanno in `/var/tmp`, non nello scratchpad.
+  **Da confermare dall'utente su Findroid**; log HTTP dettagliato attivo in .env, rimettere `PLATEA_LOG=info` dopo.
 - 2026-11-17 sera — **Personalizzazione completa: nome, logo, "Nascondi Platea" (0.1.8)**. Richiesta dell'utente: col
   nome scelto dall'amministratore (es. "itdrive") non si deve capire che il server è Platea, e si può cambiare il logo.
   Server: `api/branding.rs` (logo in `data/branding/`: SVG com'è, raster → `logo.png` + icone quadrate 192/512;
