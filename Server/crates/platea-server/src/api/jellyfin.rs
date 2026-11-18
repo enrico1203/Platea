@@ -1729,10 +1729,11 @@ async fn playback_info(
     State(state): State<Shared>,
     user: AuthUser,
     Path(item): Path<String>,
-    headers: HeaderMap,
-    uri: Uri,
+    parts: axum::http::request::Parts,
     body: axum::body::Bytes,
 ) -> ApiResult<Json<Value>> {
+    let headers = &parts.headers;
+    let uri = &parts.uri;
     user.require_playback()?;
     let id = item_id(&state, &item)?;
     let row = crate::api::items::load_item(&state, &user, id).await?;
@@ -1746,10 +1747,15 @@ async fn playback_info(
         }
     }
     let num = |k: &str, body_key: &str| b[body_key].as_i64().or_else(|| q.get(k).and_then(|v| v.parse().ok()));
-    let client = auth_fields(&headers).get("client").cloned().unwrap_or_default();
+    let client = auth_fields(headers).get("client").cloned().unwrap_or_default();
     let infuse = client.to_ascii_lowercase().contains("infuse");
     let wants_transcoding = b["EnableTranscoding"].as_bool().unwrap_or(true);
-    let direct = || Json(json!({ "MediaSources": sources.clone(), "PlaySessionId": crate::util::random_hex(16) }));
+    let ip = crate::auth::peer_ip(&state, &parts);
+    let direct = || {
+        let play_session = crate::util::random_hex(16);
+        grant_stream(&play_session, &user, id, ip);
+        Json(json!({ "MediaSources": sources.clone(), "PlaySessionId": play_session }))
+    };
     let Some(profile_json) = b.get("DeviceProfile").filter(|p| p.is_object()) else { return Ok(direct()) };
     if infuse || !wants_transcoding || !matches!(row.kind.as_str(), "movie" | "episode") {
         return Ok(direct());
@@ -1803,8 +1809,89 @@ async fn playback_info(
         o.insert("TranscodingContainer".into(), json!(if fmp4 { "mp4" } else { "ts" }));
         o.remove("DirectStreamUrl");
     }
+    grant_stream(&session, &user, id, ip);
     tracing::info!(client = %client, method = r["method"].as_str().unwrap_or(""), "app Jellyfin: riproduzione convertita in HLS");
     Ok(Json(json!({ "MediaSources": [src], "PlaySessionId": session })))
+}
+
+// ---------------------------------------------------------------------------------------------
+// Stream senza token. Jellyfin non chiede l'autenticazione su `/Videos/{id}/stream` e alcune app (Findroid, con
+// ExoPlayer) aprono l'URL così com'è, senza intestazioni né `api_key`. Platea non apre gli stream a chiunque: vale
+// solo per l'elemento di un PlaybackInfo fatto poco prima da un utente autenticato, riconosciuto dal `PlaySessionId`
+// che quella risposta ha dato oppure, se l'app non lo rimanda, dallo stesso indirizzo IP.
+
+const GRANT_TTL: Duration = Duration::from_secs(12 * 3600);
+
+#[derive(Clone)]
+struct StreamGrant {
+    user: AuthUser,
+    item: i64,
+    ip: Option<std::net::IpAddr>,
+    at: std::time::Instant,
+}
+
+static STREAM_GRANTS: Lazy<Mutex<HashMap<String, StreamGrant>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+
+fn grant_stream(play_session: &str, user: &AuthUser, item: i64, ip: Option<std::net::IpAddr>) {
+    if play_session.is_empty() {
+        return;
+    }
+    let mut map = STREAM_GRANTS.lock().unwrap();
+    map.retain(|_, g| g.at.elapsed() < GRANT_TTL);
+    if map.len() >= 10_000 {
+        if let Some(oldest) = map.iter().min_by_key(|(_, g)| g.at).map(|(k, _)| k.clone()) {
+            map.remove(&oldest);
+        }
+    }
+    map.insert(play_session.to_string(), StreamGrant { user: user.clone(), item, ip, at: std::time::Instant::now() });
+}
+
+/// Il permesso valido per questa richiesta, se c'è: prima per `PlaySessionId`, poi per IP (il più recente).
+fn find_grant(play_session: Option<&str>, item: i64, ip: Option<std::net::IpAddr>) -> Option<StreamGrant> {
+    let mut map = STREAM_GRANTS.lock().unwrap();
+    let key = match play_session.and_then(|p| map.get(p).map(|g| (p, g))) {
+        Some((p, g)) if g.item == item && g.at.elapsed() < GRANT_TTL => Some(p.to_string()),
+        Some(_) => None,
+        None => ip.and_then(|ip| {
+            map.iter().filter(|(_, g)| g.item == item && g.ip == Some(ip) && g.at.elapsed() < GRANT_TTL).max_by_key(|(_, g)| g.at).map(|(k, _)| k.clone())
+        }),
+    }?;
+    let g = map.get_mut(&key)?;
+    g.at = std::time::Instant::now();
+    Some(g.clone())
+}
+
+/// Utente di una richiesta di stream: col token come sempre, altrimenti dal permesso del PlaybackInfo.
+struct StreamUser(AuthUser);
+
+impl axum::extract::FromRequestParts<Shared> for StreamUser {
+    type Rejection = ApiError;
+
+    async fn from_request_parts(parts: &mut axum::http::request::Parts, state: &Shared) -> Result<Self, Self::Rejection> {
+        let err = match AuthUser::from_request_parts(parts, state).await {
+            Ok(u) => return Ok(StreamUser(u)),
+            Err(e @ ApiError::Unauthorized) => e,
+            Err(e) => return Err(e),
+        };
+        let mut segs = parts.uri.path().split('/');
+        segs.find(|s| s.eq_ignore_ascii_case("videos"));
+        let item = segs.next().and_then(|i| item_id(state, i).ok()).ok_or(err)?;
+        let play_session = crate::auth::query_param(parts, "playsessionid");
+        let ip = crate::auth::peer_ip(state, parts);
+        let Some(g) = find_grant(play_session.as_deref(), item, ip) else {
+            let keys: Vec<&str> = parts.uri.query().unwrap_or("").split('&').filter_map(|p| p.split('=').next()).collect();
+            tracing::info!(path = %parts.uri.path(), query = ?keys, "stream senza token e senza PlaybackInfo valido");
+            return Err(ApiError::Unauthorized);
+        };
+        // Il token di quel PlaybackInfo deve esistere ancora (dispositivo non rimosso, utente non uscito).
+        let alive: Option<i64> = sqlx::query_scalar("SELECT id FROM tokens WHERE id = ?").bind(g.user.token_id).fetch_optional(&state.db.read).await?;
+        if alive.is_none() {
+            return Err(ApiError::Unauthorized);
+        }
+        let mut user = g.user;
+        user.ip = ip;
+        Ok(StreamUser(user))
+    }
 }
 
 async fn choose_file(state: &Shared, item: i64, source: Option<&str>) -> ApiResult<i64> {
@@ -1855,13 +1942,20 @@ async fn download(State(state): State<Shared>, user: AuthUser, Path(item): Path<
     crate::api::download::serve_for_user(&state, &user, id, &method, &headers).await
 }
 
-async fn stream(State(state): State<Shared>, user: AuthUser, Path(item): Path<String>, uri: Uri, method: Method, headers: HeaderMap) -> ApiResult<Response> {
+async fn stream(
+    State(state): State<Shared>,
+    StreamUser(user): StreamUser,
+    Path(item): Path<String>,
+    uri: Uri,
+    method: Method,
+    headers: HeaderMap,
+) -> ApiResult<Response> {
     do_stream(&state, &user, &item, &uri, &method, &headers).await
 }
 
 async fn stream_named(
     State(state): State<Shared>,
-    user: AuthUser,
+    StreamUser(user): StreamUser,
     Path((item, name)): Path<(String, String)>,
     uri: Uri,
     method: Method,

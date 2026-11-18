@@ -477,6 +477,14 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-18 — **Findroid: il video non partiva (0.1.10)**. Dopo il login (ok con la 0.1.9) la riproduzione restava
+  ferma: Findroid apre `/Videos/{id}/stream?static=true&…` con ExoPlayer senza token (né intestazioni né `api_key`) e
+  Platea rispondeva 401 a ogni tentativo. Jellyfin non chiede l'autenticazione su quell'URL; Platea sì, ma ora accetta
+  lo stream senza token se c'è un PlaybackInfo recente (12 h, rinnovate a ogni richiesta) di un utente autenticato
+  per lo stesso elemento: riconosciuto dal `PlaySessionId` dato in risposta o, se manca, dallo stesso IP; il token di
+  quel PlaybackInfo deve esistere ancora (`StreamUser` e `STREAM_GRANTS` in `api/jellyfin.rs`). Provato su server di
+  prova: 206 con PlaySessionId e dallo stesso IP, 401 su altri film, PlaySessionId inventato o di un altro film, e
+  dopo il logout. **Da confermare dall'utente su Findroid.**
 - 2026-11-18 — **Findroid (Android): login e API conformi all'SDK Kotlin di Jellyfin (0.1.9)**. Findroid dava "errore
   sconosciuto" subito dopo il login (200): l'SDK Kotlin di Jellyfin 1.9.4 (API 12.4) rifiuta le risposte se manca un
   campo non nullable. Mancavano: UserConfiguration/UserPolicy (DisplayMissingEpisodes, SyncPlayAccess, …),
