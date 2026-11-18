@@ -731,7 +731,9 @@ async fn counts(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<V
 /// Librerie che si possono raggruppare nelle viste (Infuse le chiede subito dopo l'accesso).
 async fn grouping_options(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<Value>> {
     let libs: Vec<(i64, String)> =
-        sqlx::query_as(&format!("SELECT id, name FROM libraries i WHERE 1 {} ORDER BY name", user.library_filter("i.id"))).fetch_all(&state.db.read).await?;
+        sqlx::query_as(&format!("SELECT id, name FROM libraries i WHERE i.kind <> 'audiobooks' {} ORDER BY name", user.library_filter("i.id")))
+            .fetch_all(&state.db.read)
+            .await?;
     Ok(Json(json!(libs.into_iter().map(|(id, name)| json!({ "Name": name, "Id": guid(&state, NS_LIBRARY, id) })).collect::<Vec<_>>())))
 }
 
@@ -741,7 +743,7 @@ async fn grouping_options_u(state: State<Shared>, user: AuthUser, Path(_u): Path
 
 async fn virtual_folders(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<Value>> {
     let libs: Vec<(i64, String, String)> =
-        sqlx::query_as(&format!("SELECT id, name, kind FROM libraries i WHERE 1 {} ORDER BY name", user.library_filter("i.id")))
+        sqlx::query_as(&format!("SELECT id, name, kind FROM libraries i WHERE i.kind <> 'audiobooks' {} ORDER BY name", user.library_filter("i.id")))
             .fetch_all(&state.db.read)
             .await?;
     let out: Vec<Value> = libs
@@ -761,7 +763,7 @@ async fn virtual_folders(State(state): State<Shared>, user: AuthUser) -> ApiResu
 
 async fn views_list(state: &Shared, user: &AuthUser) -> ApiResult<Json<Value>> {
     let libs: Vec<(i64, String, String)> =
-        sqlx::query_as(&format!("SELECT id, name, kind FROM libraries i WHERE 1 {} ORDER BY name", user.library_filter("i.id")))
+        sqlx::query_as(&format!("SELECT id, name, kind FROM libraries i WHERE i.kind <> 'audiobooks' {} ORDER BY name", user.library_filter("i.id")))
             .fetch_all(&state.db.read)
             .await?;
     let mut items = Vec::new();
@@ -1418,6 +1420,8 @@ async fn query_items(state: &Shared, user: &AuthUser, q: ItemsQuery) -> ApiResul
     } else if q.ids.is_none() {
         sql.push_str(" AND i.kind IN ('movie','series','season','episode')");
     }
+    // Gli audiolibri (e le loro serie) non passano dallo strato Jellyfin: i client video non saprebbero cosa farne.
+    sql.push_str(" AND i.library_id NOT IN (SELECT id FROM libraries WHERE kind = 'audiobooks')");
     for ex in &excluded {
         match ex.as_str() {
             "movie" | "series" | "season" | "episode" => sql.push_str(&format!(" AND i.kind <> '{ex}'")),

@@ -213,6 +213,12 @@ pub async fn remove_image(state: &Shared, image_id: i64) -> anyhow::Result<()> {
 /// Immagine caricata dall'amministratore (locandina, sfondo, logo): nuovo identificativo, così la cache lunga dei
 /// browser non mostra quella vecchia. Il file resta nella cache del server, mai nelle cartelle dei media.
 pub async fn store_upload(state: &Shared, item_id: i64, kind: &str, bytes: Vec<u8>) -> anyhow::Result<i64> {
+    store_bytes(state, item_id, kind, bytes, "upload", "upload").await
+}
+
+/// Immagine da byte già in mano (caricata, trovata nella cartella, incorporata nel file): `source` dice da dove
+/// viene, `source_url` la identifica (per non rifare il lavoro se non è cambiata).
+pub async fn store_bytes(state: &Shared, item_id: i64, kind: &str, bytes: Vec<u8>, source: &str, source_url: &str) -> anyhow::Result<i64> {
     let (w, h, color, b) = tokio::task::spawn_blocking(move || -> anyhow::Result<(u32, u32, String, Vec<u8>)> {
         let img = decode_limited(&bytes).context("immagine non leggibile")?;
         Ok((img.width(), img.height(), average_color(&img), bytes))
@@ -220,17 +226,18 @@ pub async fn store_upload(state: &Shared, item_id: i64, kind: &str, bytes: Vec<u
     .await??;
     let old: Vec<i64> = sqlx::query_scalar("SELECT id FROM images WHERE item_id = ? AND kind = ?").bind(item_id).bind(kind).fetch_all(&state.db.read).await?;
     // La nuova riga prima di togliere le vecchie: identificativo sempre nuovo (vedi set_image_url).
-    let id = sqlx::query(
-        "INSERT INTO images (item_id, kind, source, source_url, state, width, height, placeholder_color) VALUES (?, ?, 'upload', 'upload', 'ready', ?, ?, ?)",
-    )
-    .bind(item_id)
-    .bind(kind)
-    .bind(w as i64)
-    .bind(h as i64)
-    .bind(&color)
-    .execute(&state.db.write)
-    .await?
-    .last_insert_rowid();
+    let id =
+        sqlx::query("INSERT INTO images (item_id, kind, source, source_url, state, width, height, placeholder_color) VALUES (?, ?, ?, ?, 'ready', ?, ?, ?)")
+            .bind(item_id)
+            .bind(kind)
+            .bind(source)
+            .bind(source_url)
+            .bind(w as i64)
+            .bind(h as i64)
+            .bind(&color)
+            .execute(&state.db.write)
+            .await?
+            .last_insert_rowid();
     let path = original_path(state, id);
     if let Some(d) = path.parent() {
         tokio::fs::create_dir_all(d).await?;

@@ -67,7 +67,9 @@ pub const ITEM_SELECT: &str = "SELECT i.id, i.library_id, i.kind, i.parent_id, i
   CASE WHEN i.kind = 'collection' THEN (SELECT im.id FROM collection_members cm JOIN items m ON m.id = cm.item_id
        JOIN images im ON im.item_id = m.id AND im.kind = 'poster' WHERE cm.collection_id = i.id ORDER BY m.year, m.id LIMIT 1) END AS member_poster_id,
   CASE WHEN i.kind IN ('series','season') THEN (SELECT COUNT(*) FROM items e LEFT JOIN user_item_data ue ON ue.item_id = e.id AND ue.user_id = ?1
-     WHERE e.kind = 'episode' AND (e.series_id = i.id OR e.parent_id = i.id) AND COALESCE(ue.played, 0) = 0) END AS unplayed_count
+     WHERE e.kind = 'episode' AND (e.series_id = i.id OR e.parent_id = i.id) AND COALESCE(ue.played, 0) = 0) END AS unplayed_count,
+  CASE WHEN i.kind = 'audiobook' THEN (SELECT group_concat(name, ', ') FROM (SELECT p.name FROM item_people ip JOIN people p ON p.id = ip.person_id
+     WHERE ip.item_id = i.id AND ip.role = 'author' ORDER BY ip.sort_order LIMIT 3)) END AS authors
 FROM items i LEFT JOIN user_item_data u ON u.item_id = i.id AND u.user_id = ?1";
 
 #[derive(sqlx::FromRow)]
@@ -110,6 +112,8 @@ pub struct ItemRow {
     pub child_count: Option<i64>,
     pub member_poster_id: Option<i64>,
     pub unplayed_count: Option<i64>,
+    /// Audiolibri: i primi autori, separati da virgole.
+    pub authors: Option<String>,
 }
 
 pub fn image_url(state: &Shared, id: Option<i64>) -> Option<String> {
@@ -155,6 +159,7 @@ pub fn item_json(state: &Shared, r: &ItemRow) -> Value {
         },
         "child_count": r.child_count,
         "unplayed_count": r.unplayed_count,
+        "authors": r.authors,
     })
 }
 
@@ -218,9 +223,9 @@ async fn list(State(state): State<Shared>, user: AuthUser, Query(q): Query<ListQ
     match q.kind.as_deref() {
         // Una collezione con un solo film presente non aiuta a sfogliare: si elencano da due in su.
         Some("collection") => sql.push_str(" AND i.kind = 'collection' AND (SELECT COUNT(*) FROM collection_members cm WHERE cm.collection_id = i.id) >= 2"),
-        Some(k @ ("movie" | "series" | "season" | "episode")) => bind(&mut sql, " AND i.kind = ?", json!(k), &mut binds),
-        Some(_) => return Err(ApiError::BadRequest("kind: movie, series, season, episode, collection".into())),
-        None if q.parent_id.is_none() => sql.push_str(" AND i.kind IN ('movie','series')"),
+        Some(k @ ("movie" | "series" | "season" | "episode" | "audiobook")) => bind(&mut sql, " AND i.kind = ?", json!(k), &mut binds),
+        Some(_) => return Err(ApiError::BadRequest("kind: movie, series, season, episode, collection, audiobook".into())),
+        None if q.parent_id.is_none() => sql.push_str(" AND i.kind IN ('movie','series','audiobook')"),
         None => {}
     }
     if let Some(m) = q.q.as_deref().and_then(fts_query) {
@@ -501,7 +506,15 @@ async fn detail(State(state): State<Shared>, user: AuthUser, Path(id): Path<Stri
     if row.kind == "movie" || row.kind == "episode" {
         o.insert("files".into(), json!(files_json(&state, iid).await?));
     }
-    if row.kind == "movie" {
+    if row.kind == "audiobook" {
+        let book = audiobook_json(&state, iid).await?;
+        // Dati tecnici dei file solo per i libri in poche parti (un podcast può averne migliaia).
+        if book["parts"].as_array().is_some_and(|p| p.len() <= 30) {
+            o.insert("files".into(), json!(files_json(&state, iid).await?));
+        }
+        o.insert("audiobook".into(), book);
+    }
+    if row.kind == "movie" || row.kind == "audiobook" {
         let cols: Vec<(i64, String)> = sqlx::query_as(
             "SELECT c.id, c.title FROM collection_members cm JOIN items c ON c.id = cm.collection_id WHERE cm.item_id = ? ORDER BY c.sort_title",
         )
@@ -517,13 +530,26 @@ async fn detail(State(state): State<Shared>, user: AuthUser, Path(id): Path<Stri
     Ok(Json(v))
 }
 
+/// Parti (i file, in ordine, con l'inizio nel libro) e capitoli sull'intero libro.
+async fn audiobook_json(state: &Shared, item_id: i64) -> ApiResult<Value> {
+    let parts = crate::audiobook::parts(state, item_id).await?;
+    let chapters = crate::audiobook::chapters(&parts);
+    Ok(json!({
+        "parts": parts.iter().map(|p| json!({
+            "file_id": state.ids.encode(p.file_id), "title": p.title, "duration_ms": p.duration_ms, "offset_ms": p.offset_ms, "present": p.present,
+        })).collect::<Vec<_>>(),
+        "chapters": chapters,
+        "duration_ms": parts.iter().map(|p| p.duration_ms).sum::<i64>(),
+    }))
+}
+
 async fn children(State(state): State<Shared>, user: AuthUser, Path(id): Path<String>) -> ApiResult<Json<Value>> {
     let iid = decode(&state, &id)?;
     let parent = load_item(&state, &user, iid).await?;
     let sql = if parent.kind == "collection" {
-        // I film di una collezione, in ordine di uscita.
+        // I film di una collezione in ordine di uscita; i libri di una serie nel loro ordine (numero nella serie).
         format!(
-            "{ITEM_SELECT} WHERE i.id IN (SELECT item_id FROM collection_members WHERE collection_id = ?2) {} ORDER BY COALESCE(i.premiere_date, i.year, ''), i.sort_title LIMIT 1000",
+            "{ITEM_SELECT} WHERE i.id IN (SELECT item_id FROM collection_members WHERE collection_id = ?2) {} ORDER BY CASE WHEN i.kind = 'audiobook' THEN COALESCE(i.index_number, 9999) ELSE 0 END, COALESCE(i.premiere_date, i.year, ''), i.sort_title LIMIT 1000",
             user.library_filter("i.library_id")
         )
     } else {
@@ -684,11 +710,15 @@ async fn similar(State(state): State<Shared>, user: AuthUser, Path(id): Path<Str
     let iid = decode(&state, &id)?;
     let row = load_item(&state, &user, iid).await?;
     let base = match row.kind.as_str() {
-        "movie" | "series" => iid,
+        "movie" | "series" | "audiobook" => iid,
         "season" | "episode" => row.series_id.unwrap_or(iid),
         _ => return Ok(Json(json!({ "items": [] }))),
     };
-    let kind = if row.kind == "movie" { "movie" } else { "series" };
+    let kind = match row.kind.as_str() {
+        "movie" => "movie",
+        "audiobook" => "audiobook",
+        _ => "series",
+    };
     let sql = format!(
         "{ITEM_SELECT} JOIN (
             SELECT ig.item_id AS sid, COUNT(*) AS shared FROM item_genres ig
@@ -713,7 +743,7 @@ async fn person(State(state): State<Shared>, user: AuthUser, Path(id): Path<Stri
     let image: Option<i64> =
         sqlx::query_scalar("SELECT id FROM images WHERE person_id = ? AND kind = 'profile'").bind(pid).fetch_optional(&state.db.read).await?;
     let sql = format!(
-        "{ITEM_SELECT} WHERE i.id IN (SELECT item_id FROM item_people WHERE person_id = ?2) AND i.kind IN ('movie','series') {}
+        "{ITEM_SELECT} WHERE i.id IN (SELECT item_id FROM item_people WHERE person_id = ?2) AND i.kind IN ('movie','series','audiobook') {}
          ORDER BY COALESCE(i.year, 0) DESC, i.sort_title LIMIT 500",
         user.library_filter("i.library_id")
     );
@@ -770,6 +800,12 @@ async fn home(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<Val
          ORDER BY u.last_played_at DESC LIMIT 20"
     );
     let resume: Vec<ItemRow> = sqlx::query_as(&sql).bind(user.user_id).fetch_all(&state.db.read).await?;
+    // Continua ad ascoltare: audiolibri iniziati e non finiti.
+    let sql = format!(
+        "{ITEM_SELECT} WHERE i.kind = 'audiobook' AND u.position_ms > 0 AND COALESCE(u.played,0) = 0 AND i.available = 1 {lf}
+         ORDER BY u.last_played_at DESC LIMIT 20"
+    );
+    let listening: Vec<ItemRow> = sqlx::query_as(&sql).bind(user.user_id).fetch_all(&state.db.read).await?;
     // Prossimi episodi: per le serie viste di recente, il primo episodio non visto dopo l'ultimo visto.
     let sql = format!(
         "SELECT i.id FROM items i JOIN user_item_data u ON u.item_id = i.id AND u.user_id = ?1
@@ -809,7 +845,11 @@ async fn home(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<Val
         if hidden.contains(&lid) {
             continue;
         }
-        let k = if kind == "movies" { "movie" } else { "episode" };
+        let k = match kind.as_str() {
+            "movies" => "movie",
+            "audiobooks" => "audiobook",
+            _ => "episode",
+        };
         // Anche qui i limiti dell'utente (classificazione): la libreria è consentita, non ogni titolo.
         let sql =
             format!("{ITEM_SELECT} WHERE i.library_id = ?2 AND i.kind = '{k}' AND i.available = 1{played} {lf} ORDER BY i.added_at DESC, i.id DESC LIMIT 20");
@@ -823,6 +863,7 @@ async fn home(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<Val
     }
     Ok(Json(json!({
         "resume": resume.iter().map(|r| item_json(&state, r)).collect::<Vec<_>>(),
+        "listening": listening.iter().map(|r| item_json(&state, r)).collect::<Vec<_>>(),
         "next_up": next_up,
         "recent": recent,
     })))
@@ -845,7 +886,7 @@ async fn search(State(state): State<Shared>, user: AuthUser, Query(q): Query<Sea
     let Some(m) = fts_query(&q.q) else { return Ok(Json(json!({ "items": [] }))) };
     let limit = clamp_limit(q.limit, 40);
     let sql = format!(
-        "{ITEM_SELECT} JOIN items_fts f ON f.rowid = i.id WHERE items_fts MATCH ?2 AND (i.kind IN ('movie','series','episode') OR (i.kind = 'collection' AND (SELECT COUNT(*) FROM collection_members cm WHERE cm.collection_id = i.id) >= 2)) {}
+        "{ITEM_SELECT} JOIN items_fts f ON f.rowid = i.id WHERE items_fts MATCH ?2 AND (i.kind IN ('movie','series','episode','audiobook') OR (i.kind = 'collection' AND (SELECT COUNT(*) FROM collection_members cm WHERE cm.collection_id = i.id) >= 2)) {}
          ORDER BY CASE i.kind WHEN 'episode' THEN 1 ELSE 0 END, bm25(items_fts) LIMIT {limit}",
         user.library_filter("i.library_id")
     );
@@ -1009,8 +1050,14 @@ async fn candidates(State(state): State<Shared>, _a: AdminUser, Path(id): Path<S
         .fetch_optional(&state.db.read)
         .await?
         .ok_or_else(|| ApiError::not_found("Elemento"))?;
-    if kind != "movie" && kind != "series" {
-        return Err(ApiError::BadRequest("Si identificano solo film e serie".into()));
+    if kind != "movie" && kind != "series" && kind != "audiobook" {
+        return Err(ApiError::BadRequest("Si identificano solo film, serie e audiolibri".into()));
+    }
+    if kind == "audiobook" && q.q.is_some() {
+        let items = crate::metadata::audiobook::candidates(&state, iid, q.q.as_deref())
+            .await
+            .map_err(|e| ApiError::BadRequest(format!("Ricerca su Audible non riuscita: {e}")))?;
+        return Ok(Json(json!({ "items": items })));
     }
     let lang: String = sqlx::query_scalar("SELECT language FROM libraries WHERE id = ?").bind(lib).fetch_one(&state.db.read).await?;
     if q.q.is_none() {
@@ -1023,8 +1070,14 @@ async fn candidates(State(state): State<Shared>, _a: AdminUser, Path(id): Path<S
         if !saved.is_empty() {
             return Ok(Json(json!({ "items": saved.into_iter().map(|(p, t, y, s, o, pp)| json!({
                 "provider_id": p, "title": t, "year": y, "score": s, "overview": o,
-                "poster": pp.map(|x| format!("{}/w185{x}", crate::metadata::tmdb::IMAGE_BASE.as_str())),
+                "poster": pp.map(|x| candidate_poster(&x)),
             })).collect::<Vec<_>>() })));
+        }
+        if kind == "audiobook" {
+            let items = crate::metadata::audiobook::candidates(&state, iid, None)
+                .await
+                .map_err(|e| ApiError::BadRequest(format!("Ricerca su Audible non riuscita: {e}")))?;
+            return Ok(Json(json!({ "items": items })));
         }
     }
     let rejected = std::collections::HashSet::new();
@@ -1037,6 +1090,15 @@ async fn candidates(State(state): State<Shared>, _a: AdminUser, Path(id): Path<S
     })).collect::<Vec<_>>() })))
 }
 
+/// Locandina di un candidato: percorso TMDB, o indirizzo completo (copertine di Audible).
+pub fn candidate_poster(p: &str) -> String {
+    if p.starts_with("https://") {
+        p.to_string()
+    } else {
+        format!("{}/w185{p}", crate::metadata::tmdb::IMAGE_BASE.as_str())
+    }
+}
+
 #[derive(Deserialize)]
 struct IdentifyReq {
     provider_id: String,
@@ -1044,6 +1106,13 @@ struct IdentifyReq {
 
 async fn identify(State(state): State<Shared>, AdminUser(admin): AdminUser, Path(id): Path<String>, Json(req): Json<IdentifyReq>) -> ApiResult<Json<Value>> {
     let iid = decode(&state, &id)?;
+    let kind: Option<String> = sqlx::query_scalar("SELECT kind FROM items WHERE id = ?").bind(iid).fetch_optional(&state.db.read).await?;
+    if kind.as_deref() == Some("audiobook") {
+        let asin = req.provider_id.trim().to_string();
+        crate::metadata::audiobook::identify(&state, iid, &asin).await.map_err(|e| ApiError::BadRequest(format!("{e:#}")))?;
+        state.db.activity(Some(admin.user_id), "item_identified", &format!("{} ha identificato un audiolibro (Audible {asin})", admin.username), None).await;
+        return Ok(Json(json!({ "ok": true })));
+    }
     let tmdb: i64 = req.provider_id.trim().parse().map_err(|_| ApiError::BadRequest("Identificativo TMDB non valido".into()))?;
     crate::metadata::apply_tmdb(&state, iid, tmdb, 1.0, "manual").await.map_err(|e| ApiError::BadRequest(format!("{e:#}")))?;
     state.db.activity(Some(admin.user_id), "item_identified", &format!("{} ha identificato un elemento (TMDB {tmdb})", admin.username), None).await;

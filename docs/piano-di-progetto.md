@@ -51,7 +51,7 @@ Il server riproduce il file originale ogni volta che il client lo regge e usa FF
 Queste funzioni restano fuori dalla v1 per tenere il nucleo piccolo e veloce. Lo schema del database le prevede, così aggiungerle dopo non richiede migrazioni distruttive.
 
 - Live TV e registrazione
-- Musica, libri, foto
+- Musica, libri, foto (gli audiolibri ci sono dalla 0.1.11)
 - Sistema di plugin
 - Download per visione offline e sincronizzazione
 - DLNA e casting
@@ -921,6 +921,7 @@ Criterio di uscita: le due app sono pubblicate e riproducono in direct play i fo
 - [ ] Download per la visione offline nelle app
 - [ ] Autenticazione esterna con OIDC o LDAP
 - [x] Transcodifica su macchine worker (nodi: `docs/nodi.md`, anche copie delle cartelle con bilanciamento e failover)
+- [x] Audiolibri (libreria dedicata, metadati locali e Audible, player web persistente)
 - [ ] Musica e altri tipi di libreria
 
 Criterio di uscita: nessuno, è lavoro continuo ordinato secondo le richieste degli utenti.

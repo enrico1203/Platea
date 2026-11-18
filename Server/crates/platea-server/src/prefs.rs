@@ -40,6 +40,9 @@ pub struct UserPrefs {
     pub subtitle_background: bool,
     /// Sezioni della home in ordine; quelle assenti sono nascoste.
     pub home_sections: Vec<String>,
+    /// Versione dell'elenco delle sezioni: le sezioni nuove compaiono una volta a chi aveva già scelto le sue.
+    #[serde(default)]
+    pub home_sections_version: u32,
     /// Librerie nascoste dalla home (ID opachi).
     pub home_hidden_libraries: Vec<String>,
     /// Niente titoli già visti tra gli "aggiunti di recente".
@@ -54,7 +57,9 @@ pub struct UserPrefs {
     pub max_bitrate_remote: u64,
 }
 
-pub const HOME_SECTIONS: &[&str] = &["resume", "next_up", "recent"];
+pub const HOME_SECTIONS: &[&str] = &["resume", "listening", "next_up", "recent"];
+/// 2: "listening" (continua ad ascoltare, audiolibri).
+const HOME_SECTIONS_VERSION: u32 = 2;
 
 impl Default for UserPrefs {
     fn default() -> Self {
@@ -69,6 +74,7 @@ impl Default for UserPrefs {
             subtitle_size: "m".into(),
             subtitle_background: false,
             home_sections: HOME_SECTIONS.iter().map(|s| s.to_string()).collect(),
+            home_sections_version: HOME_SECTIONS_VERSION,
             home_hidden_libraries: vec![],
             hide_played_in_recent: false,
             theme: "auto".into(),
@@ -97,6 +103,11 @@ impl UserPrefs {
         }
         let mut seen = std::collections::HashSet::new();
         self.home_sections.retain(|s| HOME_SECTIONS.contains(&s.as_str()) && seen.insert(s.clone()));
+        if self.home_sections_version < 2 && !self.home_sections.iter().any(|s| s == "listening") {
+            let at = self.home_sections.iter().position(|s| s == "resume").map(|i| i + 1).unwrap_or(0);
+            self.home_sections.insert(at, "listening".into());
+        }
+        self.home_sections_version = HOME_SECTIONS_VERSION;
         self.home_hidden_libraries.truncate(200);
         // Sotto 500 kb/s non si vede nulla: valori più bassi sono un errore del client.
         for b in [&mut self.max_bitrate_local, &mut self.max_bitrate_remote] {
@@ -237,7 +248,11 @@ mod tests {
         );
         assert_eq!(p.skip_forward_seconds, 300);
         assert_eq!(p.theme, "auto");
-        assert_eq!(p.home_sections, vec!["recent", "resume"]);
+        // Preferenze salvate prima degli audiolibri: "Continua ad ascoltare" compare dopo "Continua a guardare".
+        assert_eq!(p.home_sections, vec!["recent", "resume", "listening"]);
+        // Tolta dall'utente dopo: resta tolta.
+        let q = UserPrefs::parse(r#"{"home_sections": ["resume"], "home_sections_version": 2}"#);
+        assert_eq!(q.home_sections, vec!["resume"]);
         assert_eq!(p.audio_language, "it");
         assert!(p.autoplay_next);
     }

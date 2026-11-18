@@ -9,6 +9,8 @@
 //!
 //! Nessuna funzione qui fa I/O: lavorano solo su stringhe.
 
+pub mod audiobook;
+
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::Serialize;

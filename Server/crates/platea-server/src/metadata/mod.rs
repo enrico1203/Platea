@@ -3,6 +3,7 @@
 //! ricerca per titolo e anno con un punteggio. Sotto la soglia l'elemento va "da verificare".
 //! Un campo modificato a mano (bloccato) non viene sovrascritto.
 
+pub mod audiobook;
 pub mod collections;
 pub mod images;
 pub mod nfo;
@@ -253,6 +254,9 @@ pub async fn match_item(state: &Shared, item_id: i64) -> anyhow::Result<()> {
     else {
         return Ok(());
     };
+    if item.kind == "audiobook" {
+        return audiobook::match_book(state, item_id, false).await;
+    }
     if item.kind != "movie" && item.kind != "series" {
         return Ok(());
     }
@@ -386,6 +390,10 @@ pub async fn match_item(state: &Shared, item_id: i64) -> anyhow::Result<()> {
 }
 
 pub async fn refresh_item(state: &Shared, item_id: i64) -> anyhow::Result<()> {
+    let kind: Option<String> = sqlx::query_scalar("SELECT kind FROM items WHERE id = ?").bind(item_id).fetch_optional(&state.db.read).await?;
+    if kind.as_deref() == Some("audiobook") {
+        return audiobook::match_book(state, item_id, true).await;
+    }
     let id: Option<String> =
         sqlx::query_scalar("SELECT value FROM external_ids WHERE item_id = ? AND provider = 'tmdb'").bind(item_id).fetch_optional(&state.db.read).await?;
     let has_key = !state.settings.get().metadata.tmdb_api_key.trim().is_empty();
@@ -811,7 +819,7 @@ async fn set_image(
 }
 
 /// Imposta l'immagine di un tipo da un indirizzo completo. Restituisce l'id se va scaricata.
-async fn set_image_url(tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>, item_id: i64, kind: &str, url: &str) -> anyhow::Result<Option<i64>> {
+pub(crate) async fn set_image_url(tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>, item_id: i64, kind: &str, url: &str) -> anyhow::Result<Option<i64>> {
     let existing: Option<(i64, String)> =
         sqlx::query_as("SELECT id, source_url FROM images WHERE item_id = ? AND kind = ?").bind(item_id).bind(kind).fetch_optional(&mut **tx).await?;
     match existing {
@@ -974,7 +982,7 @@ pub async fn schedule_refresh(state: &Shared) -> anyhow::Result<()> {
 
 /// Accoda l'associazione di tutti gli elementi ancora in attesa (per esempio dopo aver impostato la chiave).
 pub async fn enqueue_pending(state: &Shared) -> anyhow::Result<usize> {
-    let rows: Vec<(i64, i64)> = sqlx::query_as("SELECT id, library_id FROM items WHERE kind IN ('movie','series') AND match_state IN ('pending','unmatched')")
+    let rows: Vec<(i64, i64)> = sqlx::query_as("SELECT id, library_id FROM items WHERE (kind IN ('movie','series') AND match_state IN ('pending','unmatched')) OR (kind = 'audiobook' AND match_state = 'pending')")
         .fetch_all(&state.db.read)
         .await?;
     let n = rows.len();

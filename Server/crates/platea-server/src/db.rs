@@ -60,6 +60,20 @@ impl Db {
         }
         MIGRATOR.run(&write).await.context("migrazioni del database")?;
         prune_backups(&boot.data_dir, 2);
+        // Alcune migrazioni riscrivono il testo dello schema (vincoli CHECK): la connessione che le ha applicate
+        // tiene in memoria lo schema vecchio, quindi si riapre.
+        let write = if pending > 0 {
+            write.close().await;
+            SqlitePoolOptions::new()
+                .max_connections(1)
+                .min_connections(1)
+                .acquire_timeout(Duration::from_secs(30))
+                .connect_with(base.clone())
+                .await
+                .context("riapertura del database in scrittura")?
+        } else {
+            write
+        };
 
         let readers = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).clamp(2, 8) as u32;
         let read = SqlitePoolOptions::new()
@@ -144,5 +158,35 @@ mod backup_tests {
         let mut left: Vec<String> = std::fs::read_dir(d.path()).unwrap().flatten().map(|e| e.file_name().to_string_lossy().to_string()).collect();
         left.sort();
         assert_eq!(left, vec!["platea.db", "platea.db.bak-300", "platea.db.bak-400"]);
+    }
+}
+
+#[cfg(test)]
+mod migration_tests {
+    /// I vincoli CHECK allargati dalla migrazione degli audiolibri valgono subito, anche sulla connessione di scrittura,
+    /// e quelli vecchi continuano a rifiutare i valori sconosciuti.
+    #[tokio::test]
+    async fn audiobook_kinds_are_accepted() {
+        let d = tempfile::tempdir().unwrap();
+        let boot = crate::boot::BootConfig {
+            bind: String::new(),
+            data_dir: d.path().join("data"),
+            cache_dir: d.path().join("cache"),
+            transcode_dir: d.path().join("tc"),
+            log: String::new(),
+            web_dir: None,
+        };
+        std::fs::create_dir_all(&boot.data_dir).unwrap();
+        let db = super::Db::open(&boot).await.unwrap();
+        sqlx::query("INSERT INTO libraries (name, kind, created_at) VALUES ('A', 'audiobooks', 0)").execute(&db.write).await.unwrap();
+        sqlx::query("INSERT INTO items (library_id, kind, title, sort_title, added_at, updated_at) VALUES (1, 'audiobook', 'x', 'x', 0, 0)")
+            .execute(&db.write)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO people (name) VALUES ('p')").execute(&db.write).await.unwrap();
+        sqlx::query("INSERT INTO item_people (item_id, person_id, role) VALUES (1, 1, 'narrator')").execute(&db.write).await.unwrap();
+        assert!(sqlx::query("INSERT INTO libraries (name, kind, created_at) VALUES ('B', 'music', 0)").execute(&db.write).await.is_err());
+        let ok: String = sqlx::query_scalar("PRAGMA integrity_check").fetch_one(&db.read).await.unwrap();
+        assert_eq!(ok, "ok");
     }
 }

@@ -23,7 +23,7 @@ export default function Review() {
             <div className="row row--between">
               <div>
                 <Link to={`/item/${it.id}`} className="t-h3">{it.title}{it.year ? ` (${it.year})` : ""}</Link>
-                <div className="t-small subtle">{it.library} · {it.kind === "movie" ? t("item.movie") : t("item.series")} · <Badge>{it.match_state === "review" ? t("admin.review.doubtful") : t("admin.review.notFound")}</Badge></div>
+                <div className="t-small subtle">{it.library} · {it.kind === "movie" ? t("item.movie") : it.kind === "audiobook" ? t("audio.audiobook") : t("item.series")} · <Badge>{it.match_state === "review" ? t("admin.review.doubtful") : t("admin.review.notFound")}</Badge></div>
                 {it.path && <div className="t-mono-sm subtle" style={{ marginTop: 4 }}>{it.path}</div>}
               </div>
               <Link className="pl-btn pl-btn--secondary pl-btn--sm" to={`/item/${it.id}`}>{t("item.identify")}</Link>
@@ -31,7 +31,7 @@ export default function Review() {
             {it.candidates.map((c) => (
               <div className="cand" key={c.provider_id}>
                 {c.poster ? <img src={c.poster} alt="" /> : <div className="ph" />}
-                <div><div className="t-label">{c.title} {c.year && <span className="subtle">({c.year})</span>}</div><div className="t-mono-sm subtle">{t("item.score")} {num(c.score, 2)} · TMDB {c.provider_id}</div></div>
+                <div><div className="t-label">{c.title} {c.year && <span className="subtle">({c.year})</span>}</div><div className="t-mono-sm subtle">{t("item.score")} {num(c.score, 2)} · {it.kind === "audiobook" ? "Audible" : "TMDB"} {c.provider_id}</div>{it.kind === "audiobook" && c.overview && <div className="t-small muted">{c.overview}</div>}</div>
                 <div className="row">
                   <button className="pl-btn pl-btn--secondary pl-btn--sm" onClick={async () => { await api(`/api/v1/items/${it.id}/identify`, { body: { provider_id: c.provider_id } }); qc.invalidateQueries(); toast(t("item.identified")); }}>{t("item.choose")}</button>
                   <button className="icon-btn" aria-label={t("admin.review.reject")} title={t("admin.review.reject")} onClick={async () => { await api(`/api/v1/items/${it.id}/reject`, { body: { provider_id: c.provider_id } }); qc.invalidateQueries({ queryKey: ["admin", "review"] }); }}><X /></button>

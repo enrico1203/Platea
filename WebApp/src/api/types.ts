@@ -6,7 +6,7 @@ export interface Me extends UserRef {
   avatar: string | null;
   preferences: UserPrefs;
 }
-export type ItemKind = "movie" | "series" | "season" | "episode" | "collection";
+export type ItemKind = "movie" | "series" | "season" | "episode" | "collection" | "audiobook";
 export interface UserData { position_ms: number; played: boolean; play_count: number; favorite: boolean; last_played_at: number | null }
 export interface Item {
   id: string; library_id: string; kind: ItemKind; title: string; original_title: string | null; year: number | null;
@@ -15,6 +15,8 @@ export interface Item {
   available: boolean; match_state: string; added_at: number;
   images: { poster: string | null; poster_color: string | null; backdrop: string | null; still: string | null; logo?: string | null };
   user_data: UserData; child_count: number | null; unplayed_count: number | null;
+  /** Audiolibri: i primi autori, separati da virgole. */
+  authors?: string | null;
 }
 export interface VideoStream { index: number; codec: string; profile: string | null; level: number | null; bit_depth: number | null; width: number | null; height: number | null; frame_rate: number | null; hdr: string | null; bitrate: number | null }
 export interface AudioStream { index: number; codec: string; channels: number | null; channel_layout: string | null; bitrate: number | null; language: string | null; title: string | null; default: boolean }
@@ -23,17 +25,22 @@ export interface MediaFile { id: string; name: string; version_label: string | n
 export interface Person { id: string; name: string; role: string; character: string | null; image: string | null }
 export interface ItemDetail extends Item { tagline: string | null; trailers?: { key: string; name: string | null; lang: string | null }[]; manual_collection?: boolean;
   /** Contenuti extra del film o della serie: si riproducono con `/play/<id>?file=<file_id>`. */
-  extras?: { file_id: string; title: string; kind: string | null; duration_ms: number | null }[]; genres: string[]; studios: string[]; people: Person[]; external_ids: Record<string, string>; files?: MediaFile[]; locked_fields?: string[]; collections?: { id: string; title: string }[] }
+  extras?: { file_id: string; title: string; kind: string | null; duration_ms: number | null }[]; genres: string[]; studios: string[]; people: Person[]; external_ids: Record<string, string>; files?: MediaFile[]; locked_fields?: string[]; collections?: { id: string; title: string }[];
+  /** Audiolibro: le parti (file in ordine, con l'inizio nel libro) e i capitoli sull'intero libro. */
+  audiobook?: Audiobook }
+export interface BookPart { file_id: string; title: string; duration_ms: number; offset_ms: number; present: boolean }
+export interface BookChapter { start_ms: number; title: string | null; part: number }
+export interface Audiobook { parts: BookPart[]; chapters: BookChapter[]; duration_ms: number }
 export interface Page<T> { items: T[]; next_cursor?: string | null }
 export interface Library {
-  id: string; name: string; kind: "movies" | "shows"; item_count: number;
+  id: string; name: string; kind: "movies" | "shows" | "audiobooks"; item_count: number;
   paths?: string[]; scan_profile?: "local" | "remote"; language?: string; country?: string; scan_interval_minutes?: number | null;
   probe_concurrency?: number; probe_per_minute?: number | null; probe_window_start?: number | null; probe_window_end?: number | null; probe_pause_on_play?: boolean; extract_keyframes?: boolean; trickplay?: boolean; trickplay_done?: number;
   last_scan_at?: number | null; last_scan_status?: string | null; last_scan_message?: string | null; missing_held?: number; file_count?: number; probe_pending?: number;
 }
 /** Episodio già uscito (secondo TMDB) che non è in libreria. */
 export interface MissingEpisode { season: number; episode: number; title: string | null; overview: string | null; air_date: string | null }
-export interface Home { resume: Item[]; next_up: Item[]; recent: { library_id: string; library_name: string; kind: string; items: Item[] }[] }
+export interface Home { resume: Item[]; listening?: Item[]; next_up: Item[]; recent: { library_id: string; library_name: string; kind: string; items: Item[] }[] }
 export type Method = "direct_play" | "remux" | "transcode";
 export interface PlaybackInfo {
   session_id: string; stream_token: string; method: Method; reasons: string[]; chain: string;
@@ -46,6 +53,8 @@ export interface PlaybackInfo {
   /** Limite di bitrate applicato dal server; null = originale. */
   max_bitrate: number | null;
   container: string;
+  /** Audiolibro: inizio della parte nel libro e durata del libro. */
+  part_offset_ms?: number | null; book_duration_ms?: number | null;
 }
 /** Miniature della barra di avanzamento: griglie `cols`×`rows`, una ogni `interval_ms`; `{n}` nell'URL = numero della griglia. */
 export interface Trickplay { interval_ms: number; width: number; height: number; cols: number; rows: number; count: number; url: string }
@@ -70,7 +79,7 @@ export interface Overview {
   sessions: SessionView[]; bandwidth_bps: number; counts: { direct_play: number; remux: number; transcode: number };
   transcode_slots: { hw_used: number; hw_max: number; sw_used: number; sw_max: number };
   jobs: { queued: number; running: number; failed: number };
-  library: { movies: number; series: number; episodes: number; files: number; review: number };
+  library: { movies: number; series: number; episodes: number; audiobooks?: number; files: number; review: number };
   system: { memory_rss_bytes: number | null; load_1m: number | null; cpus: number; uptime_ms: number };
   alerts: { level: "danger" | "warning" | "info"; code: string; message: string }[];
 }
@@ -94,7 +103,7 @@ export interface UserPrefs {
   audio_language: string; subtitle_language: string; subtitle_mode: SubtitleMode;
   autoplay_next: boolean; autoplay_countdown_seconds: number; skip_back_seconds: number; skip_forward_seconds: number;
   subtitle_size: "s" | "m" | "l" | "xl"; subtitle_background: boolean;
-  home_sections: string[]; home_hidden_libraries: string[]; hide_played_in_recent: boolean; theme: string; remember_tracks: boolean;
+  home_sections: string[]; home_sections_version?: number; home_hidden_libraries: string[]; hide_played_in_recent: boolean; theme: string; remember_tracks: boolean;
   max_bitrate_local: number; max_bitrate_remote: number;
 }
 export interface PersonDetail { id: string; name: string; image: string | null; tmdb_id: number | null; items: (Item & { roles: { role: string; character: string | null }[] })[] }

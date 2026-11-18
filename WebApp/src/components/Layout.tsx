@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Home, Search, Film, Tv, LayoutDashboard, FolderOpen, Users, ListChecks, SearchCheck, Cpu, Settings, ScrollText, Server, Terminal, User, Info, LogOut, Library as LibraryIcon, ListVideo, PanelLeftClose, PanelLeftOpen, ArrowUp, Network } from "lucide-react";
+import { Home, Search, Film, Tv, Headphones, LayoutDashboard, FolderOpen, Users, ListChecks, SearchCheck, Cpu, Settings, ScrollText, Server, Terminal, User, Info, LogOut, Library as LibraryIcon, ListVideo, PanelLeftClose, PanelLeftOpen, ArrowUp, Network } from "lucide-react";
 import { Logo, Mark, useServerName } from "./Logo";
 import { api, mediaUrl } from "../api/client";
 import type { Library, Page } from "../api/types";
 import { useSession } from "../session";
 import { useT } from "../i18n";
+import { AudioBar } from "../audio/AudioBar";
 
 export function useLibraries() {
   return useQuery({ queryKey: ["libraries"], queryFn: () => api<Page<Library>>("/api/v1/libraries").then((r) => r.items), staleTime: 60_000 });
@@ -116,7 +117,7 @@ export function Layout() {
           <NavLink to="/playlists" className={link} {...tip(t("nav.playlists"))}><ListVideo /><span className="nav__label">{t("nav.playlists")}</span></NavLink>
           {libs?.map((l) => (
             <NavLink key={l.id} to={`/library/${l.id}`} className={link} {...tip(l.name)}>
-              {l.kind === "movies" ? <Film /> : <Tv />}
+              {l.kind === "movies" ? <Film /> : l.kind === "audiobooks" ? <Headphones /> : <Tv />}
               <span className="nav__label">{l.name}</span>
             </NavLink>
           ))}
@@ -147,6 +148,7 @@ export function Layout() {
           <Outlet />
         </main>
         <BackToTop />
+        <AudioBar />
         <nav className="tabbar" aria-label={t("nav.main")}>
           <NavLink to="/" end><Home />{t("nav.home")}</NavLink>
           <NavLink to="/search"><Search />{t("nav.search")}</NavLink>

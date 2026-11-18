@@ -281,6 +281,13 @@ pub struct MetadataSettings {
     pub opensubtitles_username: String,
     #[schemars(title = "Password OpenSubtitles")]
     pub opensubtitles_password: String,
+    /// Cerca gli audiolibri nel catalogo pubblico di Audible (titolo, autore, ASIN): copertine grandi, trama, lettori,
+    /// serie, generi e voto. Spento, valgono solo i metadati locali (metadata.json, NFO, tag dei file, nomi).
+    #[schemars(title = "Audiolibri: cerca su Audible")]
+    pub audible: bool,
+    /// Catalogo Audible da usare: "auto" segue il paese della libreria; altrimenti it, us, uk, de, fr, es, ca, au, jp, in, br.
+    #[schemars(title = "Audiolibri: catalogo Audible")]
+    pub audible_region: String,
 }
 
 impl Default for MetadataSettings {
@@ -298,6 +305,8 @@ impl Default for MetadataSettings {
             opensubtitles_api_key: String::new(),
             opensubtitles_username: String::new(),
             opensubtitles_password: String::new(),
+            audible: true,
+            audible_region: "auto".into(),
         }
     }
 }

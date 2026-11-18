@@ -64,32 +64,37 @@ export default function Library() {
       <div className="page-head">
         <div>
           <h1 className="t-h1">{lib?.name}</h1>
-          {lib && <div className="page-head__sub t-small subtle">{t(lib.kind === "movies" ? "library.countMovies" : "library.countShows", { count: lib.item_count })}</div>}
+          {lib && <div className="page-head__sub t-small subtle">{t(lib.kind === "movies" ? "library.countMovies" : lib.kind === "audiobooks" ? "library.countAudiobooks" : "library.countShows", { count: lib.item_count })}</div>}
         </div>
         <div className="row">
           <SelectField label={t("library.sort")} value={sort} onChange={setSort} options={[
             { value: "title", label: t("library.sortTitle") }, { value: "added", label: t("library.sortAdded") }, { value: "year", label: t("library.sortYear") },
-            { value: "rating", label: t("library.sortRating") }, { value: "played", label: t("library.sortPlayed") },
+            { value: "rating", label: t("library.sortRating") }, { value: "played", label: lib?.kind === "audiobooks" ? t("library.sortListened") : t("library.sortPlayed") },
           ]} />
           <SelectField label={t("library.filter")} value={filter} onChange={setFilter} options={[
-            { value: "all", label: t("library.filterAll") }, { value: "unplayed", label: t("library.filterUnplayed") }, { value: "played", label: t("library.filterPlayed") }, { value: "favorite", label: t("library.filterFavorite") },
+            { value: "all", label: t("library.filterAll") },
+            ...(lib?.kind === "audiobooks"
+              ? [{ value: "unplayed", label: t("library.filterUnfinished") }, { value: "played", label: t("library.filterFinished") }]
+              : [{ value: "unplayed", label: t("library.filterUnplayed") }, { value: "played", label: t("library.filterPlayed") }]),
+            { value: "favorite", label: t("library.filterFavorite") },
             ...(lib?.kind === "movies" ? [{ value: "collections", label: t("library.filterCollections") }] : []),
+            ...(lib?.kind === "audiobooks" ? [{ value: "collections", label: t("library.filterSeries") }] : []),
           ]} />
           <SelectField label={t("library.decade")} value={decade} onChange={setDecade} options={[
             { value: "", label: t("library.filterAll") },
             ...[2020, 2010, 2000, 1990, 1980, 1970, 1960, 1950].map((d) => ({ value: String(d), label: t("library.decadeLabel", { d: String(d).slice(2) }) })),
             { value: "1940", label: t("library.decadeOld") },
           ]} />
-          <SelectField label={t("library.video")} value={video} onChange={setVideo} options={[
+          {lib?.kind !== "audiobooks" && <SelectField label={t("library.video")} value={video} onChange={setVideo} options={[
             { value: "", label: t("library.filterAll") }, { value: "4k", label: "4K" }, { value: "1080", label: "1080p" }, { value: "720", label: "720p" }, { value: "sd", label: "SD" }, { value: "hdr", label: "HDR" },
-          ]} />
+          ]} />}
           {genres && genres.length > 0 && (
             <SelectField label={t("library.genre")} value={genre} onChange={setGenre} options={[{ value: "", label: t("library.filterAll") }, ...genres.map((g) => ({ value: g.name, label: g.name }))]} />
           )}
         </div>
       </div>
       <div className="library-search">
-        <TextField label={t("library.searchIn", { name: lib?.name ?? "" })} icon={<SearchIcon />} type="search" placeholder={t("library.searchPlaceholder")} value={text} onChange={(e) => setText(e.target.value)} />
+        <TextField label={t("library.searchIn", { name: lib?.name ?? "" })} icon={<SearchIcon />} type="search" placeholder={lib?.kind === "audiobooks" ? t("library.searchPlaceholderBooks") : t("library.searchPlaceholder")} value={text} onChange={(e) => setText(e.target.value)} />
       </div>
       {sort === "title" && !query && (
         <div className="letters" style={{ marginBottom: 24 }}>
@@ -99,7 +104,7 @@ export default function Library() {
       {q.isSuccess && items.length === 0 ? (
         <Empty>{query ? t("search.none", { q: query }) : t("library.empty")}</Empty>
       ) : (
-        <div className="poster-grid">
+        <div className={`poster-grid${lib?.kind === "audiobooks" ? " poster-grid--square" : ""}`}>
           {items.map((i) => <PosterCard key={i.id} item={i} />)}
           {(q.isLoading || q.isFetchingNextPage) && <PosterSkeleton count={q.isLoading ? 18 : 6} />}
         </div>

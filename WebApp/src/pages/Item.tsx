@@ -9,6 +9,7 @@ import { PosterCard } from "../components/PosterCard";
 import { Alert, Badge, Dialog, TextField, toast, SelectField, Confirm } from "../components/ui";
 import { useSession } from "../session";
 import { useI18n } from "../i18n";
+import { AudiobookDetail } from "./Audiobook";
 
 function channels(n: number | null) {
   if (!n) return "";
@@ -85,7 +86,7 @@ function SubtitleTools({ item, file }: { item: ItemDetail; file: MediaFile }) {
 
 interface OsResult { file_id: number; file_name: string | null; release: string | null; language: string | null; downloads: number | null; hearing_impaired: boolean | null; forced: boolean | null; hash_match: boolean | null; uploader: string | null }
 
-function TechInfo({ file }: { file: MediaFile }) {
+export function TechInfo({ file }: { file: MediaFile }) {
   const { t, bytes, bitrate, duration } = useI18n();
   const v = file.video[0];
   return (
@@ -100,7 +101,7 @@ function TechInfo({ file }: { file: MediaFile }) {
   );
 }
 
-function IdentifyDialog({ item, onClose }: { item: ItemDetail; onClose: () => void }) {
+export function IdentifyDialog({ item, onClose }: { item: ItemDetail; onClose: () => void }) {
   const { t, num } = useI18n();
   const qc = useQueryClient();
   const [q, setQ] = useState(item.title);
@@ -119,8 +120,8 @@ function IdentifyDialog({ item, onClose }: { item: ItemDetail; onClose: () => vo
   return (
     <Dialog title={t("item.identify")} onClose={onClose}>
       <form className="row" onSubmit={(e) => { e.preventDefault(); search(true); }} style={{ alignItems: "flex-end" }}>
-        <div style={{ flex: 3 }}><TextField label={t("item.title")} value={q} onChange={(e) => setQ(e.target.value)} /></div>
-        <div style={{ flex: 1 }}><TextField label={t("item.year")} inputMode="numeric" value={year} onChange={(e) => setYear(e.target.value)} /></div>
+        <div style={{ flex: 3 }}><TextField label={item.kind === "audiobook" ? t("audio.identifyQuery") : t("item.title")} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+        {item.kind !== "audiobook" && <div style={{ flex: 1 }}><TextField label={t("item.year")} inputMode="numeric" value={year} onChange={(e) => setYear(e.target.value)} /></div>}
         <button className="pl-btn pl-btn--secondary">{t("common.search")}</button>
       </form>
       {error && <Alert tone="danger">{error}</Alert>}
@@ -130,7 +131,8 @@ function IdentifyDialog({ item, onClose }: { item: ItemDetail; onClose: () => vo
             {c.poster ? <img src={c.poster} alt="" /> : <div className="ph" />}
             <div>
               <div className="t-label">{c.title} {c.year && <span className="subtle">({c.year})</span>}</div>
-              <div className="t-mono-sm subtle">TMDB {c.provider_id} · {t("item.score")} {num(c.score, 2)}</div>
+              {c.overview && item.kind === "audiobook" && <div className="t-small muted">{c.overview}</div>}
+              <div className="t-mono-sm subtle">{item.kind === "audiobook" ? "Audible" : "TMDB"} {c.provider_id} · {t("item.score")} {num(c.score, 2)}</div>
             </div>
             <button className="pl-btn pl-btn--secondary pl-btn--sm" onClick={async () => {
               try {
@@ -148,7 +150,7 @@ function IdentifyDialog({ item, onClose }: { item: ItemDetail; onClose: () => vo
   );
 }
 
-function EditDialog({ item, onClose }: { item: ItemDetail; onClose: () => void }) {
+export function EditDialog({ item, onClose }: { item: ItemDetail; onClose: () => void }) {
   const { t } = useI18n();
   const qc = useQueryClient();
   const [title, setTitle] = useState(item.title);
@@ -169,7 +171,7 @@ function EditDialog({ item, onClose }: { item: ItemDetail; onClose: () => void }
       <label className="pl-field"><span className="pl-field__label">{t("item.overview")}</span><span className="pl-field__control is-area"><textarea rows={5} value={overview} onChange={(e) => setOverview(e.target.value)} /></span></label>
       <span className="pl-eyebrow">{t("item.images")}</span>
       <div className="image-slots">
-        {(["poster", "backdrop", "logo"] as const).map((k) => <ImageSlot key={k} item={item} kind={k} />)}
+        {(item.kind === "audiobook" ? (["poster"] as const) : (["poster", "backdrop", "logo"] as const)).map((k) => <ImageSlot key={k} item={item} kind={k} />)}
       </div>
     </Dialog>
   );
@@ -323,6 +325,7 @@ export default function ItemPage() {
 
   if (error) return <Alert tone="danger">{(error as ApiError).message}</Alert>;
   if (!item) return null;
+  if (item.kind === "audiobook") return <AudiobookDetail item={item} />;
 
   const isPlayable = item.kind === "movie" || item.kind === "episode";
   const nextEpisode = episodes?.find((e) => !e.user_data.played) ?? episodes?.[0];

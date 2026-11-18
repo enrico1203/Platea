@@ -284,8 +284,31 @@ pub async fn start(state: Shared, user: AuthUser, req: InfoReq) -> ApiResult<Val
     user.require_playback()?;
     let item_id = state.ids.decode(&req.item_id).ok_or_else(|| ApiError::not_found("Elemento"))?;
     let item = super::items::load_item(&state, &user, item_id).await?;
-    if item.kind != "movie" && item.kind != "episode" {
-        return Err(ApiError::BadRequest("Si riproducono film ed episodi".into()));
+    if item.kind != "movie" && item.kind != "episode" && item.kind != "audiobook" {
+        return Err(ApiError::BadRequest("Si riproducono film, episodi e audiolibri".into()));
+    }
+    // Audiolibro: una sessione per parte (file). `start_ms` è la posizione nel libro; senza `file_id` si sceglie la
+    // parte che la contiene. Posizione e durata della sessione sono quelle del libro.
+    let mut req = req;
+    let mut book: Option<(i64, i64)> = None;
+    if item.kind == "audiobook" {
+        let parts = crate::audiobook::parts(&state, item_id).await?;
+        let total: i64 = parts.iter().map(|p| p.duration_ms).sum();
+        let at = req.start_ms.unwrap_or(0).max(0);
+        let part = match &req.file_id {
+            Some(f) => {
+                let fid = state.ids.decode(f).ok_or_else(|| ApiError::not_found("File"))?;
+                parts.iter().find(|p| p.file_id == fid).ok_or_else(|| ApiError::not_found("File"))?
+            }
+            None => parts
+                .iter()
+                .filter(|p| p.present)
+                .rfind(|p| p.offset_ms <= at)
+                .or_else(|| parts.iter().find(|p| p.present))
+                .ok_or_else(|| ApiError::coded(StatusCode::CONFLICT, "FileMissing", "Nessun file disponibile per questo audiolibro"))?,
+        };
+        req.file_id = Some(state.ids.encode(part.file_id));
+        book = Some((part.offset_ms, total));
     }
     // Un dispositivo riproduce una cosa alla volta: le sessioni precedenti liberano subito FFmpeg e i posti.
     for old in state.sessions.by_device(user.token_id) {
@@ -392,7 +415,7 @@ pub async fn start(state: Shared, user: AuthUser, req: InfoReq) -> ApiResult<Val
     let Some((file, mut decision)) = best else { return Err(last_err.unwrap_or_else(|| ApiError::not_found("File"))) };
 
     let (session_id, token) = SessionManager::new_ids();
-    let duration_ms = file.media.duration_ms.map(|d| d as i64).or(item.runtime_ms).unwrap_or(0);
+    let duration_ms = file.media.duration_ms.map(|d| d as i64).or(if book.is_some() { None } else { item.runtime_ms }).unwrap_or(0);
     let mut hls: Option<Arc<crate::nodes::hls::HlsHandle>> = None;
     let mut backend_label = String::from("Software");
     let mut executor = String::new();
@@ -400,7 +423,8 @@ pub async fn start(state: Shared, user: AuthUser, req: InfoReq) -> ApiResult<Val
     if decision.method != pb::Method::DirectPlay {
         let seg_ms = s.playback.segment_seconds as i64 * 1000;
         let mut cuts = None;
-        if decision.method == pb::Method::Remux {
+        // Solo audio (audiolibri): ogni pacchetto è un punto di taglio, i segmenti seguono il tempo.
+        if decision.method == pb::Method::Remux && file.media.video.is_some() {
             // I confini dei segmenti cadono sui keyframe: l'indice viene dall'analisi o si estrae ora.
             let kf = {
                 let _permit = state.extractions.acquire().await.map_err(|e| ApiError::Internal(e.into()))?;
@@ -522,7 +546,19 @@ pub async fn start(state: Shared, user: AuthUser, req: InfoReq) -> ApiResult<Val
     .await?
     .last_insert_rowid();
 
-    let (title, subtitle_line) = if item.kind == "episode" {
+    let authors: Option<String> = if book.is_some() {
+        sqlx::query_scalar(
+            "SELECT group_concat(name, ', ') FROM (SELECT p.name FROM item_people ip JOIN people p ON p.id = ip.person_id WHERE ip.item_id = ? AND ip.role = 'author' ORDER BY ip.sort_order LIMIT 3)",
+        )
+        .bind(item_id)
+        .fetch_one(&state.db.read)
+        .await?
+    } else {
+        None
+    };
+    let (title, subtitle_line) = if book.is_some() {
+        (item.title.clone(), authors)
+    } else if item.kind == "episode" {
         (
             item.series_title.clone().unwrap_or_default(),
             Some(format!("S{:02}E{:02} · {}", item.parent_index_number.unwrap_or(0), item.index_number.unwrap_or(0), item.title)),
@@ -531,6 +567,8 @@ pub async fn start(state: Shared, user: AuthUser, req: InfoReq) -> ApiResult<Val
         (item.title.clone(), item.year.map(|y| y.to_string()))
     };
     let start = req.start_ms.unwrap_or(0).max(0);
+    // Durata della sessione: il libro intero per un audiolibro (la posizione riferita dal player è nel libro).
+    let session_duration = book.map(|b| b.1.max(duration_ms)).unwrap_or(duration_ms);
     let client_ip = user.ip;
     let extra = crate::sessions::SessionExtra {
         ip: client_ip.map(|i| i.to_string()),
@@ -550,7 +588,7 @@ pub async fn start(state: Shared, user: AuthUser, req: InfoReq) -> ApiResult<Val
         decision.clone(),
         chain.clone(),
         bitrate,
-        duration_ms,
+        session_duration,
         history_id,
         hls,
         extra,
@@ -609,6 +647,9 @@ pub async fn start(state: Shared, user: AuthUser, req: InfoReq) -> ApiResult<Val
         "file_id": state.ids.encode(file.id),
         "duration_ms": duration_ms,
         "start_ms": start,
+        // Audiolibro: inizio della parte nel libro e durata del libro.
+        "part_offset_ms": book.map(|b| b.0),
+        "book_duration_ms": book.map(|b| b.1),
         "audio_index": decision.audio_index,
         "subtitle": decision.subtitle,
         // Sottotitolo di testo da attivare all'avvio secondo le preferenze (solo alla prima richiesta: dopo sceglie l'utente).

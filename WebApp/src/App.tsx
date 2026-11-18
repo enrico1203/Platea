@@ -5,6 +5,7 @@ import { I18nProvider } from "./i18n";
 import { SessionProvider, useSession } from "./session";
 import { Layout } from "./components/Layout";
 import { ToastHost } from "./components/ui";
+import { AudioProvider } from "./audio/AudioPlayer";
 import Login from "./pages/Login";
 import Setup from "./pages/Setup";
 import Connect from "./pages/Connect";
@@ -100,8 +101,10 @@ export default function App() {
       <I18nProvider>
         <BrowserRouter>
           <SessionProvider>
-            <Routed />
-            <ToastHost />
+            <AudioProvider>
+              <Routed />
+              <ToastHost />
+            </AudioProvider>
           </SessionProvider>
         </BrowserRouter>
       </I18nProvider>

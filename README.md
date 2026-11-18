@@ -1,6 +1,6 @@
 # Platea
 
-Platea is an open source media server for movies and TV shows, written in Rust, that plays the original file whenever the client can and works well with libraries on cloud storage.
+Platea is an open source media server for movies, TV shows and audiobooks, written in Rust, that plays the original file whenever the client can and works well with libraries on cloud storage.
 
 ## Compatible apps
 
@@ -14,6 +14,8 @@ Platea is an open source media server for movies and TV shows, written in Rust, 
 | [Jellyfin for Android TV](https://github.com/jellyfin/jellyfin-androidtv) | Android TV, Google TV, Fire TV | Should work, not tested yet |
 | Official "Jellyfin" app | Phones, desktop | Does not work, see below |
 | Native Platea app for iOS | iPhone, iPad, Apple TV | Planned |
+
+Audiobooks play in the Platea web app. They are not shown to Infuse and the Jellyfin apps.
 
 Infuse and the Jellyfin apps connect to Platea as if it were a Jellyfin server: use the server address on port 8096 (or a hostname that points to it) and your Platea username and password. Platea reports itself as Jellyfin 12.1 and implements the part of the Jellyfin API these apps use. Infuse always plays the original file. For the other apps Platea reads the device profile and remuxes or transcodes to HLS when the app can't play a format.
 
@@ -114,6 +116,7 @@ The [`docker-compose.yml`](docker-compose.yml) in this repository is more comple
 - Fast scans. A scan only lists folders, several at a time, and opens no files when nothing changed. Thousands of movies on an rclone mount are listed in under a minute. New files on local disks show up within seconds.
 - A missing mount never deletes anything. If the library root is empty or unreadable, the scan stops. If many files disappear at once, nothing is removed until you confirm.
 - Metadata from TMDB, from Kodi `.nfo` files (episode NFOs included) and from Plex `.plexmatch` files. Media folders are never written to.
+- Audiobooks: a library type of its own, with metadata from the files and from Audible, chapters, series, and a web player that keeps playing while you browse (speed, sleep timer, chapter list, lock screen controls). See [Audiobooks](#audiobooks).
 - Automatic collections, trailers from TMDB, local extras (`Extras/`, `Trailers/`, `Featurettes/`, files ending in `-trailer` and similar) and missing episodes shown in each season.
 - Per-user settings: audio and subtitle language, default quality at home and away, autoplay of the next episode, home page layout, profile picture.
 - Per-user limits: libraries, age rating, hidden or allowed genres, playback hours, downloads, remote access, account expiry date, lockout after failed logins.
@@ -333,6 +336,19 @@ Local metadata is read once and never written:
 
 - `Title (Year).nfo` or `movie.nfo` next to a movie, `tvshow.nfo` in a show folder and `<episode>.nfo` next to an episode (Kodi format). With a TMDB key they give the exact ID. Without one, their fields become the metadata.
 - `.plexmatch` in a movie or show folder (Plex format: `title:`, `year:`, `tmdbid:`, `imdbid:`, `tvdbid:`, `guid:`). It wins over NFO files. In a show folder, `ep:` lines map files with any name to episodes, for example `ep: S01E01: /Season 1/Pilot.mkv`.
+
+## Audiobooks
+
+Create a library of type Audiobooks. How files become books:
+
+- A folder with audio files (m4b, m4a, mp3, flac, ogg, opus, wma…) is one book, and its files are the parts, in track order, then in name order. Subfolders named `CD1`, `Disc 2` and similar belong to the book above them.
+- Every `.m4b` is a book of its own, so a folder with several `.m4b` files is a series or a collection. Duplicates like `Book (1).m4b` count once, and `Book - Part 1.m4b`, `Book - Part 2.m4b` are parts of one book.
+- A file in the library root is a book.
+- Folder names like `Author - Title 2021 Read by Narrator` are understood when nothing better is available.
+
+Metadata, from the most precise: `metadata.json` (an Audible product file or the Audiobookshelf format) and `metadata.opf`, then `.nfo` files (`album.nfo` written by Jellyfin, `book.nfo`, `<book>.nfo`), `desc.txt` and `reader.txt`, then the tags in the files (album, artist as author, composer as narrator, genre, description, series, ASIN), then the folder name. After that Platea looks the book up in the public Audible catalog of the library's country, by ASIN when it has one or by title, author and length. Uncertain matches go to "To review". The lookup can be turned off in Settings › Metadata.
+
+Covers come from an image in the book folder (`cover.jpg`, `folder.jpg`, `<book>.jpg`…), then from Audible, then from the picture embedded in the file.
 
 ## Languages
 

@@ -11,7 +11,7 @@ function LibraryDialog({ lib, onClose }: { lib: Library | null; onClose: () => v
   const { t } = useI18n();
   const qc = useQueryClient();
   const [name, setName] = useState(lib?.name ?? "");
-  const [kind, setKind] = useState<"movies" | "shows">(lib?.kind ?? "movies");
+  const [kind, setKind] = useState<"movies" | "shows" | "audiobooks">(lib?.kind ?? "movies");
   const [paths, setPaths] = useState<string[]>(lib?.paths ?? []);
   const [browse, setBrowse] = useState("");
   const [profile, setProfile] = useState(lib?.scan_profile ?? "local");
@@ -55,9 +55,13 @@ function LibraryDialog({ lib, onClose }: { lib: Library | null; onClose: () => v
       {error && <Alert tone="danger">{error}</Alert>}
       <div className="form-grid">
         <TextField label={t("library.name")} value={name} onChange={(e) => setName(e.target.value)} />
-        <SelectField label={t("library.kind")} value={kind} onChange={(v) => setKind(v as "movies" | "shows")} options={[{ value: "movies", label: t("library.movies") }, { value: "shows", label: t("library.shows") }]} />
+        <SelectField label={t("library.kind")} value={kind} onChange={(v) => setKind(v as "movies" | "shows" | "audiobooks")}
+          options={(lib && lib.kind !== "audiobooks" ? [{ value: "movies", label: t("library.movies") }, { value: "shows", label: t("library.shows") }]
+            : lib ? [{ value: "audiobooks", label: t("library.audiobooks") }]
+            : [{ value: "movies", label: t("library.movies") }, { value: "shows", label: t("library.shows") }, { value: "audiobooks", label: t("library.audiobooks") }])} />
       </div>
       {lib && kind !== lib.kind && <Alert tone="warning">{t("library.kindChange")}</Alert>}
+      {kind === "audiobooks" && !lib && <div className="t-small subtle">{t("library.audiobooksHint")}</div>}
       <div className="stack" style={{ gap: 6 }}>
         <span className="pl-field__label">{t("admin.libraries.folders")}</span>
         {paths.map((p) => <div className="row" key={p}><span className="t-mono spacer">{p}</span><button className="icon-btn" onClick={() => setPaths(paths.filter((x) => x !== p))} aria-label={t("common.remove")}><X /></button></div>)}
@@ -109,8 +113,8 @@ export default function Libraries() {
           <div className="pl-panel panel-pad stack" key={l.id}>
             <div className="row row--between">
               <div>
-                <div className="t-h3">{l.name} <Badge>{l.kind === "movies" ? t("library.movies") : t("library.shows")}</Badge> <Badge>{l.scan_profile === "remote" ? t("admin.libraries.remote") : t("admin.libraries.local")}</Badge></div>
-                <div className="t-small subtle">{t(l.kind === "movies" ? "library.countMovies" : "library.countShows", { count: l.item_count })} · {t("admin.libraries.files", { count: l.file_count ?? 0 })}{l.probe_pending ? ` · ${t("admin.libraries.probePending", { count: l.probe_pending })}` : ""}{l.trickplay ? ` · ${t("admin.libraries.trickplayDone", { done: l.trickplay_done ?? 0, total: l.file_count ?? 0 })}` : ""}</div>
+                <div className="t-h3">{l.name} <Badge>{l.kind === "movies" ? t("library.movies") : l.kind === "audiobooks" ? t("library.audiobooks") : t("library.shows")}</Badge> <Badge>{l.scan_profile === "remote" ? t("admin.libraries.remote") : t("admin.libraries.local")}</Badge></div>
+                <div className="t-small subtle">{t(l.kind === "movies" ? "library.countMovies" : l.kind === "audiobooks" ? "library.countAudiobooks" : "library.countShows", { count: l.item_count })} · {t("admin.libraries.files", { count: l.file_count ?? 0 })}{l.probe_pending ? ` · ${t("admin.libraries.probePending", { count: l.probe_pending })}` : ""}{l.trickplay ? ` · ${t("admin.libraries.trickplayDone", { done: l.trickplay_done ?? 0, total: l.file_count ?? 0 })}` : ""}</div>
               </div>
               <div className="row">
                 <button className="pl-btn pl-btn--secondary pl-btn--sm" onClick={async () => { await api(`/api/v1/libraries/${l.id}/scan`, { method: "POST" }); toast(t("admin.libraries.scanQueued")); }}><RefreshCw />{t("admin.libraries.scan")}</button>

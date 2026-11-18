@@ -477,6 +477,38 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-18 sera — **Audiolibri (0.1.11)**. Richiesta dell'utente: supporto agli audiolibri, metadati e copertine come
+  Emby/Jellyfin, un buon player web. Nuovo tipo di libreria `audiobooks`, elementi `audiobook` (migrazione 0025: i CHECK
+  si allargano riscrivendo lo schema con `writable_schema`, niente copia delle tabelle; la connessione di scrittura si
+  riapre dopo le migrazioni; colonna `media_files.tags` con i tag dei file audio; ruoli `author`/`narrator`).
+  - Riconoscimento (`platea-naming/src/audiobook.rs`): cartella con file audio = un libro, file = parti (traccia, poi
+    data nel nome per i podcast, poi ordine naturale); `CD1`/`Disc 2` appartengono al libro sopra; ogni `.m4b` è un
+    libro (più m4b in una cartella = serie/raccolta, la cartella diventa la collezione); `Libro (1).m4b` = copia,
+    `Libro - Parte 1.m4b` = parte; nomi tipo `Autore - Titolo 2021 Serie 4 Letto da Lettore @tag`.
+  - Metadati (`metadata/audiobook.rs`): metadata.json (Audible o Audiobookshelf) e .opf → NFO (album.nfo di Jellyfin,
+    book.nfo) e desc.txt/reader.txt → tag del primo file → nome; poi il catalogo pubblico Audible (`api.audible.<paese>`,
+    per ASIN o titolo+autore, punteggio con la durata; dubbi → "Da verificare", Identifica accetta titolo o ASIN).
+    In un libro a più file con album diversi (raccolta di puntate) titolo e trama di album/NFO non valgono.
+    Traduttori e prefatori di Audible tolti dagli autori. Autori anche in `original_title`, così la ricerca li trova.
+    Copertina: immagine nella cartella → Audible (1024 px) → incorporata (estratta con FFmpeg, senza ricodifica).
+    Impostazioni `metadata.audible` (attivo) e `metadata.audible_region` ("auto" = paese della libreria).
+  - Riproduzione: una sessione per parte (`playback/info` con `start_ms` nel libro, risponde `part_offset_ms` e
+    `book_duration_ms`), posizione e durata della sessione sono quelle del libro (pannello admin corretto); un libro è
+    finito a meno di un minuto dalla fine, non al 90%. File che il browser non legge: HLS solo audio (niente keyframe).
+    `audiobook.rs`: parti, durata totale (aggiornata dopo ogni analisi), capitoli sull'intero libro.
+  - Web: player persistente (`audio/AudioPlayer.tsx` + `AudioBar.tsx`): barra in basso su ogni pagina, vista completa
+    con capitoli, velocità 0,5–3× (tono invariato), salti configurabili, timer (minuti o fine capitolo, dissolvenza),
+    Media Session (schermata di blocco, cuffie), avanzamento ogni 10 s/pausa/chiusura, ripresa dopo pause lunghe ed
+    errori, libro ripreso dopo un ricaricamento. Pagina del libro (`pages/Audiobook.tsx`), copertine quadrate, "Continua
+    ad ascoltare" in home (preferenze `home_sections_version` 2: compare una volta anche a chi aveva già scelto).
+    Lo strato Jellyfin non mostra le librerie di audiolibri.
+  - Prove: 150 test; server di prova con 8 cartelle vere (65 file, 30 libri) — scansione 76 ms, tutti associati ad
+    Audible con copertina in ~1 min; API (direct play 206, HLS solo audio con segmento 100 a 600,2 s, finito/posizione,
+    ricerca per autore); Chrome con Playwright desktop e telefono (riproduzione, salto di capitolo, 1,5×, timer, parti
+    mp3, ripresa tra dispositivi e dopo ricarica, zero errori). Migrazione provata su una copia del DB vero: integrità
+    ok, avvio in 37 s. **Da fare dall'utente:** creare la libreria di audiolibri (profilo
+    Remoto) e provare il player su iPhone (schermata di blocco, riproduzione in background).
+
 - 2026-11-18 — **Findroid: il video non partiva (0.1.10)**. Dopo il login (ok con la 0.1.9) la riproduzione restava
   ferma: Findroid apre `/Videos/{id}/stream?static=true&…` con ExoPlayer senza token (né intestazioni né `api_key`) e
   Platea rispondeva 401 a ogni tentativo. Jellyfin non chiede l'autenticazione su quell'URL; Platea sì, ma ora accetta

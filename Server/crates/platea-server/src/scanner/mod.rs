@@ -113,11 +113,12 @@ pub mod progress {
 /// non in cache costa una richiesta al provider: leggerne diverse insieme divide il tempo.
 #[cfg(test)]
 pub fn list_tree(root: &Path, start_rel: &str, workers: usize) -> Listing {
-    list_tree_counted(root, start_rel, workers, &AtomicUsize::new(0))
+    list_tree_counted(root, start_rel, workers, &AtomicUsize::new(0), false)
 }
 
 /// Come `list_tree`, contando in `counter` le cartelle lette man mano (avanzamento della scansione).
-pub fn list_tree_counted(root: &Path, start_rel: &str, workers: usize, counter: &AtomicUsize) -> Listing {
+/// `audio`: libreria di audiolibri, si elencano i file audio al posto dei video.
+pub fn list_tree_counted(root: &Path, start_rel: &str, workers: usize, counter: &AtomicUsize, audio: bool) -> Listing {
     let mut out = Listing::default();
     let mut frontier: Vec<String> = vec![start_rel.trim_matches('/').to_string()];
     let workers = workers.clamp(1, 64);
@@ -133,7 +134,7 @@ pub fn list_tree_counted(root: &Path, start_rel: &str, workers: usize, counter: 
                         loop {
                             let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                             let Some(rel_dir) = frontier.get(i) else { break };
-                            list_dir(root, rel_dir, &mut l, &mut sub);
+                            list_dir(root, rel_dir, &mut l, &mut sub, audio);
                             counter.fetch_add(1, Ordering::Relaxed);
                         }
                         (l, sub)
@@ -161,7 +162,7 @@ pub fn list_tree_counted(root: &Path, start_rel: &str, workers: usize, counter: 
 }
 
 /// Una cartella: i video, i sottotitoli e le sottocartelle da leggere al livello successivo.
-fn list_dir(root: &Path, rel_dir: &str, out: &mut Listing, sub: &mut Vec<String>) {
+fn list_dir(root: &Path, rel_dir: &str, out: &mut Listing, sub: &mut Vec<String>, audio: bool) {
     let abs = if rel_dir.is_empty() { root.to_path_buf() } else { root.join(rel_dir) };
     let rd = match std::fs::read_dir(&abs) {
         Ok(rd) => rd,
@@ -198,8 +199,8 @@ fn list_dir(root: &Path, rel_dir: &str, out: &mut Listing, sub: &mut Vec<String>
             out.nfos.insert(if rel_dir.is_empty() { stem.to_string() } else { format!("{rel_dir}/{stem}") });
             continue;
         }
-        let is_video = naming::is_video_file(&name);
-        let is_sub = !is_video && naming::is_subtitle_file(&name);
+        let is_video = if audio { naming::audiobook::is_audio_file(&name) } else { naming::is_video_file(&name) };
+        let is_sub = !audio && !is_video && naming::is_subtitle_file(&name);
         if !is_video && !is_sub && !ft.is_symlink() {
             continue;
         }
@@ -268,6 +269,8 @@ struct ItemIndex {
     series: HashMap<String, i64>,
     seasons: HashMap<(i64, i64), i64>,
     episodes: HashMap<(i64, i64), i64>,
+    /// Audiolibri per chiave (`ab:<cartella>` o `ab:<cartella>/<libro>`).
+    books: HashMap<String, i64>,
 }
 
 pub async fn scan_library(state: &Shared, library_id: i64, subpath: Option<String>) -> anyhow::Result<()> {
@@ -323,7 +326,8 @@ pub async fn scan_library(state: &Shared, library_id: i64, subpath: Option<Strin
         progress.set_saving(false);
         // L'elenco gira su un thread bloccante: un mount lento consuma quel thread, non il runtime.
         let workers = if profile == "remote" { settings.scanner.list_concurrency_remote } else { settings.scanner.list_concurrency_local } as usize;
-        let listing = tokio::task::spawn_blocking(move || list_tree_counted(&rp, &sr, workers, &counter.dirs)).await.context("elenco delle cartelle")?;
+        let audio = kind == "audiobooks";
+        let listing = tokio::task::spawn_blocking(move || list_tree_counted(&rp, &sr, workers, &counter.dirs, audio)).await.context("elenco delle cartelle")?;
         if !listing.errors.is_empty() {
             tracing::warn!(library = %lib_name, errors = listing.errors.len(), first = %listing.errors[0], "cartelle non leggibili durante l'elenco");
         }
@@ -415,11 +419,12 @@ pub async fn scan_library(state: &Shared, library_id: i64, subpath: Option<Strin
 }
 
 async fn load_index(state: &Shared, library_id: i64) -> anyhow::Result<ItemIndex> {
-    let items: Vec<DbItem> =
-        sqlx::query_as("SELECT id, kind, parent_id, index_number, match_key FROM items WHERE library_id = ? AND kind IN ('movie','series','season','episode')")
-            .bind(library_id)
-            .fetch_all(&state.db.read)
-            .await?;
+    let items: Vec<DbItem> = sqlx::query_as(
+        "SELECT id, kind, parent_id, index_number, match_key FROM items WHERE library_id = ? AND kind IN ('movie','series','season','episode','audiobook')",
+    )
+    .bind(library_id)
+    .fetch_all(&state.db.read)
+    .await?;
     let mut idx = ItemIndex::default();
     for it in items {
         match it.kind.as_str() {
@@ -441,6 +446,11 @@ async fn load_index(state: &Shared, library_id: i64) -> anyhow::Result<ItemIndex
             "episode" => {
                 if let (Some(p), Some(n)) = (it.parent_id, it.index_number) {
                     idx.episodes.insert((p, n), it.id);
+                }
+            }
+            "audiobook" => {
+                if let Some(k) = it.match_key {
+                    idx.books.insert(k, it.id);
                 }
             }
             _ => {}
@@ -489,7 +499,10 @@ async fn episode_hints(state: &Shared, root: &Path, plexmatch: &[String]) -> Has
 
 async fn apply_listing(state: &Shared, library_id: i64, kind: &str, path_id: i64, root: &Path, start_rel: &str, listing: Listing) -> anyhow::Result<ScanStats> {
     let mut listing = listing;
-    keep_bluray_main(&mut listing.videos);
+    let audiobooks = kind == "audiobooks";
+    if !audiobooks {
+        keep_bluray_main(&mut listing.videos);
+    }
     let mut stats = ScanStats { listed: listing.videos.len(), dirs: listing.dirs, ..Default::default() };
     let in_scope = |rel: &str| start_rel.is_empty() || rel == start_rel || rel.starts_with(&format!("{start_rel}/"));
 
@@ -519,7 +532,7 @@ async fn apply_listing(state: &Shared, library_id: i64, kind: &str, path_id: i64
     // File già noti ma senza titolo (la libreria ha cambiato tipo): si ricollegano tenendo riga e analisi.
     let mut reuse: HashMap<String, i64> = HashMap::new();
     for e in &listing.videos {
-        let extra = if naming::is_extra(&e.rel) {
+        let extra = if !audiobooks && naming::is_extra(&e.rel) {
             match naming::extra_info(&e.rel) {
                 Some(x) => Some(x),
                 // Campioni ("sample"): ignorati.
@@ -810,6 +823,18 @@ async fn identify(
     match_ids: &mut HashSet<i64>,
     refresh_series: &mut HashSet<i64>,
 ) -> anyhow::Result<Option<(i64, Option<String>)>> {
+    if kind == "audiobooks" {
+        // Un libro per cartella (o per .m4b): le parti si ordinano alla riproduzione, le copie restano versioni.
+        let Some(b) = naming::audiobook::book_key(rel) else { return Ok(None) };
+        if let Some(id) = idx.books.get(&b.key) {
+            return Ok(Some((*id, b.copy)));
+        }
+        let n = naming::audiobook::parse_book_name(&b.name);
+        let id = insert_item(tx, library_id, "audiobook", None, None, &n.title, n.year, None, Some(&b.key), now).await?;
+        idx.books.insert(b.key, id);
+        match_ids.insert(id);
+        return Ok(Some((id, b.copy)));
+    }
     if kind == "movies" {
         let m = naming::parse_movie(rel);
         if m.title.is_empty() {

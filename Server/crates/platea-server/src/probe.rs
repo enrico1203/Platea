@@ -69,6 +69,30 @@ pub struct ProbeFormat {
     pub format_name: String,
     pub duration: Option<String>,
     pub bit_rate: Option<String>,
+    #[serde(default)]
+    pub tags: HashMap<String, String>,
+}
+
+/// Tag del file da salvare per i soli file audio (titolo, album, autore, lettore, descrizione…): JSON con le chiavi
+/// in minuscolo, valori tagliati. `None` se il file ha un video vero (i film non ne hanno bisogno).
+pub fn audio_tags_json(out: &ProbeOutput) -> Option<String> {
+    let has_video = out.streams.iter().any(|s| s.codec_type == "video" && s.disposition.get("attached_pic").copied().unwrap_or(0) == 0);
+    if has_video || out.format.tags.is_empty() {
+        return None;
+    }
+    let mut m = serde_json::Map::new();
+    for (k, v) in &out.format.tags {
+        let k = k.to_lowercase();
+        // Dati tecnici dell'encoder: non servono.
+        if matches!(k.as_str(), "encoder" | "encoded_by" | "major_brand" | "minor_version" | "compatible_brands" | "creation_time" | "itunsmpb" | "itunnorm") {
+            continue;
+        }
+        let v: String = v.trim().chars().take(8000).collect();
+        if !v.is_empty() {
+            m.insert(k, serde_json::Value::String(v));
+        }
+    }
+    (!m.is_empty()).then(|| serde_json::Value::Object(m).to_string())
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -159,7 +183,10 @@ pub fn normalize_container(ext: &str, format_name: &str) -> String {
                 "mkv".into()
             }
         }
-        "mp4" | "m4v" => "mp4".into(),
+        "mp4" | "m4v" | "m4b" | "m4a" => "mp4".into(),
+        "oga" | "opus" => "ogg".into(),
+        "wma" => "asf".into(),
+        "aif" | "aiff" => "aiff".into(),
         "mov" => "mov".into(),
         "avi" | "divx" => "avi".into(),
         "ts" | "m2ts" | "mts" => "ts".into(),
@@ -325,12 +352,15 @@ pub async fn save_probe(state: &Shared, file_id: i64, rel: &str, out: &ProbeOutp
         .execute(&mut *tx)
         .await?;
     }
-    sqlx::query("UPDATE media_files SET container = ?, duration_ms = ?, bitrate = ?, chapters = ?, probe_state = 'done', probe_error = NULL, probed_at = ? WHERE id = ?")
-        .bind(&container)
-        .bind(duration_ms)
-        .bind(bitrate)
-        .bind(chapters_json(&out.chapters))
-        .bind(now)
+    sqlx::query(
+        "UPDATE media_files SET container = ?, duration_ms = ?, bitrate = ?, chapters = ?, tags = ?, probe_state = 'done', probe_error = NULL, probed_at = ? WHERE id = ?",
+    )
+    .bind(&container)
+    .bind(duration_ms)
+    .bind(bitrate)
+    .bind(chapters_json(&out.chapters))
+    .bind(audio_tags_json(out))
+    .bind(now)
         .bind(file_id)
         .execute(&mut *tx)
         .await?;
@@ -340,6 +370,14 @@ pub async fn save_probe(state: &Shared, file_id: i64, rel: &str, out: &ProbeOutp
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
+    // Audiolibro: la durata è la somma delle parti.
+    let book: Option<i64> = sqlx::query_scalar("SELECT i.id FROM media_files f JOIN items i ON i.id = f.item_id WHERE f.id = ? AND i.kind = 'audiobook'")
+        .bind(file_id)
+        .fetch_optional(&state.db.read)
+        .await?;
+    if let Some(b) = book {
+        crate::audiobook::update_runtime(state, b).await?;
+    }
     Ok(())
 }
 

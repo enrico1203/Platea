@@ -67,7 +67,7 @@ async fn view(state: &Shared, l: LibRow, admin: bool) -> ApiResult<Value> {
     let paths: Vec<String> =
         sqlx::query_scalar("SELECT path FROM library_paths WHERE library_id = ? ORDER BY path").bind(l.id).fetch_all(&state.db.read).await?;
     let (items, files): (i64, i64) = sqlx::query_as(
-        "SELECT (SELECT COUNT(*) FROM items WHERE library_id = ?1 AND kind IN ('movie','series')),
+        "SELECT (SELECT COUNT(*) FROM items WHERE library_id = ?1 AND kind IN ('movie','series','audiobook')),
                 (SELECT COUNT(*) FROM media_files f JOIN library_paths p ON p.id = f.library_path_id WHERE p.library_id = ?1)",
     )
     .bind(l.id)
@@ -194,8 +194,8 @@ async fn validate_path(p: &str) -> ApiResult<String> {
 async fn create(State(state): State<Shared>, AdminUser(admin): AdminUser, Json(p): Json<LibPatch>) -> ApiResult<Json<Value>> {
     let name = p.name.clone().map(|n| n.trim().to_string()).filter(|n| !n.is_empty()).ok_or_else(|| ApiError::BadRequest("Serve un nome".into()))?;
     let kind = p.kind.clone().unwrap_or_else(|| "movies".into());
-    if kind != "movies" && kind != "shows" {
-        return Err(ApiError::BadRequest("Tipo di libreria: movies oppure shows".into()));
+    if !matches!(kind.as_str(), "movies" | "shows" | "audiobooks") {
+        return Err(ApiError::BadRequest("Tipo di libreria: movies, shows o audiobooks".into()));
     }
     let paths = p.paths.clone().unwrap_or_default();
     if paths.is_empty() {
@@ -220,7 +220,8 @@ async fn create(State(state): State<Shared>, AdminUser(admin): AdminUser, Json(p
     // Profili predefiniti: Locale scansiona ogni ora e analizza 4 file alla volta; Remoto ogni 6 ore, 1 alla volta.
     .bind(if remote { 360 } else { 60 })
     .bind(if remote { 1 } else { 4 })
-    .bind(if remote { 0 } else { 1 })
+    // Audiolibri: niente keyframe (non c'è video).
+    .bind(if remote || kind == "audiobooks" { 0 } else { 1 })
     .bind(now_ms())
     .execute(&state.db.write)
     .await?
@@ -229,7 +230,7 @@ async fn create(State(state): State<Shared>, AdminUser(admin): AdminUser, Json(p
         sqlx::query("INSERT OR IGNORE INTO library_paths (library_id, path) VALUES (?, ?)").bind(id).bind(path).execute(&state.db.write).await?;
     }
     // Remota: le opzioni che leggono i file per intero partono sempre spente; si accendono dopo, modificando la libreria.
-    let p = if remote { LibPatch { extract_keyframes: Some(false), trickplay: Some(false), ..p } } else { p };
+    let p = if remote || kind == "audiobooks" { LibPatch { extract_keyframes: Some(false), trickplay: Some(false), ..p } } else { p };
     apply_patch(&state, id, LibPatch { paths: None, name: None, kind: None, ..p }).await?;
     state.db.activity(Some(admin.user_id), "library_created", &format!("{} ha creato la libreria {name}", admin.username), None).await;
     jobs::enqueue(&state, JobKind::ScanLibrary { library_id: id, subpath: None }, priority::INTERACTIVE, Some(id)).await?;
@@ -314,8 +315,8 @@ async fn apply_patch(state: &Shared, id: i64, p: LibPatch) -> ApiResult<()> {
 /// Cambio di tipo (film ↔ serie): i titoli riconosciuti col tipo sbagliato si cancellano e la scansione successiva
 /// li ricrea dagli stessi file. Le righe dei file restano, con l'analisi già fatta: non si rilegge nulla dal disco.
 async fn change_kind(state: &Shared, id: i64, kind: &str) -> ApiResult<()> {
-    if kind != "movies" && kind != "shows" {
-        return Err(ApiError::BadRequest("Tipo di libreria: movies oppure shows".into()));
+    if !matches!(kind, "movies" | "shows" | "audiobooks") {
+        return Err(ApiError::BadRequest("Tipo di libreria: movies, shows o audiobooks".into()));
     }
     let current: String = sqlx::query_scalar("SELECT kind FROM libraries WHERE id = ?")
         .bind(id)
@@ -324,6 +325,10 @@ async fn change_kind(state: &Shared, id: i64, kind: &str) -> ApiResult<()> {
         .ok_or_else(|| ApiError::not_found("Libreria"))?;
     if current == kind {
         return Ok(());
+    }
+    // Video e audio sono file diversi: una libreria di audiolibri non diventa di film (né il contrario).
+    if current == "audiobooks" || kind == "audiobooks" {
+        return Err(ApiError::BadRequest("Una libreria di audiolibri non cambia tipo: creane una nuova".into()));
     }
     let mut tx = state.db.write.begin().await?;
     sqlx::query("UPDATE libraries SET kind = ? WHERE id = ?").bind(kind).bind(id).execute(&mut *tx).await?;
@@ -390,10 +395,12 @@ async fn confirm_missing(State(state): State<Shared>, _a: crate::auth::AdminUser
 
 async fn refresh_metadata(State(state): State<Shared>, _a: crate::auth::AdminUser, Path(id): Path<String>) -> ApiResult<Json<Value>> {
     let lid = decode(&state, &id)?;
-    let ids: Vec<i64> = sqlx::query_scalar("SELECT id FROM items WHERE library_id = ? AND kind IN ('movie','series') AND match_state <> 'manual'")
-        .bind(lid)
-        .fetch_all(&state.db.read)
-        .await?;
+    // Gli audiolibri associati a mano si aggiornano dalla loro scheda Audible (il rinnovo la rilegge).
+    let ids: Vec<i64> =
+        sqlx::query_scalar("SELECT id FROM items WHERE library_id = ? AND ((kind IN ('movie','series') AND match_state <> 'manual') OR kind = 'audiobook')")
+            .bind(lid)
+            .fetch_all(&state.db.read)
+            .await?;
     let batch: Vec<_> = ids.iter().map(|i| (JobKind::RefreshMetadata { item_id: *i }, priority::MAINTENANCE, Some(lid))).collect();
     jobs::enqueue_batch(&state, batch).await?;
     Ok(Json(json!({ "queued": ids.len() })))

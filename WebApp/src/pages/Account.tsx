@@ -46,7 +46,7 @@ export default function Account() {
     [list[i], list[i + d]] = [list[i + d], list[i]];
     update({ home_sections: list });
   };
-  const allSections = ["resume", "next_up", "recent"];
+  const allSections = ["resume", "listening", "next_up", "recent"];
 
   return (
     <div className="stack-lg" style={{ maxWidth: 760 }}>

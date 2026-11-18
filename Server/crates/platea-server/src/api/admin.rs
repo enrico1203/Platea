@@ -87,9 +87,11 @@ async fn overview(State(state): State<Shared>, _a: AdminUser) -> ApiResult<Json<
     )
     .fetch_one(&state.db.read)
     .await?;
-    let (movies, series, episodes, files, review): (i64, i64, i64, i64, i64) = sqlx::query_as(
+    let (movies, series, episodes, files, review, audiobooks): (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
         "SELECT (SELECT COUNT(*) FROM items WHERE kind='movie'), (SELECT COUNT(*) FROM items WHERE kind='series'), (SELECT COUNT(*) FROM items WHERE kind='episode'),
-                (SELECT COUNT(*) FROM media_files WHERE state = 'present'), (SELECT COUNT(*) FROM items WHERE match_state IN ('review','unmatched'))",
+                (SELECT COUNT(*) FROM media_files WHERE state = 'present'),
+                (SELECT COUNT(*) FROM items WHERE match_state IN ('review','unmatched') AND kind IN ('movie','series','audiobook')),
+                (SELECT COUNT(*) FROM items WHERE kind='audiobook')",
     )
     .fetch_one(&state.db.read)
     .await?;
@@ -130,7 +132,7 @@ async fn overview(State(state): State<Shared>, _a: AdminUser) -> ApiResult<Json<
         },
         "transcode_slots": { "hw_used": hw_used, "hw_max": hw_max, "sw_used": sw_used, "sw_max": sw_max },
         "jobs": { "queued": queued, "running": running, "failed": failed },
-        "library": { "movies": movies, "series": series, "episodes": episodes, "files": files, "review": review },
+        "library": { "movies": movies, "series": series, "episodes": episodes, "audiobooks": audiobooks, "files": files, "review": review },
         "system": { "memory_rss_bytes": mem, "load_1m": load, "cpus": std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1), "uptime_ms": now_ms() - state.started_at, "open_files": crate::stream::open_files_count() },
         "alerts": alerts,
     })))
@@ -468,7 +470,8 @@ async fn settings_import(State(state): State<Shared>, AdminUser(admin): AdminUse
 async fn review(State(state): State<Shared>, _a: AdminUser) -> ApiResult<Json<Value>> {
     let rows: Vec<(i64, String, String, Option<i64>, String, Option<f64>, String)> = sqlx::query_as(
         "SELECT i.id, i.kind, i.title, i.year, i.match_state, i.match_score, l.name FROM items i JOIN libraries l ON l.id = i.library_id
-         WHERE i.match_state IN ('review','unmatched') AND i.kind IN ('movie','series') ORDER BY i.added_at DESC LIMIT 500",
+         WHERE (i.match_state IN ('review','unmatched') AND i.kind IN ('movie','series')) OR (i.match_state = 'review' AND i.kind = 'audiobook')
+         ORDER BY i.added_at DESC LIMIT 500",
     )
     .fetch_all(&state.db.read)
     .await?;
@@ -479,8 +482,8 @@ async fn review(State(state): State<Shared>, _a: AdminUser) -> ApiResult<Json<Va
                 .bind(id)
                 .fetch_optional(&state.db.read)
                 .await?;
-        let cands: Vec<(String, String, Option<i64>, f64, Option<String>)> =
-            sqlx::query_as("SELECT provider_id, title, year, score, poster_path FROM match_candidates WHERE item_id = ? ORDER BY score DESC LIMIT 5")
+        let cands: Vec<(String, String, Option<i64>, f64, Option<String>, Option<String>)> =
+            sqlx::query_as("SELECT provider_id, title, year, score, poster_path, overview FROM match_candidates WHERE item_id = ? ORDER BY score DESC LIMIT 5")
                 .bind(id)
                 .fetch_all(&state.db.read)
                 .await?;
@@ -493,9 +496,9 @@ async fn review(State(state): State<Shared>, _a: AdminUser) -> ApiResult<Json<Va
             "match_score": score,
             "library": lib,
             "path": file,
-            "candidates": cands.into_iter().map(|(p, t, y, s, pp)| json!({
-                "provider_id": p, "title": t, "year": y, "score": s,
-                "poster": pp.map(|x| format!("{}/w185{x}", crate::metadata::tmdb::IMAGE_BASE.as_str())),
+            "candidates": cands.into_iter().map(|(p, t, y, s, pp, o)| json!({
+                "provider_id": p, "title": t, "year": y, "score": s, "overview": if kind == "audiobook" { o } else { None },
+                "poster": pp.map(|x| super::items::candidate_poster(&x)),
             })).collect::<Vec<_>>(),
         }));
     }

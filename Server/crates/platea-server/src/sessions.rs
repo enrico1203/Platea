@@ -330,8 +330,11 @@ pub async fn flush_progress(state: &Shared) -> anyhow::Result<()> {
     let now = now_ms();
     let mut tx = state.db.write.begin().await?;
     for ((user, item), (pos, dur)) in pending {
-        let played = dur > 0 && pos * 100 >= dur * threshold;
-        let pos_saved = if played || pos < resume_min { 0 } else { pos };
+        // Un audiolibro è finito all'ultimo minuto, non al 90%: si riprende anche dopo dieci ore su undici.
+        let book =
+            sqlx::query_scalar::<_, String>("SELECT kind FROM items WHERE id = ?").bind(item).fetch_optional(&mut *tx).await?.as_deref() == Some("audiobook");
+        let played = if book { dur > 0 && pos >= dur - 60_000 } else { dur > 0 && pos * 100 >= dur * threshold };
+        let pos_saved = if played || (!book && pos < resume_min) { 0 } else { pos };
         sqlx::query(
             "INSERT INTO user_item_data (user_id, item_id, position_ms, played, play_count, last_played_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
              ON CONFLICT(user_id, item_id) DO UPDATE SET
