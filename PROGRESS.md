@@ -477,7 +477,7 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
-- 2026-11-18 notte — **Live TV con Dispatcharr (0.1.12)**, richiesta dell'utente ("fai tutta l'implementazione" del
+- 2026-11-18 notte — **Live TV con Dispatcharr (0.1.13; la 0.1.12 ha un Cargo.lock sbagliato e non si compila)**, richiesta dell'utente ("fai tutta l'implementazione" del
   piano). Migrazione 0026: `tv_sources`, `tv_channels`, `tv_programs` (+FTS), `user_tv_favorites`, `tv_recordings`,
   permessi `users.allow_livetv`, `livetv_groups`, `allow_recording`.
   - Sorgenti (`livetv/mod.rs`): Dispatcharr (M3U `/output/m3u` + XMLTV `/output/epg`, indirizzi riportati all'host
