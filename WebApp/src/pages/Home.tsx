@@ -8,11 +8,14 @@ import { Hero, pickFeatured } from "../components/Hero";
 import { Empty } from "../components/ui";
 import { useSession } from "../session";
 import { useT } from "../i18n";
+import { OnAir } from "./OnAir";
+import { useLiveStatus } from "./LiveTV";
 
 export default function Home() {
   const t = useT();
   const { me } = useSession();
   const { data, isLoading } = useQuery({ queryKey: ["home"], queryFn: () => api<HomeData>("/api/v1/home") });
+  const { data: tv } = useLiveStatus();
   if (isLoading || !data) {
     return (
       <div aria-busy="true">
@@ -22,6 +25,14 @@ export default function Home() {
     );
   }
   const nothing = data.resume.length === 0 && (data.listening?.length ?? 0) === 0 && data.next_up.length === 0 && data.recent.every((r) => r.items.length === 0);
+  if (nothing && tv?.enabled) {
+    return (
+      <div>
+        <OnAir />
+        <Empty action={<Link className="pl-btn pl-btn--primary" to="/tv">{t("home.openTv")}</Link>}>{t("home.onlyTv", { count: tv.channels })}</Empty>
+      </div>
+    );
+  }
   if (nothing) {
     return (
       <Empty action={me?.is_admin ? <Link className="pl-btn pl-btn--primary" to="/admin/libraries">{t("home.addLibrary")}</Link> : undefined}>
@@ -30,7 +41,7 @@ export default function Home() {
     );
   }
   // Sezioni nell'ordine scelto dall'utente; quelle tolte non compaiono.
-  const order = me?.preferences?.home_sections ?? ["resume", "listening", "next_up", "recent"];
+  const order = me?.preferences?.home_sections ?? ["resume", "listening", "on_air", "next_up", "recent"];
   // In scena: ciò che si stava guardando, o un titolo appena arrivato. Non si ripete nella riga sotto.
   const featured = pickFeatured(order.includes("resume") ? data.resume : [], data.recent.flatMap((r) => r.items));
   const resumeRow = data.resume.filter((i) => !(featured?.resume && i.id === featured.item.id));
@@ -41,6 +52,7 @@ export default function Home() {
         <div className="poster-row poster-row--square">{data.listening!.map((i) => <PosterCard key={i.id} item={i} />)}</div>
       </section>
     ),
+    on_air: <OnAir key="on_air" />,
     resume: resumeRow.length > 0 && (
       <section className="section" key="resume">
         <div className="section__head"><h2 className="t-h2">{t("home.resume")}</h2></div>

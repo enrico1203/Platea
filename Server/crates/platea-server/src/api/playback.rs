@@ -314,8 +314,11 @@ pub async fn start(state: Shared, user: AuthUser, req: InfoReq) -> ApiResult<Val
     for old in state.sessions.by_device(user.token_id) {
         stop_session(&state, &old).await;
     }
+    for old in state.live.by_device(user.token_id) {
+        crate::livetv::stream::stop_session(&state, &old);
+    }
     if let Some(max) = user.perms.max_streams {
-        if state.sessions.user_count(user.user_id) as i64 >= max {
+        if (state.sessions.user_count(user.user_id) + state.live.user_count(user.user_id)) as i64 >= max {
             return Err(ApiError::coded(
                 StatusCode::TOO_MANY_REQUESTS,
                 "TooManyStreams",

@@ -240,4 +240,15 @@
     <string name="account_more">More</string>
     <string name="account_admin">Administrator</string>
     <string name="devices_show_all">Show all (%1$d)</string>
+    <string name="tv_title">TV</string>
+    <string name="tv_empty">No channels. The admin adds them in the web dashboard (Administration › Live TV).</string>
+    <string name="tv_no_guide">No guide data</string>
+    <string name="tv_next">Next, at %1$s: %2$s</string>
+    <string name="tv_live">Live</string>
+    <string name="tv_tuning">Tuning…</string>
+    <string name="tv_error">The channel won\'t play: %1$s</string>
+    <plurals name="tv_channels">
+        <item quantity="one">%1$d channel</item>
+        <item quantity="other">%1$d channels</item>
+    </plurals>
 </resources>

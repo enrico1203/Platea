@@ -29,6 +29,9 @@ const PlaylistPage = lazy(() => import("./pages/Playlists").then((m) => ({ defau
 const Person = lazy(() => import("./pages/Person"));
 const Browse = lazy(() => import("./pages/Browse"));
 const Player = lazy(() => import("./pages/Player"));
+const LiveTV = lazy(() => import("./pages/LiveTV"));
+const LivePlayer = lazy(() => import("./pages/LivePlayer"));
+const AdminLiveTV = lazy(() => import("./pages/admin/LiveTV"));
 const AdminOverview = lazy(() => import("./pages/admin/Overview"));
 const AdminLibraries = lazy(() => import("./pages/admin/Libraries"));
 const AdminUsers = lazy(() => import("./pages/admin/Users"));
@@ -64,6 +67,7 @@ function Routed() {
         <Route path="/setup" element={info?.setup_required || me?.is_admin ? <Setup /> : <Navigate to="/" replace />} />
         <Route path="/login" element={info?.setup_required ? <Navigate to="/setup" replace /> : me ? <Navigate to="/" replace /> : <Login />} />
         <Route path="/play/:id" element={<Guard><Player /></Guard>} />
+        <Route path="/tv/watch/:id" element={<Guard><LivePlayer /></Guard>} />
         <Route element={<Guard><Layout /></Guard>}>
           <Route index element={<Home />} />
           <Route path="libraries" element={<Libraries />} />
@@ -72,6 +76,7 @@ function Routed() {
           <Route path="playlists" element={<Playlists />} />
           <Route path="person/:id" element={<Person />} />
           <Route path="browse" element={<Browse />} />
+          <Route path="tv" element={<LiveTV />} />
           <Route path="playlist/:id" element={<PlaylistPage />} />
           <Route path="item/:id" element={<ItemPage />} />
           <Route path="account" element={<Account />} />
@@ -84,6 +89,7 @@ function Routed() {
           <Route path="admin/review" element={<Guard admin><AdminReview /></Guard>} />
           <Route path="admin/transcode" element={<Guard admin><AdminTranscode /></Guard>} />
           <Route path="admin/nodes" element={<Guard admin><AdminNodes /></Guard>} />
+          <Route path="admin/livetv" element={<Guard admin><AdminLiveTV /></Guard>} />
           <Route path="admin/settings/:group?" element={<Guard admin><AdminSettings /></Guard>} />
           <Route path="admin/activity" element={<Guard admin><AdminActivity /></Guard>} />
           <Route path="admin/system" element={<Guard admin><AdminSystem /></Guard>} />

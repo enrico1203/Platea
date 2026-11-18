@@ -240,4 +240,15 @@
     <string name="account_more">Altro</string>
     <string name="account_admin">Amministratore</string>
     <string name="devices_show_all">Mostra tutti (%1$d)</string>
+    <string name="tv_title">TV</string>
+    <string name="tv_empty">Nessun canale. Li aggiunge l\'amministratore dalla dashboard web (Amministrazione › Live TV).</string>
+    <string name="tv_no_guide">Guida non disponibile</string>
+    <string name="tv_next">Dopo, alle %1$s: %2$s</string>
+    <string name="tv_live">In diretta</string>
+    <string name="tv_tuning">Sintonizzazione…</string>
+    <string name="tv_error">Il canale non si vede: %1$s</string>
+    <plurals name="tv_channels">
+        <item quantity="one">%1$d canale</item>
+        <item quantity="other">%1$d canali</item>
+    </plurals>
 </resources>

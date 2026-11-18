@@ -82,6 +82,9 @@ async fn overview(State(state): State<Shared>, _a: AdminUser) -> ApiResult<Json<
         bandwidth += s.bitrate.unwrap_or(0);
         sess.push(crate::sessions::session_view(&state, s).await);
     }
+    for s in live_views(&state).await {
+        sess.push(s);
+    }
     let (queued, running, failed): (i64, i64, i64) = sqlx::query_as(
         "SELECT (SELECT COUNT(*) FROM jobs WHERE state = 'queued'), (SELECT COUNT(*) FROM jobs WHERE state = 'running'), (SELECT COUNT(*) FROM jobs WHERE state = 'failed')",
     )
@@ -152,7 +155,24 @@ async fn sessions(State(state): State<Shared>, _a: AdminUser) -> ApiResult<Json<
     for s in &all {
         out.push(crate::sessions::session_view(&state, s).await);
     }
+    out.extend(live_views(&state).await);
     Ok(Json(json!({ "items": out })))
+}
+
+/// Visioni della Live TV come righe del pannello, con il programma in onda.
+async fn live_views(state: &Shared) -> Vec<crate::sessions::SessionView> {
+    let mut out = Vec::new();
+    for s in state.live.sessions() {
+        let program: Option<String> = sqlx::query_scalar("SELECT title FROM tv_programs WHERE channel_id = ? AND start_ms <= ?2 AND end_ms > ?2 LIMIT 1")
+            .bind(s.channel_id)
+            .bind(now_ms())
+            .fetch_optional(&state.db.read)
+            .await
+            .ok()
+            .flatten();
+        out.push(crate::livetv::stream::session_view(state, &s, program));
+    }
+    out
 }
 
 #[derive(Deserialize, Default)]
@@ -309,6 +329,11 @@ async fn describe_jobs(state: &Shared, jobs: &mut [crate::jobs::JobView]) -> Api
 }
 
 async fn kill_session(State(state): State<Shared>, AdminUser(admin): AdminUser, Path(id): Path<String>) -> ApiResult<Json<Value>> {
+    if let Some(s) = crate::livetv::stream::stop_session(&state, &id) {
+        state.events.to_user(s.user_id, "playback.stopped", json!({ "session_id": id, "by": "admin" }));
+        state.db.activity(Some(admin.user_id), "session_killed", &format!("{} ha interrotto la Live TV di {}", admin.username, s.username), None).await;
+        return Ok(Json(json!({ "ok": true })));
+    }
     let s = crate::sessions::stop_session(&state, &id).await.ok_or_else(|| ApiError::not_found("Sessione"))?;
     state.events.to_user(s.user_id, "playback.stopped", json!({ "session_id": id, "by": "admin" }));
     state.db.activity(Some(admin.user_id), "session_killed", &format!("{} ha interrotto la riproduzione di {}", admin.username, s.username), None).await;

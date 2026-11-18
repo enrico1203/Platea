@@ -15,7 +15,7 @@ use axum::body::Body;
 use axum::extract::{ConnectInfo, Path, Query, State};
 use axum::http::{header, HeaderMap, Method, StatusCode, Uri};
 use axum::response::Response;
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use once_cell::sync::Lazy;
 use serde::Deserialize;
@@ -97,9 +97,21 @@ pub fn router() -> Router<Shared> {
         .route("/System/Configuration", get(system_configuration))
         .route("/socket", get(jf_socket))
         .route("/Playback/BitrateTest", get(bitrate_test))
-        .route("/LiveTv/Programs/Recommended", get(empty_items))
-        .route("/LiveTv/Programs", get(empty_items).post(empty_items))
-        .route("/LiveTv/Channels", get(empty_items))
+        .route("/LiveTv/Info", get(lt_info))
+        .route("/LiveTv/GuideInfo", get(lt_guide_info))
+        .route("/LiveTv/Programs/Recommended", get(lt_recommended))
+        .route("/LiveTv/Programs", get(lt_programs_q).post(lt_programs_body))
+        .route("/LiveTv/Programs/{id}", get(lt_program))
+        .route("/LiveTv/Channels", get(lt_channels))
+        .route("/LiveTv/Channels/{id}", get(lt_channel))
+        .route("/LiveTv/Timers", get(lt_timers).post(lt_timer_create))
+        .route("/LiveTv/Timers/{id}", get(lt_timer).delete(lt_timer_delete))
+        .route("/LiveTv/Timers/Defaults", get(lt_timer_defaults))
+        .route("/LiveTv/SeriesTimers", get(lt_series_timers).post(lt_series_create))
+        .route("/LiveTv/SeriesTimers/{id}", delete(lt_timer_delete))
+        .route("/LiveTv/Recordings", get(empty_items))
+        .route("/LiveTv/Recordings/Groups", get(empty_items))
+        .route("/LiveTv/Recordings/Folders", get(empty_items))
         .route("/UserImage", get(user_image).head(user_image))
         .route("/Users/{user}/Images/{kind}", get(user_image_path).head(user_image_path))
         .route("/Branding/Splashscreen", get(splashscreen))
@@ -177,6 +189,11 @@ const NS_USER: &str = "2000000000000000";
 const NS_PERSON: &str = "3000000000000000";
 /// Solo in uscita (Studios[].Id): Platea non ha pagine degli studi.
 const NS_STUDIO: &str = "4000000000000000";
+/// Live TV: canali, programmi della guida, registrazioni programmate (timer), vista "Live TV".
+const NS_CHANNEL: &str = "5000000000000000";
+const NS_PROGRAM: &str = "6000000000000000";
+const NS_TIMER: &str = "7000000000000000";
+const NS_LIVEVIEW: &str = "8000000000000000";
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Ref {
@@ -184,6 +201,10 @@ enum Ref {
     Library(i64),
     User(i64),
     Person(i64),
+    Channel(i64),
+    Program(i64),
+    Timer(i64),
+    LiveView,
 }
 
 fn guid(state: &Shared, ns: &str, id: i64) -> String {
@@ -206,6 +227,10 @@ fn parse_ref(state: &Shared, s: &str) -> Option<Ref> {
         NS_LIBRARY => Some(Ref::Library(id)),
         NS_USER => Some(Ref::User(id)),
         NS_PERSON => Some(Ref::Person(id)),
+        NS_CHANNEL => Some(Ref::Channel(id)),
+        NS_PROGRAM => Some(Ref::Program(id)),
+        NS_TIMER => Some(Ref::Timer(id)),
+        NS_LIVEVIEW => Some(Ref::LiveView),
         _ => None,
     }
 }
@@ -298,6 +323,13 @@ static CANONICAL: Lazy<HashMap<String, &'static str>> = Lazy::new(|| {
         "Programs",
         "Recommended",
         "Channels",
+        "GuideInfo",
+        "Timers",
+        "SeriesTimers",
+        "Defaults",
+        "Recordings",
+        "Groups",
+        "Folders",
         "Splashscreen",
         "Css",
     ];
@@ -398,8 +430,9 @@ struct AuthBody {
 }
 
 async fn user_dto(state: &Shared, user_id: i64) -> ApiResult<Value> {
-    let (name, is_admin, last, expires, allow_download, prefs_raw): (String, i64, Option<i64>, Option<i64>, i64, String) =
-        sqlx::query_as("SELECT username, is_admin, last_login_at, expires_at, allow_download, preferences FROM users WHERE id = ?")
+    #[allow(clippy::type_complexity)]
+    let (name, is_admin, last, expires, allow_download, prefs_raw, allow_livetv): (String, i64, Option<i64>, Option<i64>, i64, String, i64) =
+        sqlx::query_as("SELECT username, is_admin, last_login_at, expires_at, allow_download, preferences, allow_livetv FROM users WHERE id = ?")
             .bind(user_id)
             .fetch_one(&state.db.read)
             .await?;
@@ -430,7 +463,7 @@ async fn user_dto(state: &Shared, user_id: i64) -> ApiResult<Value> {
         "EnableRemoteControlOfOtherUsers": false,
         "EnableSharedDeviceControl": false,
         "EnableLiveTvManagement": false,
-        "EnableLiveTvAccess": false,
+        "EnableLiveTvAccess": allow_livetv != 0 || is_admin != 0,
         "ForceRemoteSourceTranscoding": false,
         "EnableContentDeletion": false,
         "EnableSyncTranscoding": false,
@@ -769,6 +802,9 @@ async fn views_list(state: &Shared, user: &AuthUser) -> ApiResult<Json<Value>> {
     let mut items = Vec::new();
     for (id, name, kind) in libs {
         items.push(library_dto(state, id, &name, &kind).await);
+    }
+    if lt_enabled(state, user).await {
+        items.push(live_view_dto(state));
     }
     let n = items.len();
     Ok(Json(json!({ "Items": items, "TotalRecordCount": n, "StartIndex": 0 })))
@@ -1248,6 +1284,9 @@ async fn item_q(State(state): State<Shared>, user: AuthUser, Path(item): Path<St
 async fn item_detail(state: &Shared, user: &AuthUser, item: &str) -> ApiResult<Json<Value>> {
     match parse_ref(state, item) {
         Some(Ref::Item(i)) => Ok(Json(detail_dto(state, user, i).await?)),
+        Some(Ref::Channel(c)) => Ok(Json(lt_channel_dto(state, user, c, true).await?)),
+        Some(Ref::Program(p)) => Ok(Json(lt_program_dto_by_id(state, user, p).await?)),
+        Some(Ref::LiveView) => Ok(Json(live_view_dto(state))),
         Some(Ref::Library(l)) => {
             let row: (String, String) = sqlx::query_as("SELECT name, kind FROM libraries WHERE id = ?")
                 .bind(l)
@@ -1739,6 +1778,11 @@ async fn playback_info(
     let headers = &parts.headers;
     let uri = &parts.uri;
     user.require_playback()?;
+    if let Some(Ref::Channel(c)) = parse_ref(&state, &item) {
+        let play_session = crate::util::random_hex(16);
+        grant_stream(&play_session, &user, -c, crate::auth::peer_ip(&state, &parts));
+        return Ok(Json(json!({ "MediaSources": [lt_media_source(&state, &user, c, &play_session).await?], "PlaySessionId": play_session })));
+    }
     let id = item_id(&state, &item)?;
     let row = crate::api::items::load_item(&state, &user, id).await?;
     let sources = media_sources(&state, id).await?;
@@ -1879,7 +1923,15 @@ impl axum::extract::FromRequestParts<Shared> for StreamUser {
         };
         let mut segs = parts.uri.path().split('/');
         segs.find(|s| s.eq_ignore_ascii_case("videos"));
-        let item = segs.next().and_then(|i| item_id(state, i).ok()).ok_or(err)?;
+        let item = segs
+            .next()
+            .and_then(|i| match parse_ref(state, i) {
+                Some(Ref::Item(x)) => Some(x),
+                // Canali: il permesso di PlaybackInfo è registrato con l'id negativo.
+                Some(Ref::Channel(c)) => Some(-c),
+                _ => None,
+            })
+            .ok_or(err)?;
         let play_session = crate::auth::query_param(parts, "playsessionid");
         let ip = crate::auth::peer_ip(state, parts);
         let Some(g) = find_grant(play_session.as_deref(), item, ip) else {
@@ -1915,6 +1967,9 @@ async fn choose_file(state: &Shared, item: i64, source: Option<&str>) -> ApiResu
 
 async fn do_stream(state: &Shared, user: &AuthUser, item: &str, uri: &Uri, method: &Method, headers: &HeaderMap) -> ApiResult<Response> {
     user.require_playback()?;
+    if let Some(Ref::Channel(c)) = parse_ref(state, item) {
+        return lt_stream(state, user, c).await;
+    }
     let id = item_id(state, item)?;
     crate::api::items::load_item(state, user, id).await?;
     let source = uri.query().and_then(|q| {
@@ -2474,4 +2529,610 @@ async fn bitrate_test(_u: AuthUser, Query(q): Query<HashMap<String, String>>) ->
         })
         .collect();
     Response::builder().header(header::CONTENT_TYPE, "application/octet-stream").header(header::CACHE_CONTROL, "no-store").body(Body::from(body)).unwrap()
+}
+
+// ---------------------------------------------------------------------------------------------
+// Live TV (canali, guida, timer) per Infuse, Swiftfin e le app Jellyfin. I canali si guardano in MPEG-TS
+// attraverso il server, come fanno queste app con Jellyfin.
+
+async fn lt_enabled(state: &Shared, user: &AuthUser) -> bool {
+    if !user.perms.allow_livetv {
+        return false;
+    }
+    let (filter, binds) = crate::livetv::channel_filter(user, "c");
+    let sql = format!("SELECT COUNT(*) FROM tv_channels c WHERE 1 {filter}");
+    let mut q = sqlx::query_scalar::<_, i64>(&sql);
+    for b in &binds {
+        q = q.bind(b);
+    }
+    q.fetch_one(&state.db.read).await.unwrap_or(0) > 0
+}
+
+fn live_view_dto(state: &Shared) -> Value {
+    json!({
+        "Name": "Live TV",
+        "ServerId": state.server_id,
+        "Id": format!("{NS_LIVEVIEW}{}", state.ids.encode(1)),
+        "Etag": "livetv",
+        "Type": "UserView",
+        "CollectionType": "livetv",
+        "IsFolder": true,
+        "ChildCount": 0,
+        "LocationType": "Virtual",
+        "ImageTags": {},
+        "BackdropImageTags": [],
+        "UserData": { "PlaybackPositionTicks": 0, "PlayCount": 0, "IsFavorite": false, "Played": false, "Key": "livetv", "ItemId": format!("{NS_LIVEVIEW}{}", state.ids.encode(1)) },
+        "MediaType": "Unknown",
+    })
+}
+
+fn jf_date(ms: i64) -> String {
+    let s = crate::livetv::dispatcharr::iso(ms);
+    format!("{}.0000000Z", s.trim_end_matches('Z'))
+}
+
+#[derive(sqlx::FromRow)]
+struct LtChannel {
+    id: i64,
+    number: Option<f64>,
+    name: String,
+    logo_url: Option<String>,
+    radio: i64,
+    favorite: i64,
+}
+
+async fn lt_channels_rows(state: &Shared, user: &AuthUser, only: Option<i64>, favorites: bool) -> ApiResult<Vec<LtChannel>> {
+    if !user.perms.allow_livetv {
+        return Ok(vec![]);
+    }
+    let (filter, binds) = crate::livetv::channel_filter(user, "c");
+    let mut sql = format!(
+        "SELECT c.id, c.number, c.name, c.logo_url, c.radio, EXISTS (SELECT 1 FROM user_tv_favorites f WHERE f.channel_id = c.id AND f.user_id = ?1) AS favorite
+         FROM tv_channels c WHERE 1 {filter}"
+    );
+    if only.is_some() {
+        sql.push_str(" AND c.id = ?");
+    }
+    if favorites {
+        sql.push_str(" AND EXISTS (SELECT 1 FROM user_tv_favorites f WHERE f.channel_id = c.id AND f.user_id = ?1)");
+    }
+    sql.push_str(" ORDER BY c.number IS NULL, c.number, c.name");
+    let mut q = sqlx::query_as::<_, LtChannel>(&sql).bind(user.user_id);
+    for b in &binds {
+        q = q.bind(b);
+    }
+    if let Some(o) = only {
+        q = q.bind(o);
+    }
+    Ok(q.fetch_all(&state.db.read).await?)
+}
+
+fn number_text(n: Option<f64>) -> Option<String> {
+    n.map(|n| if n.fract() == 0.0 { format!("{}", n as i64) } else { n.to_string() })
+}
+
+fn channel_value(state: &Shared, c: &LtChannel, current: Option<Value>) -> Value {
+    let id = guid(state, NS_CHANNEL, c.id);
+    let mut v = json!({
+        "Name": c.name,
+        "ServerId": state.server_id,
+        "Id": id,
+        "Type": "TvChannel",
+        "ChannelType": if c.radio != 0 { "Radio" } else { "TV" },
+        "Number": number_text(c.number),
+        "ChannelNumber": number_text(c.number),
+        "MediaType": if c.radio != 0 { "Audio" } else { "Video" },
+        "IsFolder": false,
+        "LocationType": "Remote",
+        "ImageTags": if c.logo_url.is_some() { json!({ "Primary": format!("logo{}", c.id) }) } else { json!({}) },
+        "BackdropImageTags": [],
+        "UserData": { "PlaybackPositionTicks": 0, "PlayCount": 0, "IsFavorite": c.favorite != 0, "Played": false, "Key": id, "ItemId": id },
+    });
+    if let Some(p) = current {
+        v["CurrentProgram"] = p;
+    }
+    v
+}
+
+#[derive(sqlx::FromRow)]
+struct LtProgram {
+    id: i64,
+    channel_id: i64,
+    start_ms: i64,
+    end_ms: i64,
+    title: String,
+    subtitle: Option<String>,
+    description: Option<String>,
+    category: Option<String>,
+    season: Option<i64>,
+    episode: Option<i64>,
+    is_new: i64,
+    rating: Option<String>,
+    channel_name: String,
+    channel_number: Option<f64>,
+    logo_url: Option<String>,
+}
+
+const LT_PR: &str = "p.id, p.channel_id, p.start_ms, p.end_ms, p.title, p.subtitle, p.description, p.category, p.season, p.episode, p.is_new, p.rating,
+  c.name AS channel_name, c.number AS channel_number, c.logo_url";
+
+fn program_value(state: &Shared, p: &LtProgram) -> Value {
+    let id = guid(state, NS_PROGRAM, p.id);
+    let cat = p.category.clone().unwrap_or_default().to_lowercase();
+    let has = |words: &[&str]| words.iter().any(|w| cat.contains(w));
+    let now = crate::util::now_ms();
+    json!({
+        "Name": p.title,
+        "EpisodeTitle": p.subtitle,
+        "Overview": p.description,
+        "ServerId": state.server_id,
+        "Id": id,
+        "Type": "Program",
+        "ChannelId": guid(state, NS_CHANNEL, p.channel_id),
+        "ChannelName": p.channel_name,
+        "ChannelNumber": number_text(p.channel_number),
+        "ChannelPrimaryImageTag": p.logo_url.as_ref().map(|_| format!("logo{}", p.channel_id)),
+        "StartDate": jf_date(p.start_ms),
+        "EndDate": jf_date(p.end_ms),
+        "PremiereDate": jf_date(p.start_ms),
+        "RunTimeTicks": (p.end_ms - p.start_ms) * TICKS_PER_MS,
+        "ParentIndexNumber": p.season,
+        "IndexNumber": p.episode,
+        "Genres": p.category.iter().collect::<Vec<_>>(),
+        "OfficialRating": p.rating,
+        "IsSeries": p.season.is_some() || p.episode.is_some(),
+        "IsNews": has(&["news", "notizi", "telegiornal", "tg"]),
+        "IsSports": has(&["sport"]),
+        "IsKids": has(&["kids", "bambin", "ragazz", "children", "animazion"]),
+        "IsMovie": has(&["film", "movie", "cinema"]),
+        "IsPremiere": p.is_new != 0,
+        "IsLive": false,
+        "IsNew": p.is_new != 0,
+        "IsFolder": false,
+        "MediaType": "Video",
+        "LocationType": "Remote",
+        "ImageTags": {},
+        "BackdropImageTags": [],
+        "UserData": { "PlaybackPositionTicks": 0, "PlayCount": 0, "IsFavorite": false, "Played": p.end_ms < now, "Key": id, "ItemId": id },
+    })
+}
+
+async fn current_programs(state: &Shared, ids: &[i64]) -> ApiResult<HashMap<i64, Value>> {
+    let mut out = HashMap::new();
+    if ids.is_empty() {
+        return Ok(out);
+    }
+    let now = crate::util::now_ms();
+    for chunk in ids.chunks(900) {
+        let l = chunk.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",");
+        let rows: Vec<LtProgram> = sqlx::query_as(&format!(
+            "SELECT {LT_PR} FROM tv_programs p JOIN tv_channels c ON c.id = p.channel_id WHERE p.channel_id IN ({l}) AND p.start_ms <= ?1 AND p.end_ms > ?1"
+        ))
+        .bind(now)
+        .fetch_all(&state.db.read)
+        .await?;
+        for p in rows {
+            out.insert(p.channel_id, program_value(state, &p));
+        }
+    }
+    Ok(out)
+}
+
+async fn lt_channel_dto(state: &Shared, user: &AuthUser, id: i64, current: bool) -> ApiResult<Value> {
+    let c = lt_channels_rows(state, user, Some(id), false).await?.into_iter().next().ok_or_else(|| ApiError::not_found("Canale"))?;
+    let cur = if current { current_programs(state, &[c.id]).await?.remove(&c.id) } else { None };
+    Ok(channel_value(state, &c, cur))
+}
+
+async fn lt_program_dto_by_id(state: &Shared, user: &AuthUser, id: i64) -> ApiResult<Value> {
+    let p: LtProgram = sqlx::query_as(&format!("SELECT {LT_PR} FROM tv_programs p JOIN tv_channels c ON c.id = p.channel_id WHERE p.id = ?"))
+        .bind(id)
+        .fetch_optional(&state.db.read)
+        .await?
+        .ok_or_else(|| ApiError::not_found("Programma"))?;
+    lt_channels_rows(state, user, Some(p.channel_id), false).await?.into_iter().next().ok_or_else(|| ApiError::not_found("Programma"))?;
+    Ok(program_value(state, &p))
+}
+
+async fn lt_info(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<Value>> {
+    let on = lt_enabled(&state, &user).await;
+    Ok(Json(json!({
+        "Services": [{ "Name": "Platea", "HomePageUrl": "", "Status": "Ok", "StatusMessage": "", "Version": crate::state::VERSION, "HasUpdateAvailable": false, "IsVisible": true, "Tuners": [] }],
+        "IsEnabled": on,
+        "EnabledUsers": if on { vec![guid(&state, NS_USER, user.user_id)] } else { vec![] },
+    })))
+}
+
+async fn lt_guide_info(State(state): State<Shared>, _user: AuthUser) -> ApiResult<Json<Value>> {
+    let (min, max): (Option<i64>, Option<i64>) = sqlx::query_as("SELECT MIN(start_ms), MAX(end_ms) FROM tv_programs").fetch_one(&state.db.read).await?;
+    let now = crate::util::now_ms();
+    Ok(Json(json!({ "StartDate": jf_date(min.unwrap_or(now)), "EndDate": jf_date(max.unwrap_or(now)) })))
+}
+
+fn qmap(uri: &Uri) -> HashMap<String, String> {
+    let mut q = HashMap::new();
+    if let Some(qs) = uri.query() {
+        for pair in qs.split('&') {
+            let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
+            q.insert(k.to_lowercase(), urlencoding::decode(v).map(|s| s.into_owned()).unwrap_or_default());
+        }
+    }
+    q
+}
+
+async fn lt_channels(State(state): State<Shared>, user: AuthUser, uri: Uri) -> ApiResult<Json<Value>> {
+    let q = qmap(&uri);
+    let fav = q.get("isfavorite").is_some_and(|v| v.eq_ignore_ascii_case("true"));
+    let rows = lt_channels_rows(&state, &user, None, fav).await?;
+    let total = rows.len();
+    let start = q.get("startindex").and_then(|v| v.parse::<usize>().ok()).unwrap_or(0);
+    let limit = q.get("limit").and_then(|v| v.parse::<usize>().ok()).unwrap_or(total);
+    let page: Vec<&LtChannel> = rows.iter().skip(start).take(limit).collect();
+    let cur = if q.get("addcurrentprogram").is_none_or(|v| !v.eq_ignore_ascii_case("false")) {
+        current_programs(&state, &page.iter().map(|c| c.id).collect::<Vec<_>>()).await?
+    } else {
+        HashMap::new()
+    };
+    let items: Vec<Value> = page.iter().map(|c| channel_value(&state, c, cur.get(&c.id).cloned())).collect();
+    Ok(Json(json!({ "Items": items, "TotalRecordCount": total, "StartIndex": start })))
+}
+
+async fn lt_channel(State(state): State<Shared>, user: AuthUser, Path(id): Path<String>) -> ApiResult<Json<Value>> {
+    match parse_ref(&state, &id) {
+        Some(Ref::Channel(c)) => Ok(Json(lt_channel_dto(&state, &user, c, true).await?)),
+        _ => Err(ApiError::not_found("Canale")),
+    }
+}
+
+async fn lt_program(State(state): State<Shared>, user: AuthUser, Path(id): Path<String>) -> ApiResult<Json<Value>> {
+    match parse_ref(&state, &id) {
+        Some(Ref::Program(p)) => Ok(Json(lt_program_dto_by_id(&state, &user, p).await?)),
+        _ => Err(ApiError::not_found("Programma")),
+    }
+}
+
+/// Filtri dei programmi, dalla query (GET) o dal corpo (POST): stessi nomi di Jellyfin.
+#[derive(Default)]
+struct ProgramFilter {
+    channels: Vec<i64>,
+    min_start: Option<i64>,
+    max_start: Option<i64>,
+    min_end: Option<i64>,
+    max_end: Option<i64>,
+    is_airing: Option<bool>,
+    has_aired: Option<bool>,
+    start: usize,
+    limit: Option<usize>,
+}
+
+fn parse_jf_date(s: &str) -> Option<i64> {
+    crate::livetv::dispatcharr::parse_iso(s)
+}
+
+async fn lt_programs(state: &Shared, user: &AuthUser, f: ProgramFilter) -> ApiResult<Json<Value>> {
+    let allowed: Vec<i64> = lt_channels_rows(state, user, None, false).await?.iter().map(|c| c.id).collect();
+    let chans: Vec<i64> = if f.channels.is_empty() { allowed.clone() } else { f.channels.iter().copied().filter(|c| allowed.contains(c)).collect() };
+    if chans.is_empty() {
+        return Ok(Json(json!({ "Items": [], "TotalRecordCount": 0, "StartIndex": 0 })));
+    }
+    let now = crate::util::now_ms();
+    let mut sql = format!(
+        "SELECT {LT_PR} FROM tv_programs p JOIN tv_channels c ON c.id = p.channel_id WHERE p.channel_id IN ({})",
+        chans.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",")
+    );
+    let mut binds: Vec<i64> = Vec::new();
+    for (cond, v) in [("p.start_ms >= ?", f.min_start), ("p.start_ms <= ?", f.max_start), ("p.end_ms >= ?", f.min_end), ("p.end_ms <= ?", f.max_end)] {
+        if let Some(v) = v {
+            sql.push_str(&format!(" AND {cond}"));
+            binds.push(v);
+        }
+    }
+    match f.is_airing {
+        Some(true) => {
+            sql.push_str(" AND p.start_ms <= ? AND p.end_ms > ?");
+            binds.extend([now, now]);
+        }
+        Some(false) => {
+            sql.push_str(" AND NOT (p.start_ms <= ? AND p.end_ms > ?)");
+            binds.extend([now, now]);
+        }
+        None => {}
+    }
+    match f.has_aired {
+        Some(true) => {
+            sql.push_str(" AND p.end_ms <= ?");
+            binds.push(now);
+        }
+        Some(false) => {
+            sql.push_str(" AND p.end_ms > ?");
+            binds.push(now);
+        }
+        None => {}
+    }
+    // Senza limiti di tempo: da adesso a 24 ore (le guide intere sarebbero enormi).
+    if f.min_start.is_none() && f.max_start.is_none() && f.min_end.is_none() && f.max_end.is_none() && f.is_airing.is_none() && f.has_aired.is_none() {
+        sql.push_str(" AND p.end_ms > ? AND p.start_ms < ?");
+        binds.extend([now, now + 86_400_000]);
+    }
+    sql.push_str(" ORDER BY p.start_ms, c.number LIMIT 20000");
+    let mut q = sqlx::query_as::<_, LtProgram>(&sql);
+    for b in &binds {
+        q = q.bind(b);
+    }
+    let rows = q.fetch_all(&state.db.read).await?;
+    let total = rows.len();
+    let items: Vec<Value> = rows.iter().skip(f.start).take(f.limit.unwrap_or(total)).map(|p| program_value(state, p)).collect();
+    Ok(Json(json!({ "Items": items, "TotalRecordCount": total, "StartIndex": f.start })))
+}
+
+fn channel_ids(state: &Shared, list: impl Iterator<Item = String>) -> Vec<i64> {
+    list.filter_map(|x| match parse_ref(state, x.trim()) {
+        Some(Ref::Channel(c)) => Some(c),
+        _ => None,
+    })
+    .collect()
+}
+
+async fn lt_programs_q(State(state): State<Shared>, user: AuthUser, uri: Uri) -> ApiResult<Json<Value>> {
+    let q = qmap(&uri);
+    let b = |k: &str| q.get(k).map(|v| v.eq_ignore_ascii_case("true"));
+    let f = ProgramFilter {
+        channels: channel_ids(&state, q.get("channelids").map(|v| v.split(',').map(String::from).collect::<Vec<_>>()).unwrap_or_default().into_iter()),
+        min_start: q.get("minstartdate").and_then(|v| parse_jf_date(v)),
+        max_start: q.get("maxstartdate").and_then(|v| parse_jf_date(v)),
+        min_end: q.get("minenddate").and_then(|v| parse_jf_date(v)),
+        max_end: q.get("maxenddate").and_then(|v| parse_jf_date(v)),
+        is_airing: b("isairing"),
+        has_aired: b("hasaired"),
+        start: q.get("startindex").and_then(|v| v.parse().ok()).unwrap_or(0),
+        limit: q.get("limit").and_then(|v| v.parse().ok()),
+    };
+    lt_programs(&state, &user, f).await
+}
+
+async fn lt_programs_body(State(state): State<Shared>, user: AuthUser, body: axum::body::Bytes) -> ApiResult<Json<Value>> {
+    let v: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
+    let d = |k: &str| v[k].as_str().and_then(parse_jf_date);
+    let f = ProgramFilter {
+        channels: channel_ids(&state, v["ChannelIds"].as_array().into_iter().flatten().filter_map(|x| x.as_str().map(String::from))),
+        min_start: d("MinStartDate"),
+        max_start: d("MaxStartDate"),
+        min_end: d("MinEndDate"),
+        max_end: d("MaxEndDate"),
+        is_airing: v["IsAiring"].as_bool(),
+        has_aired: v["HasAired"].as_bool(),
+        start: v["StartIndex"].as_u64().unwrap_or(0) as usize,
+        limit: v["Limit"].as_u64().map(|l| l as usize),
+    };
+    lt_programs(&state, &user, f).await
+}
+
+async fn lt_recommended(State(state): State<Shared>, user: AuthUser, uri: Uri) -> ApiResult<Json<Value>> {
+    let q = qmap(&uri);
+    let f = ProgramFilter {
+        is_airing: Some(q.get("isairing").is_none_or(|v| v.eq_ignore_ascii_case("true"))),
+        limit: q.get("limit").and_then(|v| v.parse().ok()),
+        ..Default::default()
+    };
+    lt_programs(&state, &user, f).await
+}
+
+/// Flusso MPEG-TS del canale: una sessione dal vivo diretta (visibile nel pannello), poi il flusso attraverso il server.
+async fn lt_stream(state: &Shared, user: &AuthUser, channel: i64) -> ApiResult<Response> {
+    let existing = state
+        .live
+        .sessions()
+        .into_iter()
+        .find(|s| s.user_id == user.user_id && s.token_id == user.token_id && s.channel_id == channel && s.direct_url.is_some());
+    let (sid, token) = match existing {
+        Some(s) => (s.id.clone(), s.token.clone()),
+        None => {
+            let v = crate::api::livetv::start(state, user, channel, crate::api::livetv::PlayReq { direct: true, ..Default::default() }).await?;
+            (v["session_id"].as_str().unwrap_or_default().to_string(), v["stream_token"].as_str().unwrap_or_default().to_string())
+        }
+    };
+    let s = state.live.get(&sid).ok_or_else(|| ApiError::not_found("Sessione"))?;
+    let _ = token;
+    let url = s.direct_url.clone().ok_or_else(|| ApiError::not_found("Canale"))?;
+    let guard = crate::livetv::stream::LiveManager::open_direct(state, s.source_id);
+    let resp = state
+        .http
+        .get(&url)
+        .header("User-Agent", format!("Platea/{}", crate::state::VERSION))
+        .send()
+        .await
+        .map_err(|e| ApiError::coded(StatusCode::BAD_GATEWAY, "ChannelUnavailable", format!("Canale non raggiungibile: {e}")))?;
+    if !resp.status().is_success() {
+        return Err(ApiError::coded(StatusCode::BAD_GATEWAY, "ChannelUnavailable", format!("La sorgente ha risposto {}", resp.status())));
+    }
+    use futures_util::StreamExt;
+    let counter = s.bytes_sent.clone();
+    let sess = s.clone();
+    let body = resp.bytes_stream().map(move |chunk| {
+        let _keep = &guard;
+        if let Ok(c) = &chunk {
+            counter.fetch_add(c.len() as u64, std::sync::atomic::Ordering::Relaxed);
+            sess.touch();
+        }
+        chunk.map_err(std::io::Error::other)
+    });
+    Ok(Response::builder().header(header::CONTENT_TYPE, "video/mp2t").header(header::CACHE_CONTROL, "no-store").body(Body::from_stream(body)).unwrap())
+}
+
+/// Sorgente di un canale per PlaybackInfo: MPEG-TS infinito, letto dal client così com'è.
+async fn lt_media_source(state: &Shared, user: &AuthUser, channel: i64, play_session: &str) -> ApiResult<Value> {
+    if !user.perms.allow_livetv {
+        return Err(ApiError::Forbidden("Live TV non abilitata".into()));
+    }
+    let c = lt_channels_rows(state, user, Some(channel), false).await?.into_iter().next().ok_or_else(|| ApiError::not_found("Canale"))?;
+    let codecs: Option<String> = sqlx::query_scalar("SELECT codecs FROM tv_channels WHERE id = ?").bind(c.id).fetch_optional(&state.db.read).await?.flatten();
+    let codecs: Value = codecs.as_deref().and_then(|x| serde_json::from_str(x).ok()).unwrap_or(json!({}));
+    let id = guid(state, NS_CHANNEL, c.id);
+    let url = format!("/Videos/{id}/stream.ts?static=true&MediaSourceId={id}&PlaySessionId={play_session}");
+    let mut streams = Vec::new();
+    if let Some(v) = codecs["video"].as_str() {
+        streams.push(json!({ "Type": "Video", "Codec": v, "Index": 0, "Width": codecs["width"], "Height": codecs["height"], "IsInterlaced": codecs["interlaced"].as_bool().unwrap_or(false),
+            "IsDefault": true, "IsForced": false, "IsExternal": false, "IsTextSubtitleStream": false, "SupportsExternalStream": false, "VideoRange": "SDR", "VideoRangeType": "SDR",
+            "AudioSpatialFormat": "None", "IsHearingImpaired": false, "IsOriginal": true, "IsAVC": v == "h264", "IsAnamorphic": false, "Level": 0.0 }));
+    }
+    if let Some(a) = codecs["audio"].as_str() {
+        streams.push(
+            json!({ "Type": "Audio", "Codec": a, "Index": 1, "Channels": codecs["channels"], "IsDefault": true, "IsForced": false, "IsExternal": false,
+            "IsTextSubtitleStream": false, "SupportsExternalStream": false, "IsInterlaced": false, "VideoRange": "Unknown", "VideoRangeType": "Unknown",
+            "AudioSpatialFormat": "None", "IsHearingImpaired": false, "IsOriginal": true, "Level": 0.0 }),
+        );
+    }
+    Ok(json!({
+        "Protocol": "Http",
+        "Id": id,
+        "Path": url,
+        "Type": "Default",
+        "Container": "ts",
+        "Name": c.name,
+        "IsRemote": true,
+        "ETag": id,
+        "RunTimeTicks": null,
+        "ReadAtNativeFramerate": false,
+        "IgnoreDts": true,
+        "IgnoreIndex": true,
+        "GenPtsInput": true,
+        "SupportsTranscoding": false,
+        "SupportsDirectStream": true,
+        "SupportsDirectPlay": true,
+        "IsInfiniteStream": true,
+        "UseMostCompatibleTranscodingProfile": false,
+        "RequiresOpening": false,
+        "RequiresClosing": false,
+        "RequiresLooping": false,
+        "SupportsProbing": true,
+        "MediaStreams": streams,
+        "MediaAttachments": [],
+        "Formats": [],
+        "RequiredHttpHeaders": {},
+        "DirectStreamUrl": url,
+        "TranscodingSubProtocol": "http",
+        "HasSegments": false,
+        "AnalyzeDurationMs": 3000,
+        "DefaultAudioStreamIndex": 1,
+    }))
+}
+
+// Timer: le registrazioni programmate con Dispatcharr.
+
+#[derive(sqlx::FromRow)]
+struct LtTimer {
+    id: i64,
+    kind: String,
+    title: String,
+    start_ms: i64,
+    end_ms: i64,
+    status: String,
+    channel_id: Option<i64>,
+    channel_name: Option<String>,
+}
+
+fn timer_value(state: &Shared, t: &LtTimer) -> Value {
+    let id = guid(state, NS_TIMER, t.id);
+    json!({
+        "Id": id,
+        "Type": if t.kind == "series" { "SeriesTimer" } else { "Timer" },
+        "ServerId": state.server_id,
+        "ExternalId": id,
+        "ChannelId": t.channel_id.map(|c| guid(state, NS_CHANNEL, c)),
+        "ChannelName": t.channel_name,
+        "Name": t.title,
+        "StartDate": jf_date(t.start_ms),
+        "EndDate": jf_date(t.end_ms),
+        "Status": match t.status.as_str() { "recording" => "InProgress", "completed" => "Completed", "stopped" | "interrupted" => "Cancelled", "failed" => "Error", _ => "New" },
+        "PrePaddingSeconds": 0,
+        "PostPaddingSeconds": 0,
+        "IsPrePaddingRequired": false,
+        "IsPostPaddingRequired": false,
+        "KeepUntil": "UntilDeleted",
+        "Priority": 0,
+        "RecordAnyTime": false,
+        "RecordAnyChannel": false,
+        "SkipEpisodesInLibrary": false,
+        "RecordNewOnly": false,
+        "Days": [],
+        "DayPattern": "Daily",
+        "KeepUpTo": 0,
+        "ParentPrimaryImageItemId": t.channel_id.map(|c| guid(state, NS_CHANNEL, c)),
+    })
+}
+
+async fn timers_of(state: &Shared, user: &AuthUser, kind: &str) -> ApiResult<Vec<LtTimer>> {
+    Ok(sqlx::query_as(
+        "SELECT r.id, r.kind, r.title, r.start_ms, r.end_ms, r.status, r.channel_id, c.name AS channel_name FROM tv_recordings r LEFT JOIN tv_channels c ON c.id = r.channel_id
+         WHERE r.kind = ? AND r.status NOT IN ('deleted') AND (r.user_id = ? OR r.shared = 1 OR ?) AND (? = 'series' OR r.end_ms > ?) ORDER BY r.start_ms",
+    )
+    .bind(kind)
+    .bind(user.user_id)
+    .bind(user.is_admin)
+    .bind(kind)
+    .bind(crate::util::now_ms())
+    .fetch_all(&state.db.read)
+    .await?)
+}
+
+async fn lt_timers(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<Value>> {
+    let list = timers_of(&state, &user, "once").await?;
+    let n = list.len();
+    Ok(Json(json!({ "Items": list.iter().map(|t| timer_value(&state, t)).collect::<Vec<_>>(), "TotalRecordCount": n, "StartIndex": 0 })))
+}
+
+async fn lt_series_timers(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<Value>> {
+    let list = timers_of(&state, &user, "series").await?;
+    let n = list.len();
+    Ok(Json(json!({ "Items": list.iter().map(|t| timer_value(&state, t)).collect::<Vec<_>>(), "TotalRecordCount": n, "StartIndex": 0 })))
+}
+
+async fn lt_timer(State(state): State<Shared>, user: AuthUser, Path(id): Path<String>) -> ApiResult<Json<Value>> {
+    let Some(Ref::Timer(t)) = parse_ref(&state, &id) else { return Err(ApiError::not_found("Timer")) };
+    let all: Vec<LtTimer> = [timers_of(&state, &user, "once").await?, timers_of(&state, &user, "series").await?].into_iter().flatten().collect();
+    let t = all.iter().find(|x| x.id == t).ok_or_else(|| ApiError::not_found("Timer"))?;
+    Ok(Json(timer_value(&state, t)))
+}
+
+async fn lt_timer_defaults(State(state): State<Shared>, user: AuthUser, uri: Uri) -> ApiResult<Json<Value>> {
+    let q = qmap(&uri);
+    let program = q.get("programid").and_then(|p| match parse_ref(&state, p) {
+        Some(Ref::Program(x)) => Some(x),
+        _ => None,
+    });
+    let mut v = json!({ "PrePaddingSeconds": 0, "PostPaddingSeconds": 0, "IsPrePaddingRequired": false, "IsPostPaddingRequired": false, "KeepUntil": "UntilDeleted",
+        "RecordAnyTime": false, "RecordAnyChannel": false, "RecordNewOnly": false, "SkipEpisodesInLibrary": false, "Days": [], "DayPattern": "Daily", "KeepUpTo": 0, "Priority": 0 });
+    if let Some(p) = program {
+        let dto = lt_program_dto_by_id(&state, &user, p).await?;
+        v["ProgramId"] = json!(guid(&state, NS_PROGRAM, p));
+        v["ChannelId"] = dto["ChannelId"].clone();
+        v["Name"] = dto["Name"].clone();
+        v["StartDate"] = dto["StartDate"].clone();
+        v["EndDate"] = dto["EndDate"].clone();
+    }
+    Ok(Json(v))
+}
+
+async fn create_from_body(state: &Shared, user: &AuthUser, _parts: &axum::http::request::Parts, body: &[u8], series: bool) -> ApiResult<StatusCode> {
+    let v: Value = serde_json::from_slice(body).unwrap_or(Value::Null);
+    let Some(Ref::Program(p)) = v["ProgramId"].as_str().and_then(|p| parse_ref(state, p)) else {
+        return Err(ApiError::BadRequest("ProgramId mancante".into()));
+    };
+    let req = json!({ "program_id": state.ids.encode(p), "series": series, "only_new": v["RecordNewOnly"].as_bool().unwrap_or(false) });
+    let _ = crate::api::livetv::record_for(state, user, req).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn lt_timer_create(State(state): State<Shared>, user: AuthUser, parts: axum::http::request::Parts, body: axum::body::Bytes) -> ApiResult<StatusCode> {
+    create_from_body(&state, &user, &parts, &body, false).await
+}
+
+async fn lt_series_create(State(state): State<Shared>, user: AuthUser, parts: axum::http::request::Parts, body: axum::body::Bytes) -> ApiResult<StatusCode> {
+    create_from_body(&state, &user, &parts, &body, true).await
+}
+
+async fn lt_timer_delete(State(state): State<Shared>, user: AuthUser, Path(id): Path<String>) -> ApiResult<StatusCode> {
+    let Some(Ref::Timer(t)) = parse_ref(&state, &id) else { return Err(ApiError::not_found("Timer")) };
+    let _ = crate::api::livetv::unrecord_for(&state, &user, t).await?;
+    Ok(StatusCode::NO_CONTENT)
 }

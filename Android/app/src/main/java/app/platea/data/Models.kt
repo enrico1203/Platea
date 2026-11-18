@@ -447,3 +447,50 @@ data class ServerEvent(val type: String, val data: JsonObject? = null)
 
 @Serializable
 data class ApiErrorBody(val error: String? = null, val message: String? = null)
+
+// --- Live TV ---
+
+@Serializable
+data class LiveStatus(val enabled: Boolean = false, val channels: Int = 0, @SerialName("can_record") val canRecord: Boolean = false)
+
+@Serializable
+data class LiveProgram(
+    val id: String = "",
+    @SerialName("channel_id") val channelId: String = "",
+    @SerialName("start_ms") val startMs: Long = 0,
+    @SerialName("end_ms") val endMs: Long = 0,
+    val title: String = "",
+    val subtitle: String? = null,
+)
+
+@Serializable
+data class LiveChannel(
+    val id: String,
+    val number: Double? = null,
+    val name: String = "",
+    val group: String? = null,
+    val logo: String? = null,
+    val radio: Boolean = false,
+    val favorite: Boolean = false,
+    val now: LiveProgram? = null,
+    val next: LiveProgram? = null,
+) {
+    /** "1", "1.1": senza decimali inutili. */
+    val numberText: String get() = number?.let { if (it % 1.0 == 0.0) it.toLong().toString() else it.toString() } ?: ""
+}
+
+@Serializable
+data class LiveChannelPage(val items: List<LiveChannel> = emptyList())
+
+/** Il server passa l'MPEG-TS così com'è: Media3 lo legge da sé (codec DVB e AC3 compresi, se il dispositivo li ha). */
+@Serializable
+data class LivePlayRequest(val direct: Boolean = true)
+
+@Serializable
+data class LivePlay(
+    @SerialName("session_id") val sessionId: String,
+    @SerialName("stream_url") val streamUrl: String? = null,
+    @SerialName("hls_url") val hlsUrl: String? = null,
+    val method: String = "",
+    val chain: String = "",
+)

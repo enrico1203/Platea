@@ -2,7 +2,7 @@ export interface SystemInfo { name: string; id: string; version: string; product
 export interface UserRef { id: string; username: string; is_admin: boolean }
 export interface Me extends UserRef {
   device_name: string;
-  permissions: { all_libraries: boolean; library_ids: string[]; allow_remux: boolean; allow_transcode: boolean; max_bitrate: number | null; max_streams: number | null; allow_remote: boolean; manage_devices: boolean; expires_at: number | null; expired: boolean; allow_download: boolean; block_unrated: boolean; access_schedule: ScheduleSlot[]; within_schedule: boolean };
+  permissions: { all_libraries: boolean; library_ids: string[]; allow_remux: boolean; allow_transcode: boolean; max_bitrate: number | null; max_streams: number | null; allow_remote: boolean; manage_devices: boolean; expires_at: number | null; expired: boolean; allow_download: boolean; block_unrated: boolean; access_schedule: ScheduleSlot[]; within_schedule: boolean; allow_livetv?: boolean; allow_recording?: boolean };
   avatar: string | null;
   preferences: UserPrefs;
 }
@@ -86,6 +86,8 @@ export interface Overview {
 export interface UserAdmin {
   /** Generi nascosti e consentiti (vuoto = tutti). */
   blocked_genres?: string[]; allowed_genres?: string[];
+  /** Live TV: canali, gruppi consentiti (vuoto = tutti), registrazioni. */
+  allow_livetv?: boolean; livetv_groups?: string[]; allow_recording?: boolean;
   id: string; username: string; is_admin: boolean; disabled: boolean; all_libraries: boolean; library_ids: string[]; allow_remux: boolean; allow_transcode: boolean;
   max_bitrate: number | null; max_streams: number | null; max_rating: string | null; allow_remote: boolean; manage_devices: boolean; created_at: number; last_login_at: number | null; devices: number; active_streams: number; expires_at: number | null; expired: boolean; allow_download: boolean; block_unrated: boolean; access_schedule: ScheduleSlot[]; avatar: string | null;
 }
@@ -113,3 +115,17 @@ export interface JobProgress {
   queues: { kind: string; library_id: string | null; library: string | null; queued: number; running: number; done: number; total: number; percent: number; per_minute: number; eta_ms: number | null }[];
   paused_until: number | null;
 }
+
+/** Live TV. */
+export interface LiveProgram { id: string; channel_id: string; start_ms: number; end_ms: number; title: string; subtitle: string | null; category: string | null; season: number | null; episode: number | null; is_new: boolean;
+  description?: string | null; image?: string | null; rating?: string | null; channel?: LiveChannel; recording?: { id: string; kind: "once" | "series"; status: string } | null }
+export interface LiveChannel { id: string; number: number | null; name: string; group: string | null; logo: string | null; radio: boolean; catchup_days: number; favorite: boolean; recordable: boolean;
+  now?: LiveProgram | null; next?: LiveProgram | null; programs?: LiveProgram[]; hidden?: boolean; source_id?: string }
+export interface LiveStatus { enabled: boolean; channels: number; can_record: boolean }
+export interface LiveGuide { start: number; end: number; now: number; channels: LiveChannel[] }
+export interface LivePlay { session_id: string; stream_token: string; method: string; chain: string; hls_url: string | null; stream_url: string | null; channel: LiveChannel; codecs: Record<string, unknown> }
+export interface LiveRecording { id: string; kind: "once" | "series"; title: string; subtitle: string | null; description: string | null; start_ms: number; end_ms: number; status: string; channel: LiveChannel | null; item_id: string | null; mine: boolean; shared: boolean }
+export type LiveSourceKind = "dispatcharr" | "m3u" | "hdhomerun" | "xtream";
+export interface LiveSource { id: string; kind: LiveSourceKind; name: string; url: string; epg_url: string | null; has_api_key: boolean; username: string | null; has_password: boolean;
+  channel_profile: string | null; output_profile: number | null; recordings_path: string | null; max_streams: number | null; refresh_hours: number; epg_refresh_hours: number; epg_days: number;
+  enabled: boolean; last_refresh_at: number | null; last_epg_at: number | null; last_status: string | null; last_message: string | null; channels: number; active_streams: number }

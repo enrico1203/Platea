@@ -39,5 +39,12 @@
             android:resizeableActivity="true"
             android:supportsPictureInPicture="true"
             android:theme="@style/Theme.Platea.Player" />
+
+        <activity
+            android:name=".player.LiveTvActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density"
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.Platea.Player" />
     </application>
 </manifest>

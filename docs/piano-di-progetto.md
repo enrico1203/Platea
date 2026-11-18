@@ -50,7 +50,7 @@ Il server riproduce il file originale ogni volta che il client lo regge e usa FF
 
 Queste funzioni restano fuori dalla v1 per tenere il nucleo piccolo e veloce. Lo schema del database le prevede, così aggiungerle dopo non richiede migrazioni distruttive.
 
-- Live TV e registrazione (progetto in "Live TV con Dispatcharr", più avanti)
+- Live TV e registrazione (fatte dalla 0.1.12: vedi "Live TV con Dispatcharr")
 - Musica, libri, foto (gli audiolibri ci sono dalla 0.1.11)
 - Sistema di plugin
 - Download per visione offline e sincronizzazione
@@ -812,7 +812,10 @@ Due note. FFmpeg è un programma separato avviato dal server, quindi la sua lice
 
 ## Live TV con Dispatcharr
 
-Fuori dalla prima versione; qui c'è il progetto completo. Platea non diventa un gestore di IPTV: quel lavoro (liste dei
+Realizzata nella 0.1.12 secondo questo progetto (fasi 1–6). Scostamenti: le registrazioni non si scrivono in una tabella
+di Platea con una libreria creata da sola, ma Platea collega il file finito alla libreria che l'amministratore aggiunge
+sulla cartella delle registrazioni; la guida a griglia carica i programmi a blocchi di 40 canali; la transcodifica dal
+vivo è solo software (le GPU restano ai file). Platea non diventa un gestore di IPTV: quel lavoro (liste dei
 fornitori, abbinamento della guida, sorgenti di riserva, limiti di connessioni, registrazioni) lo fa già bene
 [Dispatcharr](https://github.com/Dispatcharr/Dispatcharr) (AGPL-3.0, Python/Django, versione 0.34.1 al 18/11/2026), che
 Plex, Emby e Jellyfin usano come sintonizzatore. Platea si collega a Dispatcharr e aggiunge ciò che a lui manca: la
@@ -1057,7 +1060,7 @@ Criterio di uscita: le due app sono pubblicate e riproducono in direct play i fo
 - [x] Transcodifica su macchine worker (nodi: `docs/nodi.md`, anche copie delle cartelle con bilanciamento e failover)
 - [x] Audiolibri (libreria dedicata, metadati locali e Audible, player web persistente)
 - [ ] Musica e altri tipi di libreria
-- [ ] Live TV con Dispatcharr: canali, guida, visione dal vivo, registrazioni, Infuse (vedi "Live TV con Dispatcharr")
+- [x] Live TV con Dispatcharr: canali, guida, visione dal vivo, registrazioni, Infuse e Swiftfin, app Android (0.1.12)
 
 Criterio di uscita: nessuno, è lavoro continuo ordinato secondo le richieste degli utenti.
 

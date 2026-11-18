@@ -98,6 +98,7 @@ class Nav(private val nav: NavHostController, private val context: Context) {
     fun genre(name: String) = nav.navigate("browse?genre=${Api.enc(name)}")
     fun studio(name: String) = nav.navigate("browse?studio=${Api.enc(name)}")
     fun about() = nav.navigate("about")
+    fun tv() = nav.navigate("tv")
     fun back() { nav.popBackStack() }
     fun tab(route: String) = nav.navigate(route) {
         popUpTo("home") { saveState = true }
@@ -269,6 +270,7 @@ private fun Routes(navController: NavHostController, start: String, modifier: Mo
         composable("home") { HomeScreen() }
         composable("search") { SearchScreen() }
         composable("libraries") { LibrariesScreen() }
+        composable("tv") { app.platea.ui.screens.LiveTvScreen() }
         composable("playlists") { PlaylistsScreen() }
         composable("account") { AccountScreen() }
         composable("about") { AboutScreen() }

@@ -29,6 +29,8 @@ pub struct AppState {
     pub ffmpeg: FfmpegLocator,
     pub transcoder: Arc<TranscodeManager>,
     pub sessions: SessionManager,
+    /// Live TV: canali accesi e sessioni dal vivo.
+    pub live: crate::livetv::stream::LiveManager,
     /// Nodi: registro, stato dal vivo, scelta di esecutori e copie.
     pub nodes: crate::nodes::NodeManager,
     /// Storico delle risorse per i grafici della Panoramica.

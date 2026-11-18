@@ -12,6 +12,7 @@ pub mod items;
 pub mod jellyfin;
 pub mod jellyfin_profile;
 pub mod libraries;
+pub mod livetv;
 pub mod nodes;
 pub mod openapi_map;
 pub mod playback;
@@ -185,6 +186,7 @@ pub fn router(state: Shared) -> Router {
     let api = download::routes(api);
     let api = admin::routes(api);
     let api = nodes::routes(api);
+    let api = livetv::routes(api);
     let api = events::routes(api);
     let doc = openapi(&api.docs);
     let doc_route = axum::routing::get(move |State(state): State<Shared>| {
@@ -253,7 +255,7 @@ async fn fallback(req: Request<Body>) -> Response {
 /// Flussi di una sessione (file, HLS, sottotitoli): li autorizza il token breve nell'indirizzo, non un cookie
 /// o un'intestazione. Possono leggerli anche player di altre origini, come il ricevitore di Google Cast.
 fn session_media_path(path: &str) -> bool {
-    ["/api/v1/stream/", "/api/v1/hls/", "/api/v1/subtitles/"].iter().any(|p| path.starts_with(p))
+    ["/api/v1/stream/", "/api/v1/hls/", "/api/v1/subtitles/", "/api/v1/live/"].iter().any(|p| path.starts_with(p))
 }
 
 async fn cors(State(state): State<Shared>, req: Request<Body>, next: Next) -> Response {

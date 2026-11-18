@@ -45,9 +45,12 @@ struct UserRow {
     avatar_version: Option<i64>,
     blocked_genres: Option<String>,
     allowed_genres: Option<String>,
+    allow_livetv: i64,
+    livetv_groups: Option<String>,
+    allow_recording: i64,
 }
 
-const USER_COLS: &str = "id, username, is_admin, disabled, all_libraries, allow_remux, allow_transcode, max_bitrate, max_streams, max_rating, allow_remote, manage_devices, created_at, last_login_at, expires_at, allow_download, block_unrated, access_schedule, avatar_version, blocked_genres, allowed_genres";
+const USER_COLS: &str = "id, username, is_admin, disabled, all_libraries, allow_remux, allow_transcode, max_bitrate, max_streams, max_rating, allow_remote, manage_devices, created_at, last_login_at, expires_at, allow_download, block_unrated, access_schedule, avatar_version, blocked_genres, allowed_genres, allow_livetv, livetv_groups, allow_recording";
 
 async fn view(state: &Shared, u: UserRow) -> ApiResult<Value> {
     let libs: Vec<i64> = sqlx::query_scalar("SELECT library_id FROM user_library_access WHERE user_id = ?").bind(u.id).fetch_all(&state.db.read).await?;
@@ -71,6 +74,9 @@ async fn view(state: &Shared, u: UserRow) -> ApiResult<Value> {
         "expires_at": u.expires_at,
         "expired": u.is_admin == 0 && u.expires_at.is_some_and(|e| now_ms() >= e),
         "allow_download": u.allow_download != 0,
+        "allow_livetv": u.allow_livetv != 0,
+        "livetv_groups": u.livetv_groups.as_deref().and_then(|s| serde_json::from_str::<Value>(s).ok()).unwrap_or(json!([])),
+        "allow_recording": u.allow_recording != 0,
         "block_unrated": u.block_unrated != 0,
         "blocked_genres": u.blocked_genres.as_deref().and_then(|s| serde_json::from_str::<Value>(s).ok()).unwrap_or(json!([])),
         "allowed_genres": u.allowed_genres.as_deref().and_then(|s| serde_json::from_str::<Value>(s).ok()).unwrap_or(json!([])),
@@ -135,6 +141,10 @@ struct UserPatch {
     blocked_genres: Option<Vec<String>>,
     /// Generi consentiti (nomi); elenco vuoto = tutti.
     allowed_genres: Option<Vec<String>>,
+    /// Live TV: vedere i canali, gruppi consentiti (vuoto = tutti), programmare registrazioni.
+    allow_livetv: Option<bool>,
+    livetv_groups: Option<Vec<String>>,
+    allow_recording: Option<bool>,
 }
 
 async fn create(State(state): State<Shared>, AdminUser(admin): AdminUser, Json(p): Json<UserPatch>) -> ApiResult<Json<Value>> {
@@ -206,7 +216,9 @@ async fn apply_patch(state: &Shared, id: i64, p: UserPatch) -> ApiResult<()> {
     set_bool!(manage_devices);
     set_bool!(allow_download);
     set_bool!(block_unrated);
-    for (col, v) in [("blocked_genres", &p.blocked_genres), ("allowed_genres", &p.allowed_genres)] {
+    set_bool!(allow_livetv);
+    set_bool!(allow_recording);
+    for (col, v) in [("blocked_genres", &p.blocked_genres), ("allowed_genres", &p.allowed_genres), ("livetv_groups", &p.livetv_groups)] {
         if let Some(list) = v {
             let clean: Vec<String> = list.iter().map(|g| g.trim().to_string()).filter(|g| !g.is_empty()).take(200).collect();
             let json = (!clean.is_empty()).then(|| serde_json::to_string(&clean).unwrap_or_default());

@@ -5,7 +5,7 @@ export const DEFAULT_PREFS: UserPrefs = {
   audio_language: "", subtitle_language: "", subtitle_mode: "default",
   autoplay_next: true, autoplay_countdown_seconds: 10, skip_back_seconds: 10, skip_forward_seconds: 30,
   subtitle_size: "m", subtitle_background: false,
-  home_sections: ["resume", "listening", "next_up", "recent"], home_sections_version: 2, home_hidden_libraries: [], hide_played_in_recent: false, theme: "auto", remember_tracks: true, max_bitrate_local: 0, max_bitrate_remote: 0,
+  home_sections: ["resume", "listening", "on_air", "next_up", "recent"], home_sections_version: 3, home_hidden_libraries: [], hide_played_in_recent: false, theme: "auto", remember_tracks: true, max_bitrate_local: 0, max_bitrate_remote: 0,
 };
 
 /** Lingue proposte nelle preferenze (ISO 639-2), con il nome nella lingua dell'interfaccia. */

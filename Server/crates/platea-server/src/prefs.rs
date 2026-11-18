@@ -57,9 +57,9 @@ pub struct UserPrefs {
     pub max_bitrate_remote: u64,
 }
 
-pub const HOME_SECTIONS: &[&str] = &["resume", "listening", "next_up", "recent"];
-/// 2: "listening" (continua ad ascoltare, audiolibri).
-const HOME_SECTIONS_VERSION: u32 = 2;
+pub const HOME_SECTIONS: &[&str] = &["resume", "listening", "on_air", "next_up", "recent"];
+/// 2: "listening" (continua ad ascoltare, audiolibri). 3: "on_air" (in onda ora sui canali preferiti).
+const HOME_SECTIONS_VERSION: u32 = 3;
 
 impl Default for UserPrefs {
     fn default() -> Self {
@@ -103,9 +103,12 @@ impl UserPrefs {
         }
         let mut seen = std::collections::HashSet::new();
         self.home_sections.retain(|s| HOME_SECTIONS.contains(&s.as_str()) && seen.insert(s.clone()));
-        if self.home_sections_version < 2 && !self.home_sections.iter().any(|s| s == "listening") {
-            let at = self.home_sections.iter().position(|s| s == "resume").map(|i| i + 1).unwrap_or(0);
-            self.home_sections.insert(at, "listening".into());
+        // Sezioni nuove: compaiono una volta, dopo quella che le precede nell'ordine predefinito.
+        for (version, section, after) in [(2, "listening", "resume"), (3, "on_air", "listening")] {
+            if self.home_sections_version < version && !self.home_sections.iter().any(|s| s == section) {
+                let at = self.home_sections.iter().position(|s| s == after).map(|i| i + 1).unwrap_or(0);
+                self.home_sections.insert(at, section.into());
+            }
         }
         self.home_sections_version = HOME_SECTIONS_VERSION;
         self.home_hidden_libraries.truncate(200);
@@ -249,10 +252,13 @@ mod tests {
         assert_eq!(p.skip_forward_seconds, 300);
         assert_eq!(p.theme, "auto");
         // Preferenze salvate prima degli audiolibri: "Continua ad ascoltare" compare dopo "Continua a guardare".
-        assert_eq!(p.home_sections, vec!["recent", "resume", "listening"]);
+        assert_eq!(p.home_sections, vec!["recent", "resume", "listening", "on_air"]);
         // Tolta dall'utente dopo: resta tolta.
-        let q = UserPrefs::parse(r#"{"home_sections": ["resume"], "home_sections_version": 2}"#);
+        let q = UserPrefs::parse(r#"{"home_sections": ["resume"], "home_sections_version": 3}"#);
         assert_eq!(q.home_sections, vec!["resume"]);
+        // Dalla versione 2: arriva solo "In onda ora".
+        let q = UserPrefs::parse(r#"{"home_sections": ["resume", "recent"], "home_sections_version": 2}"#);
+        assert_eq!(q.home_sections, vec!["on_air", "resume", "recent"]);
         assert_eq!(p.audio_language, "it");
         assert!(p.autoplay_next);
     }

@@ -1,6 +1,6 @@
 # Platea
 
-Platea is an open source media server for movies, TV shows and audiobooks, written in Rust, that plays the original file whenever the client can and works well with libraries on cloud storage.
+Platea is an open source media server for movies, TV shows, audiobooks and live TV, written in Rust, that plays the original file whenever the client can and works well with libraries on cloud storage.
 
 ## Compatible apps
 
@@ -116,6 +116,7 @@ The [`docker-compose.yml`](docker-compose.yml) in this repository is more comple
 - Fast scans. A scan only lists folders, several at a time, and opens no files when nothing changed. Thousands of movies on an rclone mount are listed in under a minute. New files on local disks show up within seconds.
 - A missing mount never deletes anything. If the library root is empty or unreadable, the scan stops. If many files disappear at once, nothing is removed until you confirm.
 - Metadata from TMDB, from Kodi `.nfo` files (episode NFOs included) and from Plex `.plexmatch` files. Media folders are never written to.
+- Live TV from [Dispatcharr](https://github.com/Dispatcharr/Dispatcharr), an M3U playlist with an XMLTV guide, an HDHomeRun or an Xtream Codes account: guide, favorites, channel switching, recordings through Dispatcharr, and the same channels in Infuse and Swiftfin. See [Live TV](#live-tv).
 - Audiobooks: a library type of its own, with metadata from the files and from Audible, chapters, series, and a web player that keeps playing while you browse (speed, sleep timer, chapter list, lock screen controls). See [Audiobooks](#audiobooks).
 - Automatic collections, trailers from TMDB, local extras (`Extras/`, `Trailers/`, `Featurettes/`, files ending in `-trailer` and similar) and missing episodes shown in each season.
 - Per-user settings: audio and subtitle language, default quality at home and away, autoplay of the next episode, home page layout, profile picture.
@@ -349,6 +350,24 @@ Create a library of type Audiobooks. How files become books:
 Metadata, from the most precise: `metadata.json` (an Audible product file or the Audiobookshelf format) and `metadata.opf`, then `.nfo` files (`album.nfo` written by Jellyfin, `book.nfo`, `<book>.nfo`), `desc.txt` and `reader.txt`, then the tags in the files (album, artist as author, composer as narrator, genre, description, series, ASIN), then the folder name. After that Platea looks the book up in the public Audible catalog of the library's country, by ASIN when it has one or by title, author and length. Uncertain matches go to "To review". The lookup can be turned off in Settings › Metadata.
 
 Covers come from an image in the book folder (`cover.jpg`, `folder.jpg`, `<book>.jpg`…), then from Audible, then from the picture embedded in the file.
+
+## Live TV
+
+Platea shows live TV but provides no channels: you bring your own sources. Add them in Administration › Live TV.
+
+- Dispatcharr (recommended). Platea reads its M3U and XMLTV outputs, so channel groups, logos, guide matching and fallback streams stay in Dispatcharr. With an API key from Dispatcharr (Settings › Users) Platea can also schedule recordings and series. Use an address the Platea server can reach, like `http://dispatcharr:9191` on the same Docker network.
+- M3U playlist + XMLTV guide, from a provider, Threadfin or xTeVe. Gzipped guides work.
+- HDHomeRun tuner (channels from `lineup.json`) with an XMLTV guide.
+- Xtream Codes: server, username and password.
+
+How it plays:
+
+- In the browser, a channel becomes live HLS: video and audio are copied when the browser can play them, only the audio is converted for AC3 or MP2, and MPEG-2 or interlaced channels are converted to H.264. There is one FFmpeg per channel no matter how many people watch it, so it uses one connection to the provider. It stops 30 seconds after the last viewer leaves.
+- Infuse, Swiftfin and the Android app get the MPEG-TS stream as it is, always through the Platea server.
+- Sessions show up in the dashboard and count toward each user's stream limit. You can set the provider's stream limit on the source.
+- Each user can be allowed to watch live TV, limited to some channel groups, and allowed to schedule recordings.
+
+Recordings are made by Dispatcharr. To watch them in Platea, mount Dispatcharr's `/data/recordings` folder in the Platea server too, set that path on the source, and add it as a library.
 
 ## Languages
 

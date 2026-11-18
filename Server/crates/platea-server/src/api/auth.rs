@@ -188,6 +188,8 @@ async fn me(State(state): State<Shared>, user: AuthUser) -> ApiResult<Json<Value
             "expires_at": user.perms.expires_at,
             "expired": !user.is_admin && user.perms.expired(),
             "allow_download": user.is_admin || user.perms.allow_download,
+            "allow_livetv": user.perms.allow_livetv,
+            "allow_recording": user.perms.allow_recording,
             "block_unrated": user.perms.block_unrated,
             "access_schedule": user.perms.schedule,
             "within_schedule": user.is_admin || user.within_schedule(),

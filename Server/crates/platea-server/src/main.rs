@@ -16,6 +16,7 @@ mod error;
 mod events;
 mod ids;
 mod jobs;
+mod livetv;
 mod logs;
 mod maintenance;
 mod metadata;
@@ -159,6 +160,7 @@ async fn run(boot: boot::BootConfig) -> anyhow::Result<()> {
         jobs: jobs::JobQueue::new(),
         ffmpeg,
         sessions: Default::default(),
+        live: Default::default(),
         nodes: Default::default(),
         metrics: Default::default(),
         server_id,
@@ -192,6 +194,7 @@ async fn run(boot: boot::BootConfig) -> anyhow::Result<()> {
     tokio::spawn(jobs::run_scheduler(state.clone()));
     state.nodes.reload(&state.db).await?;
     tokio::spawn(sessions::run_maintenance(state.clone()));
+    tokio::spawn(livetv::stream::run_maintenance(state.clone()));
     tokio::spawn(nodes::run_health(state.clone()));
     tokio::spawn(metrics::run(state.clone()));
     tokio::spawn(watch::run(state.clone()));

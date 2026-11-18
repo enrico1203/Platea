@@ -1395,7 +1395,7 @@ checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 
 [[package]]
 name = "platea-naming"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "once_cell",
  "regex",
@@ -1404,7 +1404,7 @@ dependencies = [
 
 [[package]]
 name = "platea-playback"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "serde",
  "serde_json",
@@ -1412,12 +1412,13 @@ dependencies = [
 
 [[package]]
 name = "platea-server"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "anyhow",
  "argon2",
  "axum",
  "base64 0.22.1",
+ "flate2",
  "futures-util",
  "hex",
  "http-body-util",
@@ -1429,6 +1430,7 @@ dependencies = [
  "once_cell",
  "platea-naming",
  "platea-playback",
+ "quick-xml",
  "rand 0.8.8",
  "regex",
  "reqwest",
@@ -1500,6 +1502,15 @@ name = "quick-error"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a993555f31e5a609f617c12db6250dedcac1b0a85076912c436e6fc9b2c8e6a3"
+
+[[package]]
+name = "quick-xml"
+version = "0.37.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "331e97a1af0bf59823e6eadffe373d7b27f485be8748f71471c662c1f269b7fb"
+dependencies = [
+ "memchr",
+]
 
 [[package]]
 name = "quinn"
@@ -2864,7 +2875,7 @@ dependencies = [
 
 [[package]]
 name = "winapi-util"
-version = "0.1.11"
+version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [

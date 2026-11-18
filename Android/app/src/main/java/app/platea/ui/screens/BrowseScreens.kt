@@ -35,6 +35,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -135,11 +136,12 @@ fun LazyGridScope.fullLine(key: String, content: @Composable () -> Unit) {
 @Composable
 fun LibrariesScreen() {
     val libs = rememberLoad("libraries") { Api.get<LibraryPage>("/api/v1/libraries").items }
+    val tv = rememberLoad("livetv-status") { runCatching { Api.get<app.platea.data.LiveStatus>("/api/v1/livetv/status") }.getOrNull() }.data
     val nav = LocalNav.current
     Column(Modifier.fillMaxSize()) {
         PageTitle(stringResource(R.string.nav_libraries))
         ResContent(libs) { list ->
-            if (list.isEmpty()) {
+            if (list.isEmpty() && tv?.enabled != true) {
                 EmptyBox(stringResource(if (Session.me?.isAdmin == true) R.string.home_empty_admin else R.string.home_empty))
                 return@ResContent
             }
@@ -150,7 +152,28 @@ fun LibrariesScreen() {
                 verticalArrangement = Arrangement.spacedBy(gridSpacing()),
             ) {
                 items(list, key = { it.id }) { lib -> LibraryCard(lib) { nav.library(lib.id) } }
+                if (tv?.enabled == true) {
+                    item(key = "tv") { TvCard(tv.channels) { nav.tv() } }
+                }
             }
+        }
+    }
+}
+
+/** La Live TV accanto alle librerie: stessa card, con l'icona e il numero dei canali. */
+@Composable
+private fun TvCard(channels: Int, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val shape = RoundedCornerShape(14.dp)
+    Box(
+        Modifier.fillMaxWidth().aspectRatio(16f / 9f).focusRing(interaction, shape, glow = true).clip(shape)
+            .background(tokens.surface2)
+            .clickable(interactionSource = interaction, indication = androidx.compose.material3.ripple(), onClick = onClick),
+    ) {
+        Icon(Icons.Filled.LiveTv, null, tint = tokens.inkSubtle, modifier = Modifier.align(Alignment.Center).size(56.dp))
+        Column(Modifier.align(Alignment.BottomStart).padding(16.dp)) {
+            Text(stringResource(R.string.tv_title), style = MaterialTheme.typography.titleLarge, color = tokens.ink)
+            Text(androidx.compose.ui.res.pluralStringResource(R.plurals.tv_channels, channels, channels), style = MaterialTheme.typography.bodySmall, color = tokens.inkMuted)
         }
     }
 }

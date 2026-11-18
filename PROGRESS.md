@@ -477,6 +477,37 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-18 notte — **Live TV con Dispatcharr (0.1.12)**, richiesta dell'utente ("fai tutta l'implementazione" del
+  piano). Migrazione 0026: `tv_sources`, `tv_channels`, `tv_programs` (+FTS), `user_tv_favorites`, `tv_recordings`,
+  permessi `users.allow_livetv`, `livetv_groups`, `allow_recording`.
+  - Sorgenti (`livetv/mod.rs`): Dispatcharr (M3U `/output/m3u` + XMLTV `/output/epg`, indirizzi riportati all'host
+    della sorgente; UUID del canale dall'URL del flusso, id numerico dall'API REST con `X-API-Key` per le
+    registrazioni), M3U + XMLTV (anche file e .gz), HDHomeRun (`lineup.json`), Xtream Codes (`player_api.php`).
+    XMLTV letto in streaming con quick-xml (`livetv/xmltv.rs`), finestra di giorni, abbinamento per id e poi per nome.
+    Lavoro `refresh_tv_source` in corsia `livetv`, pianificato ogni minuto (canali ogni 6 h, guida ogni 12 h).
+  - Visione (`livetv/stream.rs`): ffprobe del canale (codec in cache 24 h), variante copy/audio/transcode/direct,
+    un FFmpeg per canale e variante condiviso, HLS a finestra (2 s × 8), fermato 30 s dopo l'ultimo spettatore,
+    riacceso se cade; deinterlacciamento yadif per il DVB; limite di flussi della sorgente; sessioni dal vivo nel
+    pannello (stessa forma di SessionView) e nel limite di flussi dell'utente; un dispositivo una cosa alla volta.
+  - API (`api/livetv.rs`): canali con in onda/successivo, gruppi, guida a finestre, ricerca FTS, preferiti, logo in
+    cache, play/ping/stop, `/api/v1/live/{sessione}/{index.m3u8|segN.ts|stream.ts}`, registrazioni (Dispatcharr:
+    singole, regole di serie, stop di quelle in corso, file collegato alla libreria), amministrazione delle sorgenti
+    con prova senza salvare, canali nascosti.
+  - Strato Jellyfin: vista "Live TV", `/LiveTv/Info|Channels|Programs|Programs/Recommended|GuideInfo|Timers|
+    SeriesTimers`, canali e programmi in `/Items/{id}`, PlaybackInfo con MPEG-TS infinito, `/Videos/{canale}/stream.ts`
+    (anche senza token con il PlaySessionId). `jellyfin-check.py`: 13 chiamate conformi allo schema 12.4.
+  - Web: pagina TV (guida a griglia caricata a blocchi, elenco canali, ricerca, registrazioni, scheda del
+    programma), player dal vivo (`/tv/watch/:id`: cambio canale con frecce e numeri, mini guida, ripiego sulla
+    conversione se il browser non decodifica), "In onda ora" in home (preferenze versione 3), Amministrazione ›
+    Live TV, permessi nel dialogo utenti. App Android: schermata TV dalle Librerie e `LiveTvActivity` (Media3 legge
+    l'MPEG-TS, canale su/giù dal telecomando).
+  - Prove: 160 test; server di prova con Dispatcharr 0.34.1 e una sorgente IPTV finta (3 canali: H.264+AAC,
+    H.264+AC3, MPEG-2 576i+MP2) — canali e 446 programmi, copia, AC3→AAC, MPEG-2→H.264 deinterlacciato, flusso
+    diretto, registrazione singola e serie create in Dispatcharr, Chrome desktop e telefono (guida, scheda,
+    player, cambio canale, mini guida), PlaybackInfo e stream dello strato Jellyfin. Nota: Dispatcharr accumula 4
+    blocchi prima di mandare un canale (con canali a bassissimo bitrate ~20 s): tempi limite di apertura 40–45 s.
+    **Da provare dall'utente** con il suo Dispatcharr e con Infuse/Swiftfin (Live TV).
+
 - 2026-11-18 sera — Piano: Live TV con Dispatcharr (`docs/piano-di-progetto.md`, sezione omonima), richiesta
   dell'utente; SRS tolto. Dispatcharr resta un servizio separato: Platea legge canali e guida (API REST con X-API-Key,
   oppure M3U + XMLTV, HDHomeRun, Xtream Codes), trasforma il flusso MPEG-TS in HLS dal vivo condiviso per canale,

@@ -50,6 +50,12 @@ pub enum JobKind {
         file_id: i64,
     },
     CleanupMissing,
+    /// Live TV: canali (e, con `epg`, la guida) di una sorgente.
+    RefreshTvSource {
+        source_id: i64,
+        #[serde(default)]
+        epg: bool,
+    },
 }
 
 impl JobKind {
@@ -63,6 +69,7 @@ impl JobKind {
             JobKind::DownloadImage { .. } => "download_image",
             JobKind::GenerateTrickplay { .. } => "generate_trickplay",
             JobKind::CleanupMissing => "cleanup_missing",
+            JobKind::RefreshTvSource { .. } => "refresh_tv_source",
         }
     }
 
@@ -76,6 +83,7 @@ impl JobKind {
             JobKind::DownloadImage { image_id } => format!("img:{image_id}"),
             JobKind::GenerateTrickplay { file_id } => format!("tp:{file_id}"),
             JobKind::CleanupMissing => "cleanup".into(),
+            JobKind::RefreshTvSource { source_id, epg } => format!("tv:{source_id}:{epg}"),
         })
     }
 
@@ -88,6 +96,7 @@ impl JobKind {
             JobKind::DownloadImage { .. } => "images",
             JobKind::GenerateTrickplay { .. } => "trickplay",
             JobKind::CleanupMissing => "maintenance",
+            JobKind::RefreshTvSource { .. } => "livetv",
         }
     }
 }
@@ -114,6 +123,7 @@ impl JobQueue {
         lanes.insert("maintenance", Arc::new(Semaphore::new(1)));
         // Le miniature decodificano tutto il video: una alla volta.
         lanes.insert("trickplay", Arc::new(Semaphore::new(1)));
+        lanes.insert("livetv", Arc::new(Semaphore::new(2)));
         JobQueue {
             notify: Arc::new(Notify::new()),
             lanes: Arc::new(lanes),
@@ -273,6 +283,7 @@ const LANES: &[(&str, &[&str])] = &[
     ("probe", &["probe_file", "extract_keyframes"]),
     ("maintenance", &["cleanup_missing"]),
     ("trickplay", &["generate_trickplay"]),
+    ("livetv", &["refresh_tv_source"]),
 ];
 
 /// Lavori pronti, presi corsia per corsia (e libreria per libreria per le analisi): migliaia di
@@ -507,6 +518,7 @@ async fn execute(state: &Shared, job: JobKind) -> anyhow::Result<()> {
         JobKind::DownloadImage { image_id } => crate::metadata::images::download_image(state, image_id).await,
         JobKind::GenerateTrickplay { file_id } => crate::trickplay::generate_job(state, file_id).await,
         JobKind::CleanupMissing => crate::scanner::cleanup_missing(state).await,
+        JobKind::RefreshTvSource { source_id, epg } => crate::livetv::refresh_source(state, source_id, epg).await,
     }
 }
 
@@ -524,6 +536,9 @@ pub async fn run_scheduler(state: Shared) {
         }
         if let Err(e) = schedule_scans(&state).await {
             tracing::warn!(error = %e, "pianificazione delle scansioni");
+        }
+        if let Err(e) = crate::livetv::schedule(&state).await {
+            tracing::warn!(error = %e, "pianificazione della Live TV");
         }
         if minutes % 60 == 1 {
             let _ = enqueue(&state, JobKind::CleanupMissing, priority::MAINTENANCE, None).await;
@@ -595,6 +610,7 @@ mod tests {
             JobKind::RefreshMetadata { item_id: 1 },
             JobKind::DownloadImage { image_id: 1 },
             JobKind::CleanupMissing,
+            JobKind::RefreshTvSource { source_id: 1, epg: true },
         ];
         let q = JobQueue::new();
         for j in all {

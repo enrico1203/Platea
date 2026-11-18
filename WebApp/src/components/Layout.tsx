@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Home, Search, Film, Tv, Headphones, LayoutDashboard, FolderOpen, Users, ListChecks, SearchCheck, Cpu, Settings, ScrollText, Server, Terminal, User, Info, LogOut, Library as LibraryIcon, ListVideo, PanelLeftClose, PanelLeftOpen, ArrowUp, Network } from "lucide-react";
+import { Home, Search, Film, Tv, Headphones, LayoutDashboard, FolderOpen, Users, ListChecks, SearchCheck, Cpu, Settings, ScrollText, Server, Terminal, User, Info, LogOut, Library as LibraryIcon, ListVideo, PanelLeftClose, PanelLeftOpen, ArrowUp, Network, Radio } from "lucide-react";
 import { Logo, Mark, useServerName } from "./Logo";
 import { api, mediaUrl } from "../api/client";
 import type { Library, Page } from "../api/types";
 import { useSession } from "../session";
 import { useT } from "../i18n";
 import { AudioBar } from "../audio/AudioBar";
+import { useLiveStatus } from "../pages/LiveTV";
 
 export function useLibraries() {
   return useQuery({ queryKey: ["libraries"], queryFn: () => api<Page<Library>>("/api/v1/libraries").then((r) => r.items), staleTime: 60_000 });
@@ -31,6 +32,7 @@ const ADMIN_LINKS = [
   { to: "/admin/jobs", icon: ListChecks, label: "admin.jobs.title" },
   { to: "/admin/transcode", icon: Cpu, label: "admin.transcode.title" },
   { to: "/admin/nodes", icon: Network, label: "admin.nodes.title" },
+  { to: "/admin/livetv", icon: Radio, label: "admin.livetv.title" },
   { to: "/admin/settings", icon: Settings, label: "admin.settings.title" },
   { to: "/admin/activity", icon: ScrollText, label: "admin.activity.title" },
   { to: "/admin/logs", icon: Terminal, label: "admin.logs.title" },
@@ -96,6 +98,7 @@ export function Layout() {
   const { me, logout } = useSession();
   const nav = useNavigate();
   const { data: libs } = useLibraries();
+  const { data: tv } = useLiveStatus();
   const inAdmin = useLocation().pathname.startsWith("/admin");
   const serverName = useServerName();
   const [collapsed, toggleCollapsed] = useCollapsed();
@@ -115,6 +118,7 @@ export function Layout() {
           <NavLink to="/" end className={link} {...tip(t("nav.home"))}><Home /><span className="nav__label">{t("nav.home")}</span></NavLink>
           <NavLink to="/search" className={link} {...tip(t("nav.search"))}><Search /><span className="nav__label">{t("nav.search")}</span></NavLink>
           <NavLink to="/playlists" className={link} {...tip(t("nav.playlists"))}><ListVideo /><span className="nav__label">{t("nav.playlists")}</span></NavLink>
+          {tv?.enabled && <NavLink to="/tv" className={link} {...tip(t("nav.tv"))}><Radio /><span className="nav__label">{t("nav.tv")}</span></NavLink>}
           {libs?.map((l) => (
             <NavLink key={l.id} to={`/library/${l.id}`} className={link} {...tip(l.name)}>
               {l.kind === "movies" ? <Film /> : l.kind === "audiobooks" ? <Headphones /> : <Tv />}

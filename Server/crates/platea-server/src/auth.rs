@@ -53,6 +53,12 @@ pub struct Permissions {
     pub blocked_genre_ids: Vec<i64>,
     /// Generi consentiti (identificativi); vuoto = tutti. Si vedono solo i titoli con almeno uno di questi generi.
     pub allowed_genre_ids: Vec<i64>,
+    /// Live TV: vedere i canali.
+    pub allow_livetv: bool,
+    /// Gruppi di canali consentiti (nomi); vuoto = tutti.
+    pub livetv_groups: Vec<String>,
+    /// Programmare registrazioni (con Dispatcharr).
+    pub allow_recording: bool,
 }
 
 /// Una fascia oraria di accesso: giorni (0 = domenica) e intervallo in minuti dalla mezzanotte, ora locale.
@@ -102,6 +108,9 @@ impl Permissions {
             schedule: Vec::new(),
             blocked_genre_ids: Vec::new(),
             allowed_genre_ids: Vec::new(),
+            allow_livetv: true,
+            livetv_groups: Vec::new(),
+            allow_recording: true,
         }
     }
 }
@@ -367,8 +376,19 @@ pub async fn load_permissions(state: &Shared, user_id: i64) -> anyhow::Result<Op
     if disabled != 0 {
         return Ok(None);
     }
-    let (allow_download, block_unrated, schedule, blocked, allowed): (i64, i64, Option<String>, Option<String>, Option<String>) =
-        sqlx::query_as("SELECT allow_download, block_unrated, access_schedule, blocked_genres, allowed_genres FROM users WHERE id = ?")
+    #[allow(clippy::type_complexity)]
+    let (allow_download, block_unrated, schedule, blocked, allowed, allow_livetv, livetv_groups, allow_recording): (
+        i64,
+        i64,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        i64,
+        Option<String>,
+        i64,
+    ) = sqlx::query_as(
+        "SELECT allow_download, block_unrated, access_schedule, blocked_genres, allowed_genres, allow_livetv, livetv_groups, allow_recording FROM users WHERE id = ?",
+    )
             .bind(user_id)
             .fetch_one(&state.db.read)
             .await?;
@@ -409,6 +429,9 @@ pub async fn load_permissions(state: &Shared, user_id: i64) -> anyhow::Result<Op
             schedule: schedule.as_deref().and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default(),
             blocked_genre_ids,
             allowed_genre_ids,
+            allow_livetv: allow_livetv != 0 || is_admin != 0,
+            livetv_groups: if is_admin != 0 { vec![] } else { livetv_groups.as_deref().and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default() },
+            allow_recording: allow_recording != 0 || is_admin != 0,
         },
     )))
 }

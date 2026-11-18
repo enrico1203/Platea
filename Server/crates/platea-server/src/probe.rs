@@ -111,6 +111,8 @@ pub struct ProbeStream {
     pub avg_frame_rate: Option<String>,
     pub r_frame_rate: Option<String>,
     pub color_transfer: Option<String>,
+    #[serde(default)]
+    pub field_order: Option<String>,
     pub channels: Option<i64>,
     pub channel_layout: Option<String>,
     pub sample_rate: Option<String>,

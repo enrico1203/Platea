@@ -29,7 +29,11 @@ function UserDialog({ user, onClose }: { user: UserAdmin | null; onClose: () => 
     access_schedule: user?.access_schedule ?? [],
     blocked_genres: user?.blocked_genres ?? [],
     allowed_genres: user?.allowed_genres ?? [],
+    allow_livetv: user?.allow_livetv ?? true,
+    livetv_groups: user?.livetv_groups ?? [],
+    allow_recording: user?.allow_recording ?? false,
   });
+  const { data: tvGroups } = useQuery({ queryKey: ["livetv", "groups", "admin"], queryFn: () => api<{ items: { name: string; count: number }[] }>("/api/v1/livetv/groups").then((r) => r.items).catch(() => []) });
   const { data: genres } = useQuery({ queryKey: ["genres", "all"], queryFn: () => api<{ items: { name: string; count: number }[] }>("/api/v1/genres").then((r) => r.items) });
   const [error, setError] = useState<string | null>(null);
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF({ ...f, [k]: v });
@@ -79,6 +83,25 @@ function UserDialog({ user, onClose }: { user: UserAdmin | null; onClose: () => 
       <Switch checked={f.allow_download} onChange={(v) => set("allow_download", v)} label={t("admin.users.allowDownload")} hint={t("admin.users.allowDownloadHint")} />
       <Switch checked={f.block_unrated} onChange={(v) => set("block_unrated", v)} label={t("admin.users.blockUnrated")} hint={t("admin.users.blockUnratedHint")} />
       <ScheduleEditor value={f.access_schedule} onChange={(v) => set("access_schedule", v)} />
+      {tvGroups && tvGroups.length > 0 && (
+        <>
+          <span className="pl-eyebrow">{t("admin.users.livetv")}</span>
+          <Switch checked={f.allow_livetv} onChange={(v) => set("allow_livetv", v)} label={t("admin.users.allowLivetv")} />
+          {f.allow_livetv && (
+            <div className="stack" style={{ gap: 6 }}>
+              <span className="pl-field__label">{t("admin.users.livetvGroups")}</span>
+              <span className="pl-field__hint">{t("admin.users.livetvGroupsHint")}</span>
+              <div className="genre-picker">
+                {tvGroups.map((g) => {
+                  const on = f.livetv_groups.includes(g.name);
+                  return <button key={g.name} type="button" className={`genre-chip${on ? " on" : ""}`} aria-pressed={on} onClick={() => set("livetv_groups", on ? f.livetv_groups.filter((x) => x !== g.name) : [...f.livetv_groups, g.name])}>{g.name || t("tv.noGroup")}</button>;
+                })}
+              </div>
+            </div>
+          )}
+          <Switch checked={f.allow_recording} onChange={(v) => set("allow_recording", v)} label={t("admin.users.allowRecording")} hint={t("admin.users.allowRecordingHint")} />
+        </>
+      )}
       {genres && genres.length > 0 && (["blocked_genres", "allowed_genres"] as const).map((k) => (
         <div key={k} className="stack" style={{ gap: 6 }}>
           <span className="pl-field__label">{t(k === "blocked_genres" ? "admin.users.blockedGenres" : "admin.users.allowedGenres")}</span>
