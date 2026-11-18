@@ -50,7 +50,7 @@ Il server riproduce il file originale ogni volta che il client lo regge e usa FF
 
 Queste funzioni restano fuori dalla v1 per tenere il nucleo piccolo e veloce. Lo schema del database le prevede, così aggiungerle dopo non richiede migrazioni distruttive.
 
-- Live TV e registrazione (progetto in "Live TV con SRS", più avanti)
+- Live TV e registrazione (progetto in "Live TV con Dispatcharr", più avanti)
 - Musica, libri, foto (gli audiolibri ci sono dalla 0.1.11)
 - Sistema di plugin
 - Download per visione offline e sincronizzazione
@@ -810,49 +810,139 @@ Due note. FFmpeg è un programma separato avviato dal server, quindi la sua lice
 - Una politica per la segnalazione riservata delle vulnerabilità.
 - Sito di documentazione con installazione, GPU, reverse proxy e configurazione di rclone.
 
-## Live TV con SRS
+## Live TV con Dispatcharr
 
-Fuori dalla prima versione. Qui c'è il progetto, così quando arriva il momento non si riparte da zero.
+Fuori dalla prima versione; qui c'è il progetto completo. Platea non diventa un gestore di IPTV: quel lavoro (liste dei
+fornitori, abbinamento della guida, sorgenti di riserva, limiti di connessioni, registrazioni) lo fa già bene
+[Dispatcharr](https://github.com/Dispatcharr/Dispatcharr) (AGPL-3.0, Python/Django, versione 0.34.1 al 18/11/2026), che
+Plex, Emby e Jellyfin usano come sintonizzatore. Platea si collega a Dispatcharr e aggiunge ciò che a lui manca: la
+visione nel browser e nelle app di Platea, i permessi degli utenti di Platea, la guida nella stessa interfaccia della
+libreria, il pannello con sessioni e banda.
 
-[SRS](https://github.com/ossrs/srs) (Simple Realtime Server, licenza MIT, C++) è un media server per le dirette: riceve
-flussi in RTMP, SRT, WebRTC e GB28181 e li ridistribuisce in HLS, HTTP-FLV, DASH e WebRTC, con H.264, H.265, AV1, AAC e
-Opus. Platea non lo reimplementa: lo usa come componente accanto al server, nello stesso modo in cui usa FFmpeg.
+Dispatcharr resta un servizio separato, installato dall'utente (immagine ufficiale), mai dentro l'immagine di Platea.
+Tutto ciò che Platea gli chiede passa da interfacce pubbliche e documentate, così funziona anche con altre sorgenti.
 
-### Divisione dei compiti
+### Cosa offre Dispatcharr (verificato nel codice, versione 0.34.1)
 
-| Chi | Cosa fa |
-| --- | --- |
-| SRS | Riceve i canali (encoder, OBS, decoder DVB/IPTV, telecamere), li tiene in memoria e li serve in HLS a bassa latenza o WebRTC. Registra su file (DVR) quando glielo si chiede. |
-| FFmpeg | Porta dentro SRS le sorgenti che non spingono da sole: playlist M3U/IPTV, tuner HDHomeRun, flussi `udp://`, convertendo solo se il codec non va. |
-| Platea | Canali, guida TV (XMLTV), permessi per utente, registrazioni programmate, sessioni e banda nel pannello, URL firmati verso SRS. Le registrazioni finite diventano elementi di una libreria normale. |
+| Interfaccia | Indirizzo | Uso in Platea |
+| --- | --- | --- |
+| Lista M3U | `/output/m3u[/<profilo>]` | Canali: `tvg-id`, `tvg-name`, `tvg-logo`, `tvg-chno`, `group-title`, `catchup` |
+| Guida XMLTV | `/output/epg[/<profilo>]` | Programmi, con `days` e `prev_days` |
+| HDHomeRun | `/hdhr[/<profilo>]/discover.json`, `lineup.json` | Sorgente alternativa, e la stessa usata con i sintonizzatori HDHomeRun veri |
+| Xtream Codes | `player_api.php`, `xmltv.php`, `/live/<utente>/<password>/<id>.ts` | Canali e guida per utente Dispatcharr, catch-up |
+| Flusso | `/proxy/ts/stream/<uuid del canale>` | MPEG-TS continuo; un solo collegamento al fornitore condiviso tra chi guarda lo stesso canale |
+| API REST | `/api/…`, intestazione `X-API-Key` | Gruppi, loghi, profili di canali, guida a griglia (`/api/epg/grid/`), programmi in onda, registrazioni e regole delle serie, statistiche e chiusura di un client |
 
-### Come si collegano
+I "profili di canali" di Dispatcharr (insiemi di canali) e i "profili di uscita" (conversione con FFmpeg, AAC per i
+browser, fMP4 o MPEG-TS) si scelgono nell'URL: Platea li usa invece di rifare il lavoro.
 
-- Un servizio `srs` in più nel `docker-compose.yml`, facoltativo (profilo `livetv`), in sola rete interna: le porte di
-  SRS non si espongono. I client parlano solo con Platea, che fa da proxy dei manifest e dei segmenti.
-- Platea controlla SRS con la sua HTTP API (stream attivi, client, banda) e riceve i suoi HTTP callback
-  (`on_publish`, `on_play`, `on_stop`, `on_dvr`): `on_play` verifica il token della sessione Platea, così nessuno guarda
-  un canale senza i permessi. `on_dvr` chiude una registrazione e accoda l'analisi del file.
-- Un canale si avvia solo quando qualcuno lo guarda (FFmpeg verso SRS al primo `on_play`) e si ferma dopo un minuto
-  senza spettatori: niente banda sprecata sui canali IPTV.
-- Le registrazioni si scrivono in una cartella dedicata, mai in quelle dei media (che restano in sola lettura).
-- I nodi possono ospitare un SRS proprio, per avvicinare la diretta a chi guarda (stessa logica delle copie CDN).
+### Sorgenti in Platea
 
-### Cosa serve nel database e nell'API
+Una nuova sezione Amministrazione › Live TV con un elenco di sorgenti. Tipi:
 
-- Tabelle `channels` (numero, nome, logo, sorgente, gruppo), `epg_programs` (canale, inizio, fine, titolo, descrizione)
-  e `recordings` (programma o fascia oraria, stato, file prodotto). Permessi: canali consentiti per utente, come le
-  librerie.
-- API: elenco canali con il programma in onda, guida per fascia oraria, avvio della visione (stesso schema di
-  `playback/info`, metodo `live`), registrazioni programmate e serie di registrazioni.
-- Strato Jellyfin: `LiveTv/Channels`, `LiveTv/Programs` e `LiveTv/Recordings`, che Infuse e Swiftfin mostrano già.
+1. **Dispatcharr**: indirizzo e chiave API. Platea legge canali, gruppi, loghi e guida dall'API REST, propone i profili
+   di canali e di uscita, mostra lo stato dei collegamenti e può chiudere un client. È il tipo consigliato.
+2. **M3U + XMLTV**: due indirizzi (o file). Va bene per Dispatcharr senza chiave, Threadfin, xTeVe o la lista di un
+   fornitore.
+3. **HDHomeRun**: indirizzo del dispositivo (o di Dispatcharr in emulazione), scoperta con `discover.json`.
+4. **Xtream Codes**: server, utente e password; serve anche per il catch-up.
+
+Ogni sorgente ha: aggiornamento dei canali (predefinito ogni 6 ore) e della guida (ogni 12 ore, 7 giorni avanti e 1
+indietro), numero massimo di flussi contemporanei (il limite del fornitore; con Dispatcharr lo conosce già lui), profilo
+di uscita da chiedere. Più sorgenti si uniscono in un'unica guida; un canale presente in due sorgenti usa la seconda se la
+prima non risponde.
+
+### Modello dati (migrazioni nuove, nessuna tabella esistente toccata)
+
+- `tv_sources`: tipo, nome, indirizzo, chiave cifrata con il segreto del server, intervalli, limite di flussi, stato
+  dell'ultimo aggiornamento.
+- `tv_channels`: sorgente, identificativo nella sorgente (UUID di Dispatcharr, `tvg-id`), numero, nome, gruppo, logo
+  (scaricato nella cache delle immagini come le locandine), URL del flusso, radio sì/no, giorni di catch-up, nascosto,
+  preferito per utente in `user_tv_favorites`.
+- `tv_programs`: canale, inizio, fine, titolo, sottotitolo, descrizione, categoria, episodio (`S01E02` da
+  `episode-num`), immagine, prima visione. Indice `(channel_id, start)`; pulizia notturna dei programmi passati da più del
+  catch-up. FTS5 sui titoli per la ricerca.
+- `user_tv_access`: canali o gruppi consentiti per utente (come `user_library_access`), più il limite per età applicato
+  alla categoria del programma quando la guida la indica.
+- `tv_recordings`: richiesta dell'utente (programma o fascia oraria), regola di serie, stato, identificativo della
+  registrazione in Dispatcharr, file risultante.
+
+### Guardare un canale
+
+Il flusso di Dispatcharr è MPEG-TS continuo, che il browser non apre. Platea lo trasforma in HLS dal vivo:
+
+- `POST /api/v1/live/{channel}/play` con il profilo del dispositivo, come `playback/info`. Metodi: `live_copy` (video e
+  audio copiati in segmenti HLS, il caso normale: H.264 o HEVC con AAC), `live_audio` (si converte solo l'audio: AC3,
+  MP2 dei canali DVB), `live_transcode` (video non supportato, o banda limitata da remoto).
+- Un solo FFmpeg per canale e profilo di uscita, condiviso da tutti quelli che lo guardano: una sola connessione al
+  fornitore. Playlist a finestra scorrevole (6 segmenti da 2 s, latenza 6–10 s), `-c copy` quando si può. FFmpeg si
+  ferma 30 s dopo l'ultimo spettatore. Le app che leggono MPEG-TS (Android con Media3, Infuse) ricevono il flusso
+  direttamente attraverso Platea, senza HLS.
+- Riavvio automatico se il flusso si interrompe (con Dispatcharr è lui a passare alla sorgente di riserva; Platea
+  riprova la connessione con attese crescenti e lo segnala nel player).
+- Le sessioni compaiono nel pannello come le altre (canale, programma in onda, metodo, banda) e valgono per i limiti di
+  flussi dell'utente; l'amministratore le può chiudere. Con la chiave API, la chiusura chiude anche il client in
+  Dispatcharr.
+- Il server non usa mai l'URL del fornitore davanti all'utente: i client vedono solo indirizzi di Platea con token di
+  sessione, come per i film.
+- Nodi: un nodo di transcodifica può fare `live_transcode`, scelto con le stesse regole delle transcodifiche dei file.
+
+### Registrazioni
+
+Le registra Dispatcharr (programmate, ripetute, serie, taglio della pubblicità con Comskip): ha già la logica dei conflitti
+con i limiti del fornitore. Platea:
+
+- crea e cancella registrazioni e regole di serie con l'API (`/api/channels/recordings/`,
+  `/api/channels/recurring-rules/`, `/api/channels/series-rules/`) dalla guida o dalla scheda di un programma;
+- tiene in `tv_recordings` chi l'ha chiesta, per mostrarla solo a lui (o a tutti, se l'amministratore lo sceglie);
+- legge i file finiti da una libreria normale di Platea che punta alla cartella delle registrazioni di Dispatcharr
+  (`/data/recordings` nel suo container: la stessa cartella dell'host si monta in Platea in sola lettura): scansione,
+  analisi, metadati TMDB, direct play, Infuse funzionano senza codice nuovo. Il collegamento tra registrazione e file
+  passa dal percorso nell'API (`custom_properties.file_path`), tradotto con una corrispondenza di prefissi impostata
+  nella sorgente, come per i mount rclone.
+
+Senza Dispatcharr (sorgenti M3U, HDHomeRun, Xtream Codes) le registrazioni non ci sono: niente doppione del suo lavoro.
+
+### Interfaccia web
+
+- Voce "TV" nel menu e nella barra del telefono (se c'è almeno un canale consentito).
+- Guida a griglia: canali in verticale, tempo in orizzontale, ora attuale evidenziata, scorrimento virtualizzato
+  (migliaia di canali), filtri per gruppo e preferiti, salto a "adesso" e a un giorno. Su telefono un elenco per canale
+  con il programma in onda e il successivo.
+- Scheda del programma: descrizione, orari, Guarda, Registra, Registra la serie; dal passato, Guarda dall'inizio se c'è
+  il catch-up.
+- Player: lo stesso dei film in modalità dal vivo (niente barra di avanzamento, pulsante "in diretta", canale
+  precedente/successivo, mini guida in sovrimpressione, cambio canale con i numeri o le frecce).
+- Home: riga "In onda ora" sui canali preferiti.
+- Amministrazione: sorgenti, stato dell'aggiornamento, canali nascosti, accesso per utente, collegamenti attivi verso
+  Dispatcharr.
+
+### App e strato Jellyfin
+
+- Infuse e Swiftfin mostrano la Live TV dei server Jellyfin: Platea risponde a `/LiveTv/Info`, `/LiveTv/Channels`,
+  `/LiveTv/Programs` (anche `/Recommended`), `/LiveTv/GuideInfo`, `/LiveTv/Timers`, `/LiveTv/SeriesTimers` e
+  `/LiveTv/Recordings`, con `PlaybackInfo` che restituisce il flusso di Platea (MPEG-TS o HLS). Da verificare con le app
+  vere, come è stato fatto per i film.
+- App Android di Platea: schermata TV con la guida e il player Media3, che legge MPEG-TS dal vivo.
+
+### Fasi
+
+1. Sorgenti M3U + XMLTV e Dispatcharr in sola lettura: canali, loghi, guida, permessi; pagina Live TV nella dashboard.
+2. Visione: HLS dal vivo condiviso per canale, sessioni nel pannello, player web in modalità diretta.
+3. Guida a griglia, preferiti, "In onda ora", ricerca nei programmi.
+4. Registrazioni tramite Dispatcharr e libreria delle registrazioni.
+5. Strato Jellyfin per Infuse e Swiftfin, poi l'app Android.
+6. HDHomeRun e Xtream Codes (con catch-up).
 
 ### Rischi
 
-- SRS è un processo in più da aggiornare e monitorare: immagine ufficiale `ossrs/srs`, versione fissata, controllo di
-  salute nel pannello come per i nodi.
-- La bassa latenza (WebRTC) non passa dal tunnel Cloudflare: fuori casa si usa HLS.
-- Le sorgenti IPTV hanno diritti propri: Platea non ne fornisce, l'amministratore porta le sue.
+- Dispatcharr cambia in fretta (versione 0.x): Platea usa per la parte essenziale M3U e XMLTV, che sono stabili, e
+  l'API REST solo per le funzioni in più; ogni chiamata ha un tempo limite e un errore non ferma la guida.
+- Limiti di connessioni dei fornitori: un FFmpeg per canale, condiviso, e il limite della sorgente rispettato prima di
+  aprire un flusso nuovo, con un messaggio chiaro ("tutti i 2 flussi del fornitore sono in uso").
+- Guide grandi (decine di migliaia di programmi al giorno): importazione a lotti in una transazione per sorgente, solo i
+  giorni configurati, nessun blocco del runtime.
+- Le sorgenti IPTV hanno diritti propri: Platea non ne fornisce né ne suggerisce, l'amministratore porta le sue.
 
 ## Roadmap
 
@@ -967,7 +1057,7 @@ Criterio di uscita: le due app sono pubblicate e riproducono in direct play i fo
 - [x] Transcodifica su macchine worker (nodi: `docs/nodi.md`, anche copie delle cartelle con bilanciamento e failover)
 - [x] Audiolibri (libreria dedicata, metadati locali e Audible, player web persistente)
 - [ ] Musica e altri tipi di libreria
-- [ ] Live TV con SRS: canali, guida XMLTV, visione dal vivo e registrazioni (vedi "Live TV con SRS")
+- [ ] Live TV con Dispatcharr: canali, guida, visione dal vivo, registrazioni, Infuse (vedi "Live TV con Dispatcharr")
 
 Criterio di uscita: nessuno, è lavoro continuo ordinato secondo le richieste degli utenti.
 
@@ -1028,7 +1118,7 @@ Pagine consultate dai risultati di ricerca:
 - [Infuse, streaming da Plex, Emby e Jellyfin](https://support.firecore.com/hc/articles/360006462093)
 - [Apple, sessione WWDC25 sul nuovo design](https://developer.apple.com/videos/play/wwdc2025/284/?time=835)
 - [AFTVnews, Vega OS e le app Android su Fire TV](https://www.aftvnews.com/?p=45426)
-- Repository di [SRS](https://github.com/ossrs/srs): media server per le dirette, licenza MIT, ultima versione v6.0-r3 (31 ottobre 2026)
+- Repository di [Dispatcharr](https://github.com/Dispatcharr/Dispatcharr), versione 0.34.1: interfacce di uscita (M3U, XMLTV, HDHomeRun, Xtream Codes), proxy dei flussi, API REST e registrazioni, lette nel codice
 - Repository di [Rustyfin](https://github.com/apophisnow/rustyfin), [Pelagos](https://github.com/sguzman/pelagos), [jellyfin-rs](https://github.com/dydydd/jellyfin-rs) e [Remux](https://github.com/lostb1t/remux)
 - Documentazione di rclone su mount e controllo remoto, da copie pubbliche del repository
 

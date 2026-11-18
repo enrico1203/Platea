@@ -477,9 +477,11 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
-- 2026-11-18 sera — Piano: aggiunta la sezione "Live TV con SRS" (`docs/piano-di-progetto.md`), richiesta dell'utente. SRS
-  (github.com/ossrs/srs, MIT) come componente per le dirette accanto al server; Platea gestisce canali, guida XMLTV,
-  permessi, registrazioni e fa da proxy. Voce aggiunta alla Fase 7. Solo progetto, nessun codice.
+- 2026-11-18 sera — Piano: Live TV con Dispatcharr (`docs/piano-di-progetto.md`, sezione omonima), richiesta
+  dell'utente; SRS tolto. Dispatcharr resta un servizio separato: Platea legge canali e guida (API REST con X-API-Key,
+  oppure M3U + XMLTV, HDHomeRun, Xtream Codes), trasforma il flusso MPEG-TS in HLS dal vivo condiviso per canale,
+  delega le registrazioni a Dispatcharr e le legge come libreria. Sei fasi, strato Jellyfin LiveTv per Infuse e
+  Swiftfin. Interfacce verificate nel codice di Dispatcharr 0.34.1. Solo progetto, nessun codice.
 - 2026-11-18 sera — **Audiolibri (0.1.11)**. Richiesta dell'utente: supporto agli audiolibri, metadati e copertine come
   Emby/Jellyfin, un buon player web. Nuovo tipo di libreria `audiobooks`, elementi `audiobook` (migrazione 0025: i CHECK
   si allargano riscrivendo lo schema con `writable_schema`, niente copia delle tabelle; la connessione di scrittura si
