@@ -50,7 +50,7 @@ Il server riproduce il file originale ogni volta che il client lo regge e usa FF
 
 Queste funzioni restano fuori dalla v1 per tenere il nucleo piccolo e veloce. Lo schema del database le prevede, così aggiungerle dopo non richiede migrazioni distruttive.
 
-- Live TV e registrazione
+- Live TV e registrazione (progetto in "Live TV con SRS", più avanti)
 - Musica, libri, foto (gli audiolibri ci sono dalla 0.1.11)
 - Sistema di plugin
 - Download per visione offline e sincronizzazione
@@ -810,6 +810,50 @@ Due note. FFmpeg è un programma separato avviato dal server, quindi la sua lice
 - Una politica per la segnalazione riservata delle vulnerabilità.
 - Sito di documentazione con installazione, GPU, reverse proxy e configurazione di rclone.
 
+## Live TV con SRS
+
+Fuori dalla prima versione. Qui c'è il progetto, così quando arriva il momento non si riparte da zero.
+
+[SRS](https://github.com/ossrs/srs) (Simple Realtime Server, licenza MIT, C++) è un media server per le dirette: riceve
+flussi in RTMP, SRT, WebRTC e GB28181 e li ridistribuisce in HLS, HTTP-FLV, DASH e WebRTC, con H.264, H.265, AV1, AAC e
+Opus. Platea non lo reimplementa: lo usa come componente accanto al server, nello stesso modo in cui usa FFmpeg.
+
+### Divisione dei compiti
+
+| Chi | Cosa fa |
+| --- | --- |
+| SRS | Riceve i canali (encoder, OBS, decoder DVB/IPTV, telecamere), li tiene in memoria e li serve in HLS a bassa latenza o WebRTC. Registra su file (DVR) quando glielo si chiede. |
+| FFmpeg | Porta dentro SRS le sorgenti che non spingono da sole: playlist M3U/IPTV, tuner HDHomeRun, flussi `udp://`, convertendo solo se il codec non va. |
+| Platea | Canali, guida TV (XMLTV), permessi per utente, registrazioni programmate, sessioni e banda nel pannello, URL firmati verso SRS. Le registrazioni finite diventano elementi di una libreria normale. |
+
+### Come si collegano
+
+- Un servizio `srs` in più nel `docker-compose.yml`, facoltativo (profilo `livetv`), in sola rete interna: le porte di
+  SRS non si espongono. I client parlano solo con Platea, che fa da proxy dei manifest e dei segmenti.
+- Platea controlla SRS con la sua HTTP API (stream attivi, client, banda) e riceve i suoi HTTP callback
+  (`on_publish`, `on_play`, `on_stop`, `on_dvr`): `on_play` verifica il token della sessione Platea, così nessuno guarda
+  un canale senza i permessi. `on_dvr` chiude una registrazione e accoda l'analisi del file.
+- Un canale si avvia solo quando qualcuno lo guarda (FFmpeg verso SRS al primo `on_play`) e si ferma dopo un minuto
+  senza spettatori: niente banda sprecata sui canali IPTV.
+- Le registrazioni si scrivono in una cartella dedicata, mai in quelle dei media (che restano in sola lettura).
+- I nodi possono ospitare un SRS proprio, per avvicinare la diretta a chi guarda (stessa logica delle copie CDN).
+
+### Cosa serve nel database e nell'API
+
+- Tabelle `channels` (numero, nome, logo, sorgente, gruppo), `epg_programs` (canale, inizio, fine, titolo, descrizione)
+  e `recordings` (programma o fascia oraria, stato, file prodotto). Permessi: canali consentiti per utente, come le
+  librerie.
+- API: elenco canali con il programma in onda, guida per fascia oraria, avvio della visione (stesso schema di
+  `playback/info`, metodo `live`), registrazioni programmate e serie di registrazioni.
+- Strato Jellyfin: `LiveTv/Channels`, `LiveTv/Programs` e `LiveTv/Recordings`, che Infuse e Swiftfin mostrano già.
+
+### Rischi
+
+- SRS è un processo in più da aggiornare e monitorare: immagine ufficiale `ossrs/srs`, versione fissata, controllo di
+  salute nel pannello come per i nodi.
+- La bassa latenza (WebRTC) non passa dal tunnel Cloudflare: fuori casa si usa HLS.
+- Le sorgenti IPTV hanno diritti propri: Platea non ne fornisce, l'amministratore porta le sue.
+
 ## Roadmap
 
 Otto fasi, ognuna con un criterio di uscita verificabile. Già alla fine della fase 1 Platea si avvia con Docker Compose e si usa dal browser; la versione 1.0 esce alla fine della fase 5 e le app native arrivano nella fase 6. Le date dipendono da quante persone lavorano al progetto e non sono indicate.
@@ -923,6 +967,7 @@ Criterio di uscita: le due app sono pubblicate e riproducono in direct play i fo
 - [x] Transcodifica su macchine worker (nodi: `docs/nodi.md`, anche copie delle cartelle con bilanciamento e failover)
 - [x] Audiolibri (libreria dedicata, metadati locali e Audible, player web persistente)
 - [ ] Musica e altri tipi di libreria
+- [ ] Live TV con SRS: canali, guida XMLTV, visione dal vivo e registrazioni (vedi "Live TV con SRS")
 
 Criterio di uscita: nessuno, è lavoro continuo ordinato secondo le richieste degli utenti.
 
@@ -983,6 +1028,7 @@ Pagine consultate dai risultati di ricerca:
 - [Infuse, streaming da Plex, Emby e Jellyfin](https://support.firecore.com/hc/articles/360006462093)
 - [Apple, sessione WWDC25 sul nuovo design](https://developer.apple.com/videos/play/wwdc2025/284/?time=835)
 - [AFTVnews, Vega OS e le app Android su Fire TV](https://www.aftvnews.com/?p=45426)
+- Repository di [SRS](https://github.com/ossrs/srs): media server per le dirette, licenza MIT, ultima versione v6.0-r3 (31 ottobre 2026)
 - Repository di [Rustyfin](https://github.com/apophisnow/rustyfin), [Pelagos](https://github.com/sguzman/pelagos), [jellyfin-rs](https://github.com/dydydd/jellyfin-rs) e [Remux](https://github.com/lostb1t/remux)
 - Documentazione di rclone su mount e controllo remoto, da copie pubbliche del repository
 
