@@ -27,6 +27,21 @@ type Panel = null | "subs" | "settings" | "info" | "chapters";
 interface Chapter { start_ms: number; title: string | null }
 
 /** Errore del player nel log del server: aiuta a capire perché un browser rifiuta un flusso. */
+/** Avvio fermo: chiede al server se il primo segmento è ancora in preparazione (true = aspettare ancora). */
+async function stallPending(sessionId: string): Promise<boolean> {
+  try {
+    const r = await fetch(`${serverUrl()}/api/v1/playback/${sessionId}/client-error`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${getToken() ?? ""}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "HLS nativo fermo all'avvio: nessun fotogramma in 10 s", stall: true }),
+    });
+    if (!r.ok) return false;
+    return Boolean(((await r.json()) as { pending?: boolean }).pending);
+  } catch {
+    return false;
+  }
+}
+
 function reportClientError(sessionId: string, message: string) {
   fetch(`${serverUrl()}/api/v1/playback/${sessionId}/client-error`, {
     method: "POST",
@@ -177,18 +192,31 @@ export default function Player() {
         video.src = url;
         video.addEventListener("loadedmetadata", () => { if (startSec > 0) video.currentTime = startSec; }, { once: true });
         // Nessun fotogramma entro 10 s dalla richiesta di play (non in pausa, nessun errore): copia rifiutata,
-        // si passa subito alla transcodifica. Con l'autoplay bloccato da iOS non scatta (niente evento play).
+        // si passa alla transcodifica. Prima però si chiede al server: se non ha ancora mandato nulla (file lento
+        // da leggere, mount cloud) il flusso è solo in ritardo e si aspetta ancora. Con l'autoplay bloccato da iOS
+        // non scatta (niente evento play).
         if (p.method !== "transcode") {
+          const fallback = fallbackRef.current;
+          const check = () => {
+            stallRef.current = window.setTimeout(async () => {
+              const stalled = () => {
+                const v = videoRef.current;
+                return !!v && !v.paused && !v.error && playedRef.current == null && fallbackRef.current === fallback && !!fallback;
+              };
+              if (!stalled()) return;
+              const pending = await stallPending(p.session_id);
+              if (!stalled()) return;
+              if (pending) {
+                check();
+                return;
+              }
+              fallbackRef.current = null;
+              fallback?.();
+            }, 10_000);
+          };
           video.addEventListener("play", () => {
             window.clearTimeout(stallRef.current);
-            stallRef.current = window.setTimeout(() => {
-              const v = videoRef.current;
-              if (!v || v.paused || v.error || playedRef.current != null || !fallbackRef.current) return;
-              const f = fallbackRef.current;
-              fallbackRef.current = null;
-              reportClientError(p.session_id, "HLS nativo fermo all'avvio: nessun fotogramma in 10 s");
-              f();
-            }, 10_000);
+            check();
           }, { once: true });
         }
       } else {

@@ -477,6 +477,15 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-19 — **0.1.15**: un film da mount cloud restava nero nel player web (Safari, HLS nativo). Causa: il
+  sottotitolo interno si estraeva in parallelo al video leggendo tutto il file (5,5 GB) e gli toglieva la banda;
+  il remux non mandava `init.mp4` in 10 s, il player ripiegava sulla transcodifica, che apriva una seconda
+  estrazione dello stesso sottotitolo: primo segmento dopo 59 s. Correzioni: estrazione di un sottotitolo interno
+  solo dopo il primo segmento (massimo 25 s di attesa), una sola estrazione per file di cache (le altre richieste
+  aspettano), semaforo separato dai keyframe; una sessione chiusa nel frattempo non estrae più. Il player web, fermo
+  all'avvio, chiede al server (`client-error` con `stall: true` → `pending`) e se il server non ha ancora mandato
+  nulla aspetta altri 10 s (fino a 60 s) invece di ripiegare sulla transcodifica.
+
 - 2026-11-19 — **0.1.14**: guida XMLTV da file locale (lista M3U con percorso sul server) non si caricava: la
   cartella della cache non esisteva ancora (si creava solo per i download http). Copertine degli audiolibri prese da
   Audible segnate con origine `audible` (prima `tmdb`). Prova di contratto Android estesa alla Live TV (sorgente M3U

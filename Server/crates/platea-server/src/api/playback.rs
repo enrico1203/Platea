@@ -767,13 +767,26 @@ async fn tracks(State(state): State<Shared>, user: AuthUser, Path(id): Path<Stri
 #[derive(Deserialize)]
 struct ClientErrorReq {
     message: String,
+    /// Il player è fermo all'avvio e chiede se aspettare ancora prima di ripiegare sulla transcodifica.
+    #[serde(default)]
+    stall: bool,
 }
+
+/// Oltre questo tempo un avvio fermo non si aspetta più, anche se il server non ha ancora mandato nulla.
+const STALL_MAX_WAIT_MS: i64 = 60_000;
 
 async fn client_error(State(state): State<Shared>, user: AuthUser, Path(id): Path<String>, Json(req): Json<ClientErrorReq>) -> ApiResult<Json<Value>> {
     let s = own_session(&state, &user, &id)?;
+    // Il server non ha ancora mandato niente (file lento da leggere, per esempio da un mount cloud): il flusso non è
+    // stato rifiutato, è solo in ritardo. Ripiegare sulla transcodifica sarebbe ancora più lento.
+    let pending = req.stall && s.bytes_sent.load(Ordering::Relaxed) == 0 && now_ms() - s.started_at < STALL_MAX_WAIT_MS;
     let msg: String = req.message.chars().filter(|c| !c.is_control()).take(500).collect();
-    tracing::warn!(user = %s.username, client = %s.client, method = s.decision.method.as_str(), chain = %s.chain, error = %msg, "il player non riesce a riprodurre il flusso");
-    Ok(Json(json!({ "ok": true })))
+    if pending {
+        tracing::info!(user = %s.username, client = %s.client, method = s.decision.method.as_str(), "avvio lento: il player aspetta il primo segmento");
+    } else {
+        tracing::warn!(user = %s.username, client = %s.client, method = s.decision.method.as_str(), chain = %s.chain, error = %msg, "il player non riesce a riprodurre il flusso");
+    }
+    Ok(Json(json!({ "ok": true, "pending": pending })))
 }
 
 async fn stop(State(state): State<Shared>, user: AuthUser, Path(id): Path<String>, body: Option<Json<ProgressReq>>) -> ApiResult<Json<Value>> {
@@ -905,11 +918,56 @@ async fn subtitle(State(state): State<Shared>, Path((id, name)): Path<(String, S
     }
     let cache = state.boot.subtitles_dir().join(format!("{}_{}_{}_{}.vtt", info.id, idx, info.size, info.mtime));
     if !cache.exists() {
-        let _permit = state.extractions.acquire().await.map_err(|e| ApiError::Internal(e.into()))?;
-        if !cache.exists() {
+        // Stesso sottotitolo chiesto da due sessioni (ripiego alla transcodifica, cambio di traccia): una sola lettura
+        // del file, l'altra richiesta aspetta il risultato. Su un mount cloud ogni lettura completa costa gigabyte.
+        let job = state.subtitle_jobs.lock().unwrap().entry(cache.clone()).or_default().clone();
+        let _job = job.lock().await;
+        let res = extract_subtitle(&state, &s, &info, &cache, idx, external, ext_path).await;
+        state.subtitle_jobs.lock().unwrap().remove(&cache);
+        res?;
+    }
+    let body = tokio::fs::read(&cache).await.map_err(|e| ApiError::Internal(e.into()))?;
+    Ok(Response::builder()
+        .header(header::CONTENT_TYPE, "text/vtt; charset=utf-8")
+        .header(header::CACHE_CONTROL, "private, max-age=86400")
+        .body(Body::from(body))
+        .unwrap())
+}
+
+/// Attesa massima del primo segmento prima di estrarre un sottotitolo interno.
+const SUBTITLE_WAIT_STREAM: Duration = Duration::from_secs(25);
+
+#[allow(clippy::too_many_arguments)]
+async fn extract_subtitle(
+    state: &Shared,
+    s: &PlaySession,
+    info: &FileInfo,
+    cache: &std::path::Path,
+    idx: i64,
+    external: bool,
+    ext_path: Option<String>,
+) -> ApiResult<()> {
+    if cache.exists() {
+        return Ok(());
+    }
+    // Un sottotitolo interno si estrae leggendo tutto il file: partito insieme al video gli toglie la banda (su un
+    // mount cloud il primo segmento arrivava dopo un minuto). Prima il video manda qualcosa, poi si estrae.
+    if !external {
+        let t0 = tokio::time::Instant::now();
+        while s.bytes_sent.load(Ordering::Relaxed) == 0 && t0.elapsed() < SUBTITLE_WAIT_STREAM && state.sessions.get(&s.id).is_some() {
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+        // Sessione chiusa nel frattempo (ripiego, cambio di traccia): l'estrazione la farà, se serve, la sessione nuova.
+        if state.sessions.get(&s.id).is_none() {
+            return Err(hls_error(HlsError::Stopped));
+        }
+    }
+    {
+        let _permit = state.subtitle_extractions.acquire().await.map_err(|e| ApiError::Internal(e.into()))?;
+        {
             let input = if external {
                 let rel = ext_path.ok_or_else(|| ApiError::not_found("Sottotitolo"))?;
-                external_subtitle_path(&state, &info.root, &rel)?
+                external_subtitle_path(state, &info.root, &rel)?
             } else {
                 info.input()
             };
@@ -943,12 +1001,7 @@ async fn subtitle(State(state): State<Shared>, Path((id, name)): Path<(String, S
             }
         }
     }
-    let body = tokio::fs::read(&cache).await.map_err(|e| ApiError::Internal(e.into()))?;
-    Ok(Response::builder()
-        .header(header::CONTENT_TYPE, "text/vtt; charset=utf-8")
-        .header(header::CACHE_CONTROL, "private, max-age=86400")
-        .body(Body::from(body))
-        .unwrap())
+    Ok(())
 }
 
 async fn trickplay(State(state): State<Shared>, Path((id, name)): Path<(String, String)>, Query(q): Query<TokenQuery>) -> ApiResult<Response> {

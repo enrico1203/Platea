@@ -168,6 +168,8 @@ async fn run(boot: boot::BootConfig) -> anyhow::Result<()> {
         image_downloads: Semaphore::new(4),
         image_resizes: Semaphore::new(std::thread::available_parallelism().map(|n| n.get()).unwrap_or(2).clamp(1, 4)),
         extractions: Semaphore::new(2),
+        subtitle_extractions: Semaphore::new(2),
+        subtitle_jobs: Default::default(),
         started_at: util::now_ms(),
         branding: api::branding::Branding::load(&boot.data_dir).await,
     });

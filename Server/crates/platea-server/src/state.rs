@@ -43,6 +43,10 @@ pub struct AppState {
     pub image_resizes: Semaphore,
     /// Estrazioni di sottotitoli e keyframe su richiesta: risorsa scarsa.
     pub extractions: Semaphore,
+    /// Estrazioni dei sottotitoli: separate dai keyframe, così un sottotitolo lungo non blocca l'avvio di un remux.
+    pub subtitle_extractions: Semaphore,
+    /// Sottotitoli in estrazione, per file di cache: una sola lettura del file anche se lo chiedono due sessioni.
+    pub subtitle_jobs: std::sync::Mutex<std::collections::HashMap<std::path::PathBuf, Arc<tokio::sync::Mutex<()>>>>,
     pub started_at: i64,
     /// Logo caricato dall'amministratore (Impostazioni › Generali).
     pub branding: crate::api::branding::Branding,
