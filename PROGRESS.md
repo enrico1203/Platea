@@ -477,6 +477,11 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-19 — **0.1.17**: dopo il riavvio per l'aggiornamento un film già aperto si fermava con "Riproduzione non
+  riuscita" (hls.js: mediaSourceRequiresReset): la sessione era persa e i segmenti rispondevano 401, che il player
+  non sa recuperare. Ora un token di riproduzione sconosciuto risponde 410 (come una sessione chiusa) e il player la
+  riapre da solo dalla posizione corrente; anche l'HLS nativo di Safari riapre dopo un errore a riproduzione partita.
+
 - 2026-11-19 — **0.1.16**: audiolibri .m4b interrotti dopo 2–3 s in Chrome su macOS (produzione; non riprodotto
   qui né con Chrome su Linux né con la rete rallentata). Nei log: richieste a pezzi riconvalidate da Chrome con
   If-None-Match e risposte 304, poi errore dell'elemento audio e tre riaperture. Correzioni: niente 304 alle

@@ -600,6 +600,15 @@ export default function Player() {
   };
 
   const onVideoError = () => {
+    // Errore a riproduzione già partita (Safari, HLS nativo): di solito la sessione è stata persa (server riavviato,
+    // aggiornamento). Si riapre dalla posizione corrente, come fa hls.js con il 410.
+    if (info && !hlsRef.current && playedRef.current != null && !adminStopRef.current && reopenRef.current && reopensRef.current < 5) {
+      reopensRef.current++;
+      const r = reopenRef.current;
+      reopenRef.current = null;
+      r();
+      return;
+    }
     // Il browser rifiuta il file nonostante il profilo: si riprova una volta con la transcodifica.
     // Direct play o HLS nativo di Safari rifiutati: stesso ripiego sulla transcodifica di hls.js.
     if (info && info.method !== "transcode" && !hlsRef.current && fallbackRef.current) {

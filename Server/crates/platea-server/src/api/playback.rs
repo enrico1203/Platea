@@ -813,7 +813,9 @@ struct TokenQuery {
 
 fn session_by_token(state: &Shared, id: &str, t: Option<&str>) -> ApiResult<Arc<PlaySession>> {
     let t = t.ok_or(ApiError::Unauthorized)?;
-    let s = state.sessions.by_token(t).ok_or(ApiError::Unauthorized)?;
+    // Token sconosciuto: quasi sempre una sessione persa (server riavviato, aggiornamento). 410 come una sessione chiusa,
+    // così il player la riapre da solo dalla posizione corrente invece di fermarsi con un errore.
+    let s = state.sessions.by_token(t).ok_or_else(|| hls_error(HlsError::Stopped))?;
     if s.id != id {
         return Err(ApiError::Unauthorized);
     }
