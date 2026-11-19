@@ -208,3 +208,15 @@ fn profile_json_roundtrip_with_defaults() {
     assert_eq!(p.containers, vec!["mp4"]);
     assert!(!p.protocols.is_empty());
 }
+
+#[test]
+fn forced_transcode_of_audio_only_reencodes_audio() {
+    // Audiolibro .m4b: niente video (la copertina non conta), AAC che il browser non è riuscito a leggere in diretta.
+    let mut m = h264_1080p_mp4();
+    m.video = None;
+    m.bitrate = Some(128_000);
+    let d = decide(&m, &chrome(), &PlaybackRequest { force_transcode: true, ..req() }).unwrap();
+    assert_eq!(d.method, Method::Transcode);
+    assert_eq!(d.video, VideoAction::Copy);
+    assert!(matches!(d.audio, AudioAction::Transcode { ref codec, channels: 2, .. } if codec == "aac"));
+}

@@ -145,7 +145,10 @@ pub fn serve_file(
     sent: Option<Arc<std::sync::atomic::AtomicU64>>,
 ) -> ApiResult<Response> {
     let tag = etag(size, mtime);
-    if let Some(inm) = headers.get(header::IF_NONE_MATCH).and_then(|v| v.to_str().ok()) {
+    // 304 solo per le richieste intere. A una richiesta a pezzi (Range) si risponde sempre con i byte: Chrome
+    // riconvalida i pezzi già in cache con If-None-Match e, se la sua copia è parziale, un 304 lo lascia senza i byte
+    // che cercava (audiolibri .m4b in diretta interrotti dopo pochi secondi, con il moov in fondo al file).
+    if let Some(inm) = headers.get(header::IF_NONE_MATCH).and_then(|v| v.to_str().ok()).filter(|_| !headers.contains_key(header::RANGE)) {
         if inm == tag {
             return Ok(Response::builder().status(StatusCode::NOT_MODIFIED).header(header::ETAG, &tag).body(Body::empty()).unwrap());
         }
@@ -292,5 +295,23 @@ mod tests {
         h.insert(header::RANGE, HeaderValue::from_static("bytes=200-"));
         let (r, _) = serve_bytes(data, "video/mp4", "no-cache", &h);
         assert_eq!(r.status(), StatusCode::RANGE_NOT_SATISFIABLE);
+    }
+
+    #[test]
+    fn not_modified_only_without_range() {
+        let path = std::env::temp_dir().join(format!("platea-etag-{}", std::process::id()));
+        std::fs::write(&path, [7u8; 64]).unwrap();
+        let file = Arc::new(File::open(&path).unwrap());
+        let tag = etag(64, 5);
+        let mut h = HeaderMap::new();
+        h.insert(header::IF_NONE_MATCH, HeaderValue::from_str(&tag).unwrap());
+        let r = serve_file(file.clone(), 64, 5, "audio/mp4", &Method::GET, &h, None).unwrap();
+        assert_eq!(r.status(), StatusCode::NOT_MODIFIED);
+        // Chrome riconvalida i pezzi in cache: con Range si mandano sempre i byte.
+        h.insert(header::RANGE, HeaderValue::from_static("bytes=32-"));
+        let r = serve_file(file, 64, 5, "audio/mp4", &Method::GET, &h, None).unwrap();
+        assert_eq!(r.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(r.headers()[header::CONTENT_RANGE], "bytes 32-63/64");
+        let _ = std::fs::remove_file(path);
     }
 }

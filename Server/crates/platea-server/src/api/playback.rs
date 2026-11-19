@@ -236,6 +236,14 @@ pub fn chain_text(media: &MediaInfo, d: &pb::Decision, backend: &str) -> String 
             }
             s
         }
+        // Solo audio (audiolibro ricodificato): niente video nella catena.
+        pb::Method::Transcode if src_v.is_none() && !matches!(d.video, VideoAction::Transcode { .. }) => {
+            let mut s = format!("{} → HLS", media.container.to_uppercase());
+            if let pb::AudioAction::Transcode { channels, .. } = &d.audio {
+                s.push_str(&format!(" · {} → AAC {}ch", a_src.unwrap_or_default(), channels));
+            }
+            s
+        }
         pb::Method::Transcode => {
             let (out, h) = match &d.video {
                 // Altezza reale d'uscita, non il limite: 3840×1606 entro 1920×1080 esce a 802p.

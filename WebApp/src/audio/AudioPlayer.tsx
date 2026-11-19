@@ -53,6 +53,16 @@ function save(k: string, v: unknown) {
 
 /** Ciò che l'elemento audio del browser sa riprodurre così com'è: il resto lo converte il server. */
 let profileCache: object | null = null;
+/** Manda al log del server il motivo di un errore del browser (dice solo un codice e una frase). */
+function reportAudioError(session: string, a: HTMLAudioElement): Promise<unknown> {
+  const me = a.error;
+  return fetch(`${serverUrl()}/api/v1/playback/${session}/client-error`, {
+    method: "POST", keepalive: true,
+    headers: { Authorization: `Bearer ${getToken() ?? ""}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ message: `audio: ${me ? `codice ${me.code} ${me.message}` : "errore senza dettagli"} (${navigator.userAgent})`.slice(0, 500) }),
+  }).catch(() => undefined);
+}
+
 function audioProfile() {
   if (profileCache) return profileCache;
   const a = document.createElement("audio");
@@ -116,7 +126,7 @@ function partAt(parts: BookPart[], ms: number): number {
   return idx;
 }
 
-interface Live { session: string; part: number; offset: number; ok: number }
+interface Live { session: string; part: number; offset: number; ok: number; method: string }
 
 export function AudioProvider({ children }: { children: ReactNode }) {
   const { t, locale } = useI18n();
@@ -142,6 +152,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   /** L'utente vuole che suoni (per riprendere dopo un errore) e tentativi di ripresa recenti. */
   const intent = useRef(false);
   const retries = useRef<number[]>([]);
+  /** Il browser non è riuscito a leggere il file diretto: per questo libro si passa alla transcodifica. */
+  const forceTranscode = useRef(false);
 
   useEffect(() => { bookRef.current = book; }, [book]);
   useEffect(() => { sleepRef.current = sleep; }, [sleep]);
@@ -192,11 +204,11 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     hlsRef.current = null;
     try {
       const info = await api<PlaybackInfo>("/api/v1/playback/info", {
-        body: { item_id: b.id, file_id: part.file_id, start_ms: Math.round(ms), profile: audioProfile(), ui_language: locale },
+        body: { item_id: b.id, file_id: part.file_id, start_ms: Math.round(ms), profile: audioProfile(), ui_language: locale, force_transcode: forceTranscode.current },
       });
       const offset = info.part_offset_ms ?? part.offset_ms;
       const local = Math.max(0, (ms - offset) / 1000);
-      live.current = { session: info.session_id, part: i, offset, ok: Date.now() };
+      live.current = { session: info.session_id, part: i, offset, ok: Date.now(), method: info.method };
       if (info.stream_url) {
         a.src = `${mediaUrl(info.stream_url)}#t=${local.toFixed(1)}`;
       } else if (info.hls_url) {
@@ -221,6 +233,17 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         a.addEventListener("loadedmetadata", done);
         a.addEventListener("error", done);
       });
+      // Il file non si apre (errore già all'avvio): una volta si riprova con la transcodifica, poi si mostra l'errore.
+      if (a.error) {
+        // Prima il motivo, poi la chiusura: a sessione chiusa il server non saprebbe più a chi attribuirlo.
+        await reportAudioError(info.session_id, a);
+        stopSession(ms);
+        if (info.method === "direct_play" && !forceTranscode.current) {
+          forceTranscode.current = true;
+          return await open(ms, autoplay);
+        }
+        throw new ApiError(0, "AudioError", t("audio.errorStream"));
+      }
       if (Math.abs(a.currentTime - local) > 1) a.currentTime = local;
       a.playbackRate = r;
       posRef.current = ms;
@@ -234,7 +257,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [locale, t]);
+  }, [locale, stopSession, t]);
 
   const openOnce = useCallback((ms: number, autoplay: boolean) => {
     if (opening.current) return opening.current;
@@ -259,6 +282,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     }
     if (live.current) stopSession(bookPos());
     const start = startMs ?? (item.user_data.played ? 0 : item.user_data.position_ms);
+    forceTranscode.current = false;
+    retries.current = [];
     bookRef.current = b;
     setBook(b);
     posRef.current = start;
@@ -443,6 +468,13 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         return;
       }
       retries.current.push(now);
+      // Il motivo arriva nel log del server (il browser dice solo un codice e una frase): serve per capire i casi
+      // che non si riproducono qui. Dopo un errore in diretta si riapre con la transcodifica, come per i video.
+      const l = live.current;
+      if (l) {
+        void reportAudioError(l.session, a);
+        if (l.method === "direct_play") forceTranscode.current = true;
+      }
       const pos = bookPos();
       live.current = null;
       void openOnce(pos, intent.current);

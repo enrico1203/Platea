@@ -477,6 +477,16 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-19 — **0.1.16**: audiolibri .m4b interrotti dopo 2–3 s in Chrome su macOS (produzione; non riprodotto
+  qui né con Chrome su Linux né con la rete rallentata). Nei log: richieste a pezzi riconvalidate da Chrome con
+  If-None-Match e risposte 304, poi errore dell'elemento audio e tre riaperture. Correzioni: niente 304 alle
+  richieste con Range (si mandano sempre i byte); il player audio manda il motivo dell'errore al log del server
+  (`client-error`, codice e messaggio del browser) e dopo un errore in diretta riapre con la transcodifica (prima
+  ripeteva la diretta); un errore già all'apertura non lascia più il player fermo senza messaggio. La transcodifica
+  forzata di un file solo audio ricodifica l'audio in AAC (prima trattava la copertina come video: "H.264 1080p").
+  Provato con Chrome vero (Playwright) su un server di prova: flusso diretto bloccato → transcodifica dalla stessa
+  posizione, motivo nel log; senza errori resta in diretta. Aggiornato il server di produzione alla 0.1.15.
+
 - 2026-11-19 — **0.1.15**: un film da mount cloud restava nero nel player web (Safari, HLS nativo). Causa: il
   sottotitolo interno si estraeva in parallelo al video leggendo tutto il file (5,5 GB) e gli toglieva la banda;
   il remux non mandava `init.mp4` in 10 s, il player ripiegava sulla transcodifica, che apriva una seconda

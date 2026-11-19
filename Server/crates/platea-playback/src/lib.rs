@@ -430,6 +430,24 @@ pub fn decide(media: &MediaInfo, profile: &DeviceProfile, req: &PlaybackRequest)
     let mut video_reasons: Vec<Reason> = Vec::new();
     let mut reasons: Vec<Reason> = Vec::new();
 
+    // Solo audio (audiolibri, musica): "transcodifica forzata" vuol dire ricodificare l'audio in AAC dentro HLS. Non
+    // c'è video da transcodificare (la copertina incorporata non è una traccia video).
+    if req.force_transcode && media.video.is_none() {
+        if !can_hls || !req.allow_transcode {
+            return Err(DecisionError::TranscodeNotAllowed(vec![Reason::TranscodeForced]));
+        }
+        let max_ch = profile.audio_codecs.iter().find(|s| s.codec == "aac").and_then(|s| s.max_channels).unwrap_or(2);
+        let channels = audio.map(|a| a.channels).unwrap_or(2).clamp(1, max_ch.clamp(1, 2));
+        return Ok(Decision {
+            method: Method::Transcode,
+            reasons: vec![Reason::TranscodeForced],
+            video: VideoAction::Copy,
+            audio: if audio.is_some() { AudioAction::Transcode { codec: "aac".into(), channels, bitrate: 128_000 } } else { AudioAction::None },
+            audio_index: audio.map(|a| a.index),
+            subtitle: SubtitleDelivery::None,
+        });
+    }
+
     if req.force_transcode {
         video_reasons.push(Reason::TranscodeForced);
     }
