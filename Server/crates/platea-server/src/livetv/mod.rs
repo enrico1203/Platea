@@ -540,9 +540,30 @@ pub fn channel_filter(user: &crate::auth::AuthUser, alias: &str) -> (String, Vec
     (sql, vec![])
 }
 
+/// Numera i "?" anonimi da `first` in poi. sqlx (SQLite) lega i "?" anonimi contando da 1 anche quando la query
+/// usa già "?1": senza numeri `c.id = ?` riceveva l'id dell'utente (canale "non trovato" nelle app).
+pub fn number_params(sql: &str, first: usize) -> String {
+    let mut out = String::with_capacity(sql.len() + 8);
+    let mut n = first;
+    let mut it = sql.chars().peekable();
+    while let Some(c) = it.next() {
+        out.push(c);
+        if c == '?' && !it.peek().is_some_and(|d| d.is_ascii_digit()) {
+            out.push_str(&n.to_string());
+            n += 1;
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn numbers_anonymous_params() {
+        assert_eq!(number_params(" AND a IN (?,?) AND b = ?1 AND c = ?", 2), " AND a IN (?2,?3) AND b = ?1 AND c = ?4");
+    }
 
     #[test]
     fn rebase_keeps_path() {

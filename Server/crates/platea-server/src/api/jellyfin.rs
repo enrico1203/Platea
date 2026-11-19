@@ -1727,7 +1727,13 @@ async fn image(State(state): State<Shared>, Path((item, kind)): Path<(String, St
     serve_image(&state, &item, &kind, q.w, &headers).await
 }
 
-async fn serve_image(state: &Shared, item: &str, kind: &str, w: Option<u32>, _headers: &HeaderMap) -> ApiResult<Response> {
+async fn serve_image(state: &Shared, item: &str, kind: &str, w: Option<u32>, headers: &HeaderMap) -> ApiResult<Response> {
+    // Canali (e i loro programmi): il logo dalla sorgente, come nella web app.
+    match parse_ref(state, item) {
+        Some(Ref::Channel(c)) => return crate::api::livetv::logo_response(state, c, headers).await,
+        Some(Ref::Program(p)) if p >> 32 != 0 => return crate::api::livetv::logo_response(state, p >> 32, headers).await,
+        _ => {}
+    }
     let image_id: Option<i64> = match parse_ref(state, item) {
         Some(Ref::Item(i)) => {
             let kinds: &[&str] = match kind.to_lowercase().as_str() {
@@ -2600,6 +2606,7 @@ async fn lt_channels_rows(state: &Shared, user: &AuthUser, only: Option<i64>, fa
         sql.push_str(" AND EXISTS (SELECT 1 FROM user_tv_favorites f WHERE f.channel_id = c.id AND f.user_id = ?1)");
     }
     sql.push_str(" ORDER BY c.number IS NULL, c.number, c.name");
+    let sql = crate::livetv::number_params(&sql, 2);
     let mut q = sqlx::query_as::<_, LtChannel>(&sql).bind(user.user_id);
     for b in &binds {
         q = q.bind(b);
@@ -2813,8 +2820,41 @@ async fn live_items(state: &Shared, user: &AuthUser, q: &ItemsQuery) -> ApiResul
     Ok(Some(page(rows.iter().map(|c| channel_value(state, c, cur.get(&c.id).cloned())).collect())))
 }
 
+const PLACEHOLDER_MS: i64 = 3_600_000;
+
+/// Programma segnaposto (canale senza guida): un'ora, col nome del canale. L'id è canale + inizio come gli altri.
+fn placeholder_program(c: &LtChannel, start_ms: i64) -> LtProgram {
+    LtProgram {
+        channel_id: c.id,
+        start_ms,
+        end_ms: start_ms + PLACEHOLDER_MS,
+        title: c.name.clone(),
+        subtitle: None,
+        description: None,
+        category: None,
+        season: None,
+        episode: None,
+        is_new: 0,
+        rating: None,
+        channel_name: c.name.clone(),
+        channel_number: c.number,
+        logo_url: c.logo_url.clone(),
+    }
+}
+
 async fn lt_program_dto_by_id(state: &Shared, user: &AuthUser, key: i64) -> ApiResult<Value> {
-    let id = program_row(state, key).await?;
+    let id = match program_row(state, key).await {
+        Ok(id) => id,
+        // Segnaposto: si ricostruisce dall'id, se il canale è visibile e l'ora è allineata.
+        Err(e) => {
+            let start = (key & 0xffff_ffff) * 1000;
+            let c = lt_channels_rows(state, user, Some(key >> 32), false).await?.into_iter().next();
+            return match c {
+                Some(c) if key >> 32 != 0 && start % PLACEHOLDER_MS == 0 => Ok(program_value(state, &placeholder_program(&c, start))),
+                _ => Err(e),
+            };
+        }
+    };
     let p: LtProgram = sqlx::query_as(&format!("SELECT {LT_PR} FROM tv_programs p JOIN tv_channels c ON c.id = p.channel_id WHERE p.id = ?"))
         .bind(id)
         .fetch_optional(&state.db.read)
@@ -2917,7 +2957,8 @@ fn parse_jf_date(s: &str) -> Option<i64> {
 }
 
 async fn lt_programs(state: &Shared, user: &AuthUser, f: ProgramFilter) -> ApiResult<Json<Value>> {
-    let allowed: Vec<i64> = lt_channels_rows(state, user, None, false).await?.iter().map(|c| c.id).collect();
+    let visible = lt_channels_rows(state, user, None, false).await?;
+    let allowed: Vec<i64> = visible.iter().map(|c| c.id).collect();
     let chans: Vec<i64> = if f.channels.is_empty() { allowed.clone() } else { f.channels.iter().copied().filter(|c| allowed.contains(c)).collect() };
     if chans.is_empty() {
         return Ok(Json(json!({ "Items": [], "TotalRecordCount": 0, "StartIndex": 0 })));
@@ -2967,6 +3008,28 @@ async fn lt_programs(state: &Shared, user: &AuthUser, f: ProgramFilter) -> ApiRe
         q = q.bind(b);
     }
     let mut rows = q.fetch_all(&state.db.read).await?;
+    // Canali senza guida in questo intervallo: programmi segnaposto di un'ora col nome del canale. Le app (Swiftfin)
+    // mostrano solo programmi: senza, il canale non compare in "In onda" né nella guida.
+    if f.has_aired != Some(true) && f.is_airing != Some(false) {
+        let with_guide: std::collections::HashSet<i64> = rows.iter().map(|p| p.channel_id).collect();
+        let (lo, hi) = if f.is_airing == Some(true) {
+            (now, now + 1)
+        } else {
+            let lo = f.min_end.or(f.min_start).unwrap_or(now);
+            let hi = f.max_start.or(f.max_end).unwrap_or(lo + 86_400_000);
+            (lo, hi.min(lo + 7 * 86_400_000))
+        };
+        for c in visible.iter().filter(|c| chans.contains(&c.id) && !with_guide.contains(&c.id)) {
+            let mut start = lo.div_euclid(PLACEHOLDER_MS) * PLACEHOLDER_MS;
+            while start < hi {
+                if f.has_aired != Some(false) || start + PLACEHOLDER_MS > now {
+                    rows.push(placeholder_program(c, start));
+                }
+                start += PLACEHOLDER_MS;
+            }
+        }
+        rows.sort_by(|a, b| a.start_ms.cmp(&b.start_ms).then(a.channel_number.partial_cmp(&b.channel_number).unwrap_or(std::cmp::Ordering::Equal)));
+    }
     rows.retain(|p| {
         let k = program_kind(p);
         [(f.is_movie, k.movie), (f.is_series, k.series), (f.is_news, k.news), (f.is_kids, k.kids), (f.is_sports, k.sports)]

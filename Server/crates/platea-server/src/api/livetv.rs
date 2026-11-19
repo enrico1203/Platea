@@ -146,6 +146,7 @@ async fn visible_channels(state: &Shared, user: &AuthUser, group: Option<&str>, 
         sql.push_str(&format!(" AND c.id IN ({})", if ids.is_empty() { "0".into() } else { ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",") }));
     }
     sql.push_str(" ORDER BY c.number IS NULL, c.number, c.name LIMIT 20000");
+    let sql = livetv::number_params(&sql, 2);
     let mut q = sqlx::query_as::<_, ChannelRow>(&sql).bind(user.user_id);
     for b in &binds {
         q = q.bind(b);
@@ -336,6 +337,12 @@ async fn program(State(state): State<Shared>, user: AuthUser, Path(id): Path<Str
 /// Logo dalla sorgente, tenuto in cache: gli indirizzi di Dispatcharr sono interni, il browser non li raggiunge.
 async fn logo(State(state): State<Shared>, Path(id): Path<String>, headers: HeaderMap) -> ApiResult<Response> {
     let cid = decode(&state, &id, "Canale")?;
+    logo_response(&state, cid, &headers).await
+}
+
+/// Logo del canale `cid` (anche per le app Jellyfin: `/Items/<canale>/Images/Primary`).
+pub async fn logo_response(state: &Shared, cid: i64, headers: &HeaderMap) -> ApiResult<Response> {
+    let state = state.clone();
     let url: Option<String> = sqlx::query_scalar("SELECT logo_url FROM tv_channels WHERE id = ?").bind(cid).fetch_optional(&state.db.read).await?.flatten();
     let url = url.ok_or_else(|| ApiError::not_found("Logo"))?;
     let key = crate::util::sha256_hex(&url);
@@ -376,7 +383,7 @@ async fn logo(State(state): State<Shared>, Path(id): Path<String>, headers: Head
         Ok(image::ImageFormat::Gif) => "image/gif",
         _ => "image/jpeg",
     };
-    let (resp, _) = crate::stream::serve_bytes(bytes, ct, "public, max-age=86400", &headers);
+    let (resp, _) = crate::stream::serve_bytes(bytes, ct, "public, max-age=86400", headers);
     Ok(resp)
 }
 

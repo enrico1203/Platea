@@ -477,6 +477,15 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-19 — **0.1.19**: ancora 404 aprendo un canale da Swiftfin. Causa: `lt_channels_rows` (e `visible_channels`
+  della web app) mescolava `?1` e `?` anonimi; sqlx (SQLite) numera i `?` anonimi da 1, quindi `c.id = ?` riceveva
+  l'id dell'utente → "Canale non trovato" su scheda, PlaybackInfo, `/Items?ids=`. Nella web app lo stesso errore
+  rompeva i filtri per gruppo (utenti con gruppi limitati). Ora `livetv::number_params` numera i `?` anonimi.
+  Canali senza guida: programmi segnaposto di un'ora col nome del canale (anche nei buchi della guida), così
+  compaiono in "In onda" e nella guida delle app; gli id segnaposto si riaprono (canale + ora). Logo dei canali e
+  dei programmi su `/Items/<id>/Images/Primary` (prima 404). Provato su una copia delle sole tabelle Live TV con le
+  richieste di Swiftfin 1.7: scheda, ids, canali, in onda, sezioni, guida con più canali, flusso, loghi.
+
 - 2026-11-19 — **0.1.18**: Live TV in Swiftfin 1.7 (struttura nuova, `LiveTVGroupProvider`). Problemi trovati
   leggendo il codice dell'app: "Canali" chiede `/Items?includeItemTypes=LiveTvChannel` (rispondeva vuoto); per
   guardare un programma cerca il canale con `/Items?ids=<canale>` (vuoto → "errore sconosciuto"); la scheda del
