@@ -1377,6 +1377,9 @@ fn normalize_query(uri: &Uri) -> ItemsQuery {
 }
 
 async fn query_items(state: &Shared, user: &AuthUser, q: ItemsQuery) -> ApiResult<Json<Value>> {
+    if let Some(v) = live_items(state, user, &q).await? {
+        return Ok(Json(v));
+    }
     let mut sql = format!("{SELECT} WHERE 1 {}", user.library_filter("i.library_id"));
     let mut binds: Vec<Value> = vec![json!(user.user_id)];
     // Tutti i "?" di un frammento usano lo stesso valore.
@@ -2636,7 +2639,6 @@ fn channel_value(state: &Shared, c: &LtChannel, current: Option<Value>) -> Value
 
 #[derive(sqlx::FromRow)]
 struct LtProgram {
-    id: i64,
     channel_id: i64,
     start_ms: i64,
     end_ms: i64,
@@ -2656,10 +2658,50 @@ struct LtProgram {
 const LT_PR: &str = "p.id, p.channel_id, p.start_ms, p.end_ms, p.title, p.subtitle, p.description, p.category, p.season, p.episode, p.is_new, p.rating,
   c.name AS channel_name, c.number AS channel_number, c.logo_url";
 
-fn program_value(state: &Shared, p: &LtProgram) -> Value {
-    let id = guid(state, NS_PROGRAM, p.id);
+/// Id del programma per le app: canale e ora d'inizio, non la riga del database. L'aggiornamento della guida
+/// riscrive le righe (id nuovi), e Swiftfin chiedeva ancora quelle vecchie (404).
+fn program_key(channel_id: i64, start_ms: i64) -> i64 {
+    (channel_id << 32) | (start_ms.div_euclid(1000) & 0xffff_ffff)
+}
+
+/// Riga del database di un id di programma (anche quelli vecchi, che erano la riga stessa).
+async fn program_row(state: &Shared, key: i64) -> ApiResult<i64> {
+    if key >> 32 == 0 {
+        return Ok(key);
+    }
+    sqlx::query_scalar("SELECT id FROM tv_programs WHERE channel_id = ? AND start_ms >= ? AND start_ms < ?")
+        .bind(key >> 32)
+        .bind((key & 0xffff_ffff) * 1000)
+        .bind((key & 0xffff_ffff) * 1000 + 1000)
+        .fetch_optional(&state.db.read)
+        .await?
+        .ok_or_else(|| ApiError::not_found("Programma"))
+}
+
+struct ProgramKind {
+    series: bool,
+    news: bool,
+    sports: bool,
+    kids: bool,
+    movie: bool,
+}
+
+/// Categorie di Jellyfin dalla categoria XMLTV.
+fn program_kind(p: &LtProgram) -> ProgramKind {
     let cat = p.category.clone().unwrap_or_default().to_lowercase();
     let has = |words: &[&str]| words.iter().any(|w| cat.contains(w));
+    ProgramKind {
+        series: p.season.is_some() || p.episode.is_some() || has(&["serie", "series", "telefilm", "fiction", "soap"]),
+        news: has(&["news", "notizi", "telegiornal", "tg"]),
+        sports: has(&["sport", "calcio", "football", "soccer", "motori", "tennis", "basket"]),
+        kids: has(&["kids", "bambin", "ragazz", "children", "animazion", "cartoni"]),
+        movie: has(&["film", "movie", "cinema"]),
+    }
+}
+
+fn program_value(state: &Shared, p: &LtProgram) -> Value {
+    let id = guid(state, NS_PROGRAM, program_key(p.channel_id, p.start_ms));
+    let k = program_kind(p);
     let now = crate::util::now_ms();
     json!({
         "Name": p.title,
@@ -2680,11 +2722,11 @@ fn program_value(state: &Shared, p: &LtProgram) -> Value {
         "IndexNumber": p.episode,
         "Genres": p.category.iter().collect::<Vec<_>>(),
         "OfficialRating": p.rating,
-        "IsSeries": p.season.is_some() || p.episode.is_some(),
-        "IsNews": has(&["news", "notizi", "telegiornal", "tg"]),
-        "IsSports": has(&["sport"]),
-        "IsKids": has(&["kids", "bambin", "ragazz", "children", "animazion"]),
-        "IsMovie": has(&["film", "movie", "cinema"]),
+        "IsSeries": k.series,
+        "IsNews": k.news,
+        "IsSports": k.sports,
+        "IsKids": k.kids,
+        "IsMovie": k.movie,
         "IsPremiere": p.is_new != 0,
         "IsLive": false,
         "IsNew": p.is_new != 0,
@@ -2718,13 +2760,61 @@ async fn current_programs(state: &Shared, ids: &[i64]) -> ApiResult<HashMap<i64,
     Ok(out)
 }
 
+/// Scheda completa del canale: con la sorgente, come Jellyfin. Swiftfin la legge prima di chiedere PlaybackInfo
+/// e senza `MediaSources` non avvia la riproduzione ("Unable to find media source").
 async fn lt_channel_dto(state: &Shared, user: &AuthUser, id: i64, current: bool) -> ApiResult<Value> {
     let c = lt_channels_rows(state, user, Some(id), false).await?.into_iter().next().ok_or_else(|| ApiError::not_found("Canale"))?;
     let cur = if current { current_programs(state, &[c.id]).await?.remove(&c.id) } else { None };
-    Ok(channel_value(state, &c, cur))
+    let mut v = channel_value(state, &c, cur);
+    if current {
+        v["MediaSources"] = json!([lt_media_source(state, user, c.id, "").await?]);
+    }
+    Ok(v)
 }
 
-async fn lt_program_dto_by_id(state: &Shared, user: &AuthUser, id: i64) -> ApiResult<Value> {
+/// `/Items` per la Live TV: i canali (tipo `TvChannel`/`LiveTvChannel` o dentro la vista Live TV) e canali o
+/// programmi chiesti per id. Swiftfin apre "Canali" e trova il canale di un programma così, non con `/LiveTv/Channels`.
+async fn live_items(state: &Shared, user: &AuthUser, q: &ItemsQuery) -> ApiResult<Option<Value>> {
+    let page = |items: Vec<Value>| {
+        let total = items.len();
+        let start = q.start_index.unwrap_or(0).max(0) as usize;
+        let limit = q.limit.map(|l| l.max(0) as usize).unwrap_or(total);
+        json!({ "Items": items.into_iter().skip(start).take(limit).collect::<Vec<_>>(), "TotalRecordCount": total, "StartIndex": start })
+    };
+    if let Some(ids) = &q.ids {
+        let refs: Vec<Option<Ref>> = ids.split(',').map(|x| parse_ref(state, x.trim())).collect();
+        let live = refs.iter().any(|r| matches!(r, Some(Ref::Channel(_)) | Some(Ref::Program(_))));
+        let other = refs.iter().any(|r| matches!(r, Some(Ref::Item(_))));
+        if !live || other {
+            return Ok(None);
+        }
+        let mut items = Vec::new();
+        for r in refs.into_iter().flatten() {
+            let v = match r {
+                Ref::Channel(c) => lt_channel_dto(state, user, c, true).await.ok(),
+                Ref::Program(p) => lt_program_dto_by_id(state, user, p).await.ok(),
+                _ => None,
+            };
+            items.extend(v);
+        }
+        return Ok(Some(page(items)));
+    }
+    let types: Vec<String> = q.include_item_types.as_deref().unwrap_or("").split(',').map(|t| t.trim().to_lowercase()).filter(|t| !t.is_empty()).collect();
+    let wants_channels = types.iter().any(|t| t == "tvchannel" || t == "livetvchannel");
+    let in_view = q.parent_id.as_deref().and_then(|p| parse_ref(state, p)).is_some_and(|r| matches!(r, Ref::LiveView));
+    if !(wants_channels || in_view && types.is_empty()) {
+        return Ok(None);
+    }
+    let mut rows = lt_channels_rows(state, user, None, q.is_favorite == Some(true)).await?;
+    if let Some(term) = q.search_term.as_deref().map(str::to_lowercase) {
+        rows.retain(|c| c.name.to_lowercase().contains(&term));
+    }
+    let cur = current_programs(state, &rows.iter().map(|c| c.id).collect::<Vec<_>>()).await?;
+    Ok(Some(page(rows.iter().map(|c| channel_value(state, c, cur.get(&c.id).cloned())).collect())))
+}
+
+async fn lt_program_dto_by_id(state: &Shared, user: &AuthUser, key: i64) -> ApiResult<Value> {
+    let id = program_row(state, key).await?;
     let p: LtProgram = sqlx::query_as(&format!("SELECT {LT_PR} FROM tv_programs p JOIN tv_channels c ON c.id = p.channel_id WHERE p.id = ?"))
         .bind(id)
         .fetch_optional(&state.db.read)
@@ -2754,7 +2844,18 @@ fn qmap(uri: &Uri) -> HashMap<String, String> {
     if let Some(qs) = uri.query() {
         for pair in qs.split('&') {
             let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
-            q.insert(k.to_lowercase(), urlencoding::decode(v).map(|s| s.into_owned()).unwrap_or_default());
+            let v = urlencoding::decode(v).map(|s| s.into_owned()).unwrap_or_default();
+            // Swiftfin ripete il parametro per ogni valore (`channelIds=a&channelIds=b`): si uniscono con la virgola.
+            q.entry(k.to_lowercase())
+                .and_modify(|e: &mut String| {
+                    if !v.is_empty() {
+                        if !e.is_empty() {
+                            e.push(',');
+                        }
+                        e.push_str(&v);
+                    }
+                })
+                .or_insert(v);
         }
     }
     q
@@ -2801,6 +2902,12 @@ struct ProgramFilter {
     max_end: Option<i64>,
     is_airing: Option<bool>,
     has_aired: Option<bool>,
+    /// IsMovie, IsSeries, IsNews, IsKids, IsSports: true li vuole, false li esclude (Swiftfin manda tutti e cinque).
+    is_movie: Option<bool>,
+    is_series: Option<bool>,
+    is_news: Option<bool>,
+    is_kids: Option<bool>,
+    is_sports: Option<bool>,
     start: usize,
     limit: Option<usize>,
 }
@@ -2859,7 +2966,13 @@ async fn lt_programs(state: &Shared, user: &AuthUser, f: ProgramFilter) -> ApiRe
     for b in &binds {
         q = q.bind(b);
     }
-    let rows = q.fetch_all(&state.db.read).await?;
+    let mut rows = q.fetch_all(&state.db.read).await?;
+    rows.retain(|p| {
+        let k = program_kind(p);
+        [(f.is_movie, k.movie), (f.is_series, k.series), (f.is_news, k.news), (f.is_kids, k.kids), (f.is_sports, k.sports)]
+            .iter()
+            .all(|(want, is)| want.is_none_or(|w| w == *is))
+    });
     let total = rows.len();
     let items: Vec<Value> = rows.iter().skip(f.start).take(f.limit.unwrap_or(total)).map(|p| program_value(state, p)).collect();
     Ok(Json(json!({ "Items": items, "TotalRecordCount": total, "StartIndex": f.start })))
@@ -2884,6 +2997,11 @@ async fn lt_programs_q(State(state): State<Shared>, user: AuthUser, uri: Uri) ->
         max_end: q.get("maxenddate").and_then(|v| parse_jf_date(v)),
         is_airing: b("isairing"),
         has_aired: b("hasaired"),
+        is_movie: b("ismovie"),
+        is_series: b("isseries"),
+        is_news: b("isnews"),
+        is_kids: b("iskids"),
+        is_sports: b("issports"),
         start: q.get("startindex").and_then(|v| v.parse().ok()).unwrap_or(0),
         limit: q.get("limit").and_then(|v| v.parse().ok()),
     };
@@ -2901,6 +3019,11 @@ async fn lt_programs_body(State(state): State<Shared>, user: AuthUser, body: axu
         max_end: d("MaxEndDate"),
         is_airing: v["IsAiring"].as_bool(),
         has_aired: v["HasAired"].as_bool(),
+        is_movie: v["IsMovie"].as_bool(),
+        is_series: v["IsSeries"].as_bool(),
+        is_news: v["IsNews"].as_bool(),
+        is_kids: v["IsKids"].as_bool(),
+        is_sports: v["IsSports"].as_bool(),
         start: v["StartIndex"].as_u64().unwrap_or(0) as usize,
         limit: v["Limit"].as_u64().map(|l| l as usize),
     };
@@ -3118,6 +3241,7 @@ async fn create_from_body(state: &Shared, user: &AuthUser, _parts: &axum::http::
     let Some(Ref::Program(p)) = v["ProgramId"].as_str().and_then(|p| parse_ref(state, p)) else {
         return Err(ApiError::BadRequest("ProgramId mancante".into()));
     };
+    let p = program_row(state, p).await?;
     let req = json!({ "program_id": state.ids.encode(p), "series": series, "only_new": v["RecordNewOnly"].as_bool().unwrap_or(false) });
     let _ = crate::api::livetv::record_for(state, user, req).await?;
     Ok(StatusCode::NO_CONTENT)

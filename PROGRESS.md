@@ -477,6 +477,16 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-19 — **0.1.18**: Live TV in Swiftfin 1.7 (struttura nuova, `LiveTVGroupProvider`). Problemi trovati
+  leggendo il codice dell'app: "Canali" chiede `/Items?includeItemTypes=LiveTvChannel` (rispondeva vuoto); per
+  guardare un programma cerca il canale con `/Items?ids=<canale>` (vuoto → "errore sconosciuto"); la scheda del
+  canale non aveva `MediaSources` ("Unable to find media source"); le sezioni Serie/Film/Bambini/Sport/News
+  ignoravano IsMovie/IsSeries/… (stessi programmi ovunque); gli id dei programmi erano le righe del database,
+  riscritte a ogni aggiornamento della guida (404 sui programmi già mostrati); `channelIds` ripetuto teneva solo
+  l'ultimo canale. Ora `/Items` risponde con canali e programmi, la scheda del canale ha la sorgente, i filtri di
+  categoria valgono (true li vuole, false li esclude), l'id del programma è canale + ora d'inizio (i vecchi id
+  funzionano ancora) e i parametri ripetuti si uniscono. Da provare dall'app.
+
 - 2026-11-19 — **0.1.17**: dopo il riavvio per l'aggiornamento un film già aperto si fermava con "Riproduzione non
   riuscita" (hls.js: mediaSourceRequiresReset): la sessione era persa e i segmenti rispondevano 401, che il player
   non sa recuperare. Ora un token di riproduzione sconosciuto risponde 410 (come una sessione chiusa) e il player la

@@ -10,7 +10,7 @@ plugins {
 
 // Versione: dal tag della release (-PappVersion=0.1.7), altrimenti quella del server in sviluppo.
 // versionCode cresce con la versione (0.1.7 → 107), così un APK nuovo si installa sopra il vecchio.
-val appVersion = (project.findProperty("appVersion") as String?)?.removePrefix("v") ?: "0.1.17"
+val appVersion = (project.findProperty("appVersion") as String?)?.removePrefix("v") ?: "0.1.18"
 val appVersionCode = appVersion.split(".").map { it.toIntOrNull() ?: 0 }.let { (it.getOrElse(0) { 0 } * 10000) + (it.getOrElse(1) { 0 } * 100) + it.getOrElse(2) { 0 } }
 
 // Firma di rilascio facoltativa: keystore.properties (non versionato) con storeFile, storePassword, keyAlias, keyPassword.
