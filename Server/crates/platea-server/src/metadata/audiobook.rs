@@ -1008,6 +1008,9 @@ async fn cover(
     if let Some(u) = audible_url {
         let mut tx = state.db.write.begin().await?;
         let new = set_image_url(&mut tx, item_id, "poster", &u).await?;
+        if let Some(id) = new {
+            sqlx::query("UPDATE images SET source = 'audible' WHERE id = ?").bind(id).execute(&mut *tx).await?;
+        }
         tx.commit().await?;
         if let Some(id) = new {
             jobs::enqueue(state, JobKind::DownloadImage { image_id: id }, priority::IMAGES, Some(library_id)).await?;

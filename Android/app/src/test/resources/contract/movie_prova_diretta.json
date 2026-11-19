@@ -1,6 +1,6 @@
 {
- "id": "eb3f869e88d4e907",
- "library_id": "eb3f869e88d4e907",
+ "id": "252888e3c11fd94a",
+ "library_id": "252888e3c11fd94a",
  "kind": "movie",
  "title": "Prova Diretta",
  "original_title": null,
@@ -20,7 +20,7 @@
  "status": null,
  "available": true,
  "match_state": "pending",
- "added_at": 1794861758956,
+ "added_at": 1795070396700,
  "images": {
   "poster": null,
   "poster_color": null,
@@ -37,6 +37,7 @@
  },
  "child_count": null,
  "unplayed_count": null,
+ "authors": null,
  "tagline": null,
  "extras": [],
  "manual_collection": false,
@@ -47,7 +48,7 @@
  "external_ids": {},
  "files": [
   {
-   "id": "eb3f869e88d4e907",
+   "id": "252888e3c11fd94a",
    "name": "Prova Diretta (2020).mp4",
    "version_label": null,
    "container": "mp4",

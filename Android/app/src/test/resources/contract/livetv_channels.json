@@ -1,0 +1,39 @@
+{
+ "items": [
+  {
+   "id": "252888e3c11fd94a",
+   "number": 1.0,
+   "name": "Canale di prova",
+   "group": "Prova",
+   "logo": null,
+   "radio": false,
+   "catchup_days": 0,
+   "favorite": false,
+   "recordable": false,
+   "now": {
+    "id": "91d4ba3ee3f4435f",
+    "channel_id": "252888e3c11fd94a",
+    "start_ms": 1795069800000,
+    "end_ms": 1795071600000,
+    "title": "Programma 0",
+    "subtitle": null,
+    "category": null,
+    "season": null,
+    "episode": null,
+    "is_new": false
+   },
+   "next": {
+    "id": "012ed239385b7ab4",
+    "channel_id": "252888e3c11fd94a",
+    "start_ms": 1795071600000,
+    "end_ms": 1795073400000,
+    "title": "Programma 1",
+    "subtitle": null,
+    "category": null,
+    "season": null,
+    "episode": null,
+    "is_new": false
+   }
+  }
+ ]
+}

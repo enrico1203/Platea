@@ -107,15 +107,16 @@ def main():
     shutil.rmtree(fx, ignore_errors=True)
     os.makedirs(fx)
     shutil.rmtree(work, ignore_errors=True)
-    for d in ("data", "cache", "transcode"):
+    for d in ("data", "cache", "transcode", "tv"):
         os.makedirs(os.path.join(work, d))
+    make_tv(work, a.image)
     os.chmod(work, 0o777)
-    for d in ("data", "cache", "transcode"):
+    for d in ("data", "cache", "transcode", "tv"):
         os.chmod(os.path.join(work, d), 0o777)
     sh("docker", "rm", "-f", NAME)
     r = sh("docker", "run", "-d", "--name", NAME, "-p", f"{PORT}:8096",
            "-v", f"{work}/data:/data", "-v", f"{work}/cache:/cache", "-v", f"{work}/transcode:/transcode",
-           "-v", f"{ROOT}/media/Film:/media/Film:ro", "-v", f"{ROOT}/media/Serie:/media/Serie:ro", a.image)
+           "-v", f"{ROOT}/media/Film:/media/Film:ro", "-v", f"{ROOT}/media/Serie:/media/Serie:ro", "-v", f"{work}/tv:/media/tv:ro", a.image)
     if r.returncode != 0:
         sys.exit(r.stderr)
     api = Api(f"http://127.0.0.1:{PORT}")
@@ -126,6 +127,25 @@ def main():
             sh("docker", "rm", "-f", NAME)
     print(f"\n{len(passed)} OK, {len(failed)} KO")
     sys.exit(1 if failed else 0)
+
+
+def make_tv(work, image):
+    """Live TV di prova: un canale MPEG-TS (H.264 + AAC, 30 s), una lista M3U e una guida XMLTV attorno ad adesso."""
+    tv = os.path.join(work, "tv")
+    r = sh("docker", "run", "--rm", "-u", "0", "-v", f"{tv}:/w", "--entrypoint", "/usr/lib/jellyfin-ffmpeg/ffmpeg", image, "-v", "error", "-y",
+           "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=25", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000",
+           "-t", "30", "-c:v", "libx264", "-preset", "veryfast", "-g", "50", "-c:a", "aac", "-f", "mpegts", "/w/ch1.ts")
+    if r.returncode != 0:
+        sys.exit(r.stderr)
+    with open(os.path.join(tv, "list.m3u"), "w") as f:
+        f.write('#EXTM3U\n#EXTINF:-1 tvg-id="prova.1" tvg-chno="1" group-title="Prova",Canale di prova\n/media/tv/ch1.ts\n')
+    now = int(time.time()) // 1800 * 1800
+    fmt = lambda t: time.strftime("%Y%m%d%H%M%S +0000", time.gmtime(t))
+    progs = "".join(f'<programme start="{fmt(now + i * 1800)}" stop="{fmt(now + (i + 1) * 1800)}" channel="prova.1"><title>Programma {i}</title><desc>Prova</desc></programme>' for i in range(-2, 8))
+    with open(os.path.join(tv, "epg.xml"), "w") as f:
+        f.write(f'<?xml version="1.0"?><tv><channel id="prova.1"><display-name>Canale di prova</display-name></channel>{progs}</tv>')
+    for n in os.listdir(tv):
+        os.chmod(os.path.join(tv, n), 0o644)
 
 
 def redact(o):
@@ -271,6 +291,20 @@ def run(api, fx):
     check("togli voce", st in (200, 204), str(st))
     st, _ = api.req("DELETE", f"/api/v1/playlists/{pid}")
     check("cancella playlist", st in (200, 204), str(st))
+
+    # Live TV: sorgente M3U + XMLTV locale, stato, canali con il programma in onda, avvio di un canale.
+    st, r = api.req("POST", "/api/v1/admin/livetv/sources", {"kind": "m3u", "name": "Prova", "url": "/media/tv/list.m3u", "epg_url": "/media/tv/epg.xml"})
+    check("sorgente TV", st == 200, f"{st} {r}")
+    wait(lambda: any(c.get("now") for c in (api.req("GET", "/api/v1/livetv/channels")[1] or {}).get("items", [])), 60, "canali e guida TV")
+    get("livetv_status", "/api/v1/livetv/status")
+    ch = get("livetv_channels", "/api/v1/livetv/channels")
+    check("canale con il programma in onda", bool(ch["items"]) and ch["items"][0].get("now") is not None, json.dumps(ch)[:300])
+    st, lp = api.req("POST", f"/api/v1/livetv/channels/{ch['items'][0]['id']}/play", {"profile": PHONE})
+    check("avvio di un canale (HLS dal vivo)", st == 200 and lp.get("hls_url"), f"{st} {lp}")
+    if st == 200:
+        save(fx, "livetv_play", lp)
+        st, _ = api.req("POST", f"/api/v1/livetv/sessions/{lp['session_id']}/stop")
+        check("fine della visione", st in (200, 204), str(st))
 
     # Preferenze: l'app rimanda l'oggetto intero.
     _, prefs = api.req("GET", "/api/v1/me/preferences")

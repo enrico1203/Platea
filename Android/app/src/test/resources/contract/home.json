@@ -1,15 +1,16 @@
 {
  "resume": [],
+ "listening": [],
  "next_up": [],
  "recent": [
   {
-   "library_id": "eb3f869e88d4e907",
+   "library_id": "252888e3c11fd94a",
    "library_name": "Film",
    "kind": "movies",
    "items": [
     {
-     "id": "5b8329bf2849fb3a",
-     "library_id": "eb3f869e88d4e907",
+     "id": "91d4ba3ee3f4435f",
+     "library_id": "252888e3c11fd94a",
      "kind": "movie",
      "title": "Prova Remux",
      "original_title": null,
@@ -29,7 +30,7 @@
      "status": null,
      "available": true,
      "match_state": "pending",
-     "added_at": 1794861758956,
+     "added_at": 1795070396700,
      "images": {
       "poster": null,
       "poster_color": null,
@@ -44,11 +45,12 @@
       "last_played_at": null
      },
      "child_count": null,
-     "unplayed_count": null
+     "unplayed_count": null,
+     "authors": null
     },
     {
-     "id": "426abdefd27ee139",
-     "library_id": "eb3f869e88d4e907",
+     "id": "8ab0a2ebe139ca1a",
+     "library_id": "252888e3c11fd94a",
      "kind": "movie",
      "title": "Prova HEVC",
      "original_title": null,
@@ -68,7 +70,7 @@
      "status": null,
      "available": true,
      "match_state": "pending",
-     "added_at": 1794861758956,
+     "added_at": 1795070396700,
      "images": {
       "poster": null,
       "poster_color": null,
@@ -83,11 +85,12 @@
       "last_played_at": null
      },
      "child_count": null,
-     "unplayed_count": null
+     "unplayed_count": null,
+     "authors": null
     },
     {
-     "id": "eb3f869e88d4e907",
-     "library_id": "eb3f869e88d4e907",
+     "id": "252888e3c11fd94a",
+     "library_id": "252888e3c11fd94a",
      "kind": "movie",
      "title": "Prova Diretta",
      "original_title": null,
@@ -107,7 +110,7 @@
      "status": null,
      "available": true,
      "match_state": "pending",
-     "added_at": 1794861758956,
+     "added_at": 1795070396700,
      "images": {
       "poster": null,
       "poster_color": null,
@@ -122,18 +125,19 @@
       "last_played_at": null
      },
      "child_count": null,
-     "unplayed_count": null
+     "unplayed_count": null,
+     "authors": null
     }
    ]
   },
   {
-   "library_id": "426abdefd27ee139",
+   "library_id": "8ab0a2ebe139ca1a",
    "library_name": "Serie",
    "kind": "shows",
    "items": [
     {
-     "id": "b363fba61e230c77",
-     "library_id": "426abdefd27ee139",
+     "id": "39c4f6a7181b3012",
+     "library_id": "8ab0a2ebe139ca1a",
      "kind": "episode",
      "title": "Episodio 2",
      "original_title": null,
@@ -141,8 +145,8 @@
      "index_number": 2,
      "index_end": null,
      "parent_index_number": 1,
-     "parent_id": "d7be822d289ea86e",
-     "series_id": "7f09ba6f7691100a",
+     "parent_id": "9df7bee5d28c5347",
+     "series_id": "012ed239385b7ab4",
      "series_title": "Serie di Prova",
      "overview": null,
      "runtime_ms": 20021,
@@ -153,7 +157,7 @@
      "status": null,
      "available": true,
      "match_state": "pending",
-     "added_at": 1794861758963,
+     "added_at": 1795070396707,
      "images": {
       "poster": null,
       "poster_color": null,
@@ -168,11 +172,12 @@
       "last_played_at": null
      },
      "child_count": null,
-     "unplayed_count": null
+     "unplayed_count": null,
+     "authors": null
     },
     {
-     "id": "0fc6134b461b33a6",
-     "library_id": "426abdefd27ee139",
+     "id": "b32d97a21104c9d5",
+     "library_id": "8ab0a2ebe139ca1a",
      "kind": "episode",
      "title": "Episodio 1",
      "original_title": null,
@@ -180,8 +185,8 @@
      "index_number": 1,
      "index_end": null,
      "parent_index_number": 1,
-     "parent_id": "d7be822d289ea86e",
-     "series_id": "7f09ba6f7691100a",
+     "parent_id": "9df7bee5d28c5347",
+     "series_id": "012ed239385b7ab4",
      "series_title": "Serie di Prova",
      "overview": null,
      "runtime_ms": 20021,
@@ -192,7 +197,7 @@
      "status": null,
      "available": true,
      "match_state": "pending",
-     "added_at": 1794861758963,
+     "added_at": 1795070396707,
      "images": {
       "poster": null,
       "poster_color": null,
@@ -204,10 +209,11 @@
       "played": false,
       "play_count": 0,
       "favorite": false,
-      "last_played_at": 1794861760675
+      "last_played_at": 1795070398449
      },
      "child_count": null,
-     "unplayed_count": null
+     "unplayed_count": null,
+     "authors": null
     }
    ]
   }

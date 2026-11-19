@@ -1,6 +1,6 @@
 {
- "id": "7f09ba6f7691100a",
- "library_id": "426abdefd27ee139",
+ "id": "012ed239385b7ab4",
+ "library_id": "8ab0a2ebe139ca1a",
  "kind": "series",
  "title": "Serie di Prova",
  "original_title": null,
@@ -20,7 +20,7 @@
  "status": null,
  "available": true,
  "match_state": "pending",
- "added_at": 1794861758963,
+ "added_at": 1795070396707,
  "images": {
   "poster": null,
   "poster_color": null,
@@ -37,6 +37,7 @@
  },
  "child_count": 1,
  "unplayed_count": 2,
+ "authors": null,
  "tagline": null,
  "extras": [],
  "manual_collection": false,

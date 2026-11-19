@@ -1,13 +1,13 @@
 {
  "items": [
   {
-   "id": "eb3f869e88d4e907",
+   "id": "252888e3c11fd94a",
    "device_id": "android-test",
    "device_name": "Pixel di prova",
    "client": "Platea Android",
    "client_version": "test",
-   "created_at": 1794861758948,
-   "last_used_at": 1794861758952,
+   "created_at": 1795070396692,
+   "last_used_at": 1795070396695,
    "last_ip": "172.17.0.1",
    "current": true
   }

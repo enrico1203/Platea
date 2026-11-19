@@ -1,8 +1,8 @@
 {
  "items": [
   {
-   "id": "eb3f869e88d4e907",
-   "library_id": "eb3f869e88d4e907",
+   "id": "252888e3c11fd94a",
+   "library_id": "252888e3c11fd94a",
    "kind": "movie",
    "title": "Prova Diretta",
    "original_title": null,
@@ -22,7 +22,7 @@
    "status": null,
    "available": true,
    "match_state": "pending",
-   "added_at": 1794861758956,
+   "added_at": 1795070396700,
    "images": {
     "poster": null,
     "poster_color": null,
@@ -37,11 +37,12 @@
     "last_played_at": null
    },
    "child_count": null,
-   "unplayed_count": null
+   "unplayed_count": null,
+   "authors": null
   },
   {
-   "id": "426abdefd27ee139",
-   "library_id": "eb3f869e88d4e907",
+   "id": "8ab0a2ebe139ca1a",
+   "library_id": "252888e3c11fd94a",
    "kind": "movie",
    "title": "Prova HEVC",
    "original_title": null,
@@ -61,7 +62,7 @@
    "status": null,
    "available": true,
    "match_state": "pending",
-   "added_at": 1794861758956,
+   "added_at": 1795070396700,
    "images": {
     "poster": null,
     "poster_color": null,
@@ -76,11 +77,12 @@
     "last_played_at": null
    },
    "child_count": null,
-   "unplayed_count": null
+   "unplayed_count": null,
+   "authors": null
   },
   {
-   "id": "5b8329bf2849fb3a",
-   "library_id": "eb3f869e88d4e907",
+   "id": "91d4ba3ee3f4435f",
+   "library_id": "252888e3c11fd94a",
    "kind": "movie",
    "title": "Prova Remux",
    "original_title": null,
@@ -100,7 +102,7 @@
    "status": null,
    "available": true,
    "match_state": "pending",
-   "added_at": 1794861758956,
+   "added_at": 1795070396700,
    "images": {
     "poster": null,
     "poster_color": null,
@@ -115,7 +117,8 @@
     "last_played_at": null
    },
    "child_count": null,
-   "unplayed_count": null
+   "unplayed_count": null,
+   "authors": null
   }
  ],
  "next_cursor": null

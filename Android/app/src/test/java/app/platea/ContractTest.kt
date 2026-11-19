@@ -12,6 +12,10 @@ import app.platea.data.ItemDetail
 import app.platea.data.ItemPage
 import app.platea.data.Library
 import app.platea.data.LibraryPage
+import app.platea.data.LiveChannelPage
+import app.platea.data.LivePlay
+import app.platea.data.LivePlayRequest
+import app.platea.data.LiveStatus
 import app.platea.data.LoginResponse
 import app.platea.data.Me
 import app.platea.data.MissingList
@@ -122,6 +126,23 @@ class ContractTest {
         assertEquals(3, pl.items.size)
         assertTrue(pl.items.all { it.entryId != null })
         read("playlists", PlaylistList.serializer())
+    }
+
+    @Test
+    fun liveTv() {
+        val st = read("livetv_status", LiveStatus.serializer())
+        assertTrue(st.enabled && st.channels > 0)
+        val ch = read("livetv_channels", LiveChannelPage.serializer()).items
+        assertTrue(ch.isNotEmpty())
+        assertEquals("1", ch[0].numberText)
+        assertNotNull(ch[0].now)
+        assertTrue(ch[0].now!!.endMs > ch[0].now!!.startMs)
+        val play = read("livetv_play", LivePlay.serializer())
+        assertTrue(play.sessionId.isNotEmpty())
+        assertNotNull(play.hlsUrl)
+        // L'app chiede l'MPEG-TS diretto: il campo deve chiamarsi come sul server.
+        val body = Api.json.encodeToJsonElement(LivePlayRequest.serializer(), LivePlayRequest()).jsonObject
+        assertTrue("direct" in body)
     }
 
     /** La richiesta di riproduzione ha i nomi dei campi che il server si aspetta (serde, snake_case). */

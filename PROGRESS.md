@@ -477,6 +477,15 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-19 — **0.1.14**: guida XMLTV da file locale (lista M3U con percorso sul server) non si caricava: la
+  cartella della cache non esisteva ancora (si creava solo per i download http). Copertine degli audiolibri prese da
+  Audible segnate con origine `audible` (prima `tmdb`). Prova di contratto Android estesa alla Live TV (sorgente M3U
+  + XMLTV locale, stato, canali con il programma in onda, avvio HLS): 78 OK; test JVM dell'app verdi.
+  Provata la 0.1.13 pubblicata su una copia del DB vero: migrazioni 0025–0026 in 40 s, home, librerie, ricerca,
+  pannello e strato Jellyfin rispondono. Sul server dell'utente la libreria degli audiolibri c'è già: 16.112 libri,
+  3.848 associati (3.630 con Audible), 28 da verificare, il resto in coda, nessun errore.
+  **L'aggiornamento del server di produzione aspetta la conferma dell'utente** (bloccato dai permessi).
+
 - 2026-11-18 notte — **Live TV con Dispatcharr (0.1.13; la 0.1.12 ha un Cargo.lock sbagliato e non si compila)**, richiesta dell'utente ("fai tutta l'implementazione" del
   piano). Migrazione 0026: `tv_sources`, `tv_channels`, `tv_programs` (+FTS), `user_tv_favorites`, `tv_recordings`,
   permessi `users.allow_livetv`, `livetv_groups`, `allow_recording`.

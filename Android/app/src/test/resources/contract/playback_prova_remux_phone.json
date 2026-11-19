@@ -1,5 +1,5 @@
 {
- "session_id": "7d3a2b609ae8bd9b2308cc7f",
+ "session_id": "e07880dcd45f8d8cde6694b1",
  "stream_token": "<token>",
  "method": "remux",
  "reasons": [
@@ -7,10 +7,12 @@
  ],
  "chain": "MKV → HLS · H.264 copiato · AC3 5.1 → AAC 6ch",
  "stream_url": null,
- "hls_url": "/api/v1/hls/7d3a2b609ae8bd9b2308cc7f/main.m3u8?t=x",
- "file_id": "5b8329bf2849fb3a",
+ "hls_url": "/api/v1/hls/e07880dcd45f8d8cde6694b1/main.m3u8?t=x",
+ "file_id": "91d4ba3ee3f4435f",
  "duration_ms": 40000,
  "start_ms": 0,
+ "part_offset_ms": null,
+ "book_duration_ms": null,
  "audio_index": 1,
  "subtitle": {
   "delivery": "none"

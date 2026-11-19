@@ -1,14 +1,16 @@
 {
- "session_id": "30b6eca47518a21da0c760a1",
+ "session_id": "c14508cd6326f713caf39131",
  "stream_token": "<token>",
  "method": "direct_play",
  "reasons": [],
  "chain": "MKV · H.264 · AAC 1.0",
- "stream_url": "/api/v1/stream/30b6eca47518a21da0c760a1?t=x",
+ "stream_url": "/api/v1/stream/c14508cd6326f713caf39131?t=x",
  "hls_url": null,
- "file_id": "7f09ba6f7691100a",
+ "file_id": "012ed239385b7ab4",
  "duration_ms": 20021,
  "start_ms": 0,
+ "part_offset_ms": null,
+ "book_duration_ms": null,
  "audio_index": 1,
  "subtitle": {
   "delivery": "none"
@@ -33,7 +35,7 @@
    "forced": false,
    "default": false,
    "image": false,
-   "url": "/api/v1/subtitles/30b6eca47518a21da0c760a1/1000.vtt?t=x"
+   "url": "/api/v1/subtitles/c14508cd6326f713caf39131/1000.vtt?t=x"
   }
  ],
  "trickplay": null,

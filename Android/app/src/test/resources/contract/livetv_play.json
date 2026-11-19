@@ -1,0 +1,28 @@
+{
+ "session_id": "47a358f8085c6913df2313ed",
+ "stream_token": "<token>",
+ "method": "live_copy",
+ "chain": "H264 → HLS (copia)",
+ "hls_url": "/api/v1/live/47a358f8085c6913df2313ed/index.m3u8?t=x",
+ "stream_url": null,
+ "channel": {
+  "id": "252888e3c11fd94a",
+  "number": 1.0,
+  "name": "Canale di prova",
+  "group": "Prova",
+  "logo": null,
+  "radio": false,
+  "catchup_days": 0,
+  "favorite": false,
+  "recordable": false
+ },
+ "codecs": {
+  "video": "h264",
+  "width": 640,
+  "height": 360,
+  "interlaced": false,
+  "audio": "aac",
+  "channels": 1,
+  "at": 1795070399011
+ }
+}

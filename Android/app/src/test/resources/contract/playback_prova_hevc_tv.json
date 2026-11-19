@@ -1,5 +1,5 @@
 {
- "session_id": "e80723fae527504e58f2af19",
+ "session_id": "8ae214c8f491fee65f59ee1f",
  "stream_token": "<token>",
  "method": "transcode",
  "reasons": [
@@ -7,10 +7,12 @@
  ],
  "chain": "HEVC 10 bit → H.264 1080p · Software",
  "stream_url": null,
- "hls_url": "/api/v1/hls/e80723fae527504e58f2af19/main.m3u8?t=x",
- "file_id": "426abdefd27ee139",
+ "hls_url": "/api/v1/hls/8ae214c8f491fee65f59ee1f/main.m3u8?t=x",
+ "file_id": "8ab0a2ebe139ca1a",
  "duration_ms": 30021,
  "start_ms": 0,
+ "part_offset_ms": null,
+ "book_duration_ms": null,
  "audio_index": 1,
  "subtitle": {
   "delivery": "none"

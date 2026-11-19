@@ -1,6 +1,6 @@
 {
- "id": "0fc6134b461b33a6",
- "library_id": "426abdefd27ee139",
+ "id": "b32d97a21104c9d5",
+ "library_id": "8ab0a2ebe139ca1a",
  "kind": "episode",
  "title": "Episodio 1",
  "original_title": null,
@@ -8,8 +8,8 @@
  "index_number": 1,
  "index_end": null,
  "parent_index_number": 1,
- "parent_id": "d7be822d289ea86e",
- "series_id": "7f09ba6f7691100a",
+ "parent_id": "9df7bee5d28c5347",
+ "series_id": "012ed239385b7ab4",
  "series_title": "Serie di Prova",
  "overview": null,
  "runtime_ms": 20021,
@@ -20,7 +20,7 @@
  "status": null,
  "available": true,
  "match_state": "pending",
- "added_at": 1794861758963,
+ "added_at": 1795070396707,
  "images": {
   "poster": null,
   "poster_color": null,
@@ -37,6 +37,7 @@
  },
  "child_count": null,
  "unplayed_count": null,
+ "authors": null,
  "tagline": null,
  "extras": [],
  "manual_collection": false,
@@ -47,7 +48,7 @@
  "external_ids": {},
  "files": [
   {
-   "id": "7f09ba6f7691100a",
+   "id": "012ed239385b7ab4",
    "name": "Serie di Prova S01E01.mkv",
    "version_label": null,
    "container": "mkv",

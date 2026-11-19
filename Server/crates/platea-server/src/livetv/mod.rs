@@ -121,8 +121,11 @@ async fn fetch_text(state: &Shared, url: &str, headers: &[(&str, String)], limit
 /// Scarica in un file (le guide possono essere enormi): mai tutta in memoria.
 async fn fetch_file(state: &Shared, url: &str, headers: &[(&str, String)], target: &std::path::Path) -> anyhow::Result<()> {
     use tokio::io::AsyncWriteExt;
+    if let Some(d) = target.parent() {
+        tokio::fs::create_dir_all(d).await?;
+    }
     if let Some(path) = url.strip_prefix("file://").or_else(|| url.starts_with('/').then_some(url)) {
-        tokio::fs::copy(path, target).await?;
+        tokio::fs::copy(path, target).await.with_context(|| format!("guida {path}"))?;
         return Ok(());
     }
     let mut req = state.http.get(url).timeout(Duration::from_secs(600));
@@ -132,9 +135,6 @@ async fn fetch_file(state: &Shared, url: &str, headers: &[(&str, String)], targe
     let mut resp = req.send().await.with_context(|| format!("richiesta a {}", redact(url)))?;
     if !resp.status().is_success() {
         bail!("{} ha risposto {}", redact(url), resp.status());
-    }
-    if let Some(d) = target.parent() {
-        tokio::fs::create_dir_all(d).await?;
     }
     let mut f = tokio::fs::File::create(target).await?;
     let mut n = 0u64;

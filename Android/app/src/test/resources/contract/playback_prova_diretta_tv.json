@@ -1,14 +1,16 @@
 {
- "session_id": "b4fc3d559b0a282e081f5e7b",
+ "session_id": "32f6a2bd43c5ffb2d99f6fff",
  "stream_token": "<token>",
  "method": "direct_play",
  "reasons": [],
  "chain": "MP4 · H.264 · AAC 1.0",
- "stream_url": "/api/v1/stream/b4fc3d559b0a282e081f5e7b?t=x",
+ "stream_url": "/api/v1/stream/32f6a2bd43c5ffb2d99f6fff?t=x",
  "hls_url": null,
- "file_id": "eb3f869e88d4e907",
+ "file_id": "252888e3c11fd94a",
  "duration_ms": 40000,
  "start_ms": 0,
+ "part_offset_ms": null,
+ "book_duration_ms": null,
  "audio_index": 1,
  "subtitle": {
   "delivery": "none"

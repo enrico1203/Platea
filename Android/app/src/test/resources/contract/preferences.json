@@ -10,9 +10,12 @@
  "subtitle_background": false,
  "home_sections": [
   "resume",
+  "listening",
+  "on_air",
   "next_up",
   "recent"
  ],
+ "home_sections_version": 3,
  "home_hidden_libraries": [],
  "hide_played_in_recent": false,
  "theme": "auto",
