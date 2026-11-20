@@ -129,3 +129,21 @@ export type LiveSourceKind = "dispatcharr" | "m3u" | "hdhomerun" | "xtream";
 export interface LiveSource { id: string; kind: LiveSourceKind; name: string; url: string; epg_url: string | null; has_api_key: boolean; username: string | null; has_password: boolean;
   channel_profile: string | null; output_profile: number | null; recordings_path: string | null; max_streams: number | null; refresh_hours: number; epg_refresh_hours: number; epg_days: number;
   enabled: boolean; last_refresh_at: number | null; last_epg_at: number | null; last_status: string | null; last_message: string | null; channels: number; active_streams: number }
+
+/** Statistiche delle librerie (GET /api/v1/libraries/stats, solo amministratori). */
+export interface LibraryStatsLibrary {
+  id: string; name: string; kind: "movies" | "shows" | "audiobooks";
+  files: number; size: number; duration_ms: number; video_files: number; video_size: number; video_duration_ms: number;
+  movies: number; series: number; seasons: number; episodes: number; audiobooks: number; collections: number;
+  missing: number; probe_failed: number; probe_pending: number; strm: number; extras: number; extras_size: number;
+  avg_bitrate: number; multi_version_items: number; multi_version_extra_size: number; plays: number; watched_ms: number;
+}
+/** Un gruppo di una dimensione in una libreria: `files` conta i file (o i titoli per generi, voti, associazione). */
+export interface LibraryStatsRow { lib: string; key: string; files: number; size: number; duration_ms: number }
+export interface LibraryStatsHeavy { id: string; title: string; year: number | null; kind: string; library: string; files: number; size: number; duration_ms: number }
+export interface LibraryStats {
+  generated_at: number; took_ms: number;
+  libraries: LibraryStatsLibrary[];
+  breakdowns: Partial<Record<"resolution" | "video_codec" | "hdr" | "container" | "audio_codec" | "channels" | "bitrate" | "decade" | "growth" | "match" | "genre" | "rating" | "audio_language" | "subtitle_language", LibraryStatsRow[]>>;
+  heaviest: LibraryStatsHeavy[];
+}

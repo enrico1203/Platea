@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, RefreshCw, Pencil, Trash2, X } from "lucide-react";
+import { Link } from "react-router-dom";
+import { BarChart3, Plus, RefreshCw, Pencil, Trash2, X } from "lucide-react";
 import { api, ApiError } from "../../api/client";
 import type { Library, Page } from "../../api/types";
 import { Alert, Badge, Confirm, Dialog, Empty, SelectField, Switch, TextField, toast } from "../../components/ui";
@@ -95,7 +96,8 @@ export default function Libraries() {
     <div className="stack-lg">
       <div className="page-head" style={{ marginBottom: 0 }}>
         <h1 className="t-h1">{t("admin.libraries.title")}</h1>
-        <div className="row">
+        <div className="row" style={{ flexWrap: "wrap" }}>
+          <Link to="/admin/libraries/stats" className="pl-btn pl-btn--secondary"><BarChart3 />{t("admin.stats.button")}</Link>
           <button className="pl-btn pl-btn--secondary" onClick={async () => { await api("/api/v1/libraries/scan-all", { method: "POST" }); toast(t("admin.libraries.scanQueued")); }}><RefreshCw />{t("admin.libraries.scanAll")}</button>
           <button className="pl-btn pl-btn--primary" onClick={() => setEdit("new")}><Plus />{t("admin.libraries.add")}</button>
         </div>

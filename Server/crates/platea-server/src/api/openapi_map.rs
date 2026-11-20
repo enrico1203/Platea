@@ -17,6 +17,7 @@ pub const BODIES: &[(&str, &str, Option<&str>, Option<&str>)] = &[
     ("get", "/api/v1/home", None, Some("Home")),
     ("get", "/api/v1/libraries", None, Some("LibraryPage")),
     ("get", "/api/v1/libraries/{id}", None, Some("Library")),
+    ("get", "/api/v1/libraries/stats", None, Some("LibraryStats")),
     ("get", "/api/v1/items", None, Some("ItemPage")),
     ("get", "/api/v1/search", None, Some("ItemPage")),
     ("get", "/api/v1/items/{id}", None, Some("ItemDetail")),

@@ -53,6 +53,80 @@
   ],
   "type": "object"
  },
+ "Audiobook": {
+  "properties": {
+   "chapters": {
+    "items": {
+     "$ref": "#/components/schemas/BookChapter"
+    },
+    "type": "array"
+   },
+   "duration_ms": {
+    "type": "number"
+   },
+   "parts": {
+    "items": {
+     "$ref": "#/components/schemas/BookPart"
+    },
+    "type": "array"
+   }
+  },
+  "required": [
+   "parts",
+   "chapters",
+   "duration_ms"
+  ],
+  "type": "object"
+ },
+ "BookChapter": {
+  "properties": {
+   "part": {
+    "type": "number"
+   },
+   "start_ms": {
+    "type": "number"
+   },
+   "title": {
+    "type": [
+     "string",
+     "null"
+    ]
+   }
+  },
+  "required": [
+   "start_ms",
+   "title",
+   "part"
+  ],
+  "type": "object"
+ },
+ "BookPart": {
+  "properties": {
+   "duration_ms": {
+    "type": "number"
+   },
+   "file_id": {
+    "type": "string"
+   },
+   "offset_ms": {
+    "type": "number"
+   },
+   "present": {
+    "type": "boolean"
+   },
+   "title": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "file_id",
+   "title",
+   "duration_ms",
+   "offset_ms",
+   "present"
+  ],
+  "type": "object"
+ },
  "Candidate": {
   "properties": {
    "overview": {
@@ -359,6 +433,12 @@
  },
  "Home": {
   "properties": {
+   "listening": {
+    "items": {
+     "$ref": "#/components/schemas/Item"
+    },
+    "type": "array"
+   },
    "next_up": {
     "items": {
      "$ref": "#/components/schemas/Item"
@@ -412,6 +492,13 @@
   "properties": {
    "added_at": {
     "type": "number"
+   },
+   "authors": {
+    "description": "Audiolibri: i primi autori, separati da virgole.",
+    "type": [
+     "string",
+     "null"
+    ]
    },
    "available": {
     "type": "boolean"
@@ -613,6 +700,17 @@
    "added_at": {
     "type": "number"
    },
+   "audiobook": {
+    "$ref": "#/components/schemas/Audiobook",
+    "description": "Audiolibro: le parti (file in ordine, con l'inizio nel libro) e i capitoli sull'intero libro."
+   },
+   "authors": {
+    "description": "Audiolibri: i primi autori, separati da virgole.",
+    "type": [
+     "string",
+     "null"
+    ]
+   },
    "available": {
     "type": "boolean"
    },
@@ -657,6 +755,39 @@
      "type": "string"
     },
     "type": "object"
+   },
+   "extras": {
+    "description": "Contenuti extra del film o della serie: si riproducono con `/play/<id>?file=<file_id>`.",
+    "items": {
+     "properties": {
+      "duration_ms": {
+       "type": [
+        "number",
+        "null"
+       ]
+      },
+      "file_id": {
+       "type": "string"
+      },
+      "kind": {
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "title": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "file_id",
+      "title",
+      "kind",
+      "duration_ms"
+     ],
+     "type": "object"
+    },
+    "type": "array"
    },
    "files": {
     "items": {
@@ -910,7 +1041,8 @@
    "series",
    "season",
    "episode",
-   "collection"
+   "collection",
+   "audiobook"
   ],
   "type": "string"
  },
@@ -1004,6 +1136,135 @@
   ],
   "type": "object"
  },
+ "JobProgress": {
+  "properties": {
+   "paused_until": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "queues": {
+    "items": {
+     "properties": {
+      "done": {
+       "type": "number"
+      },
+      "eta_ms": {
+       "type": [
+        "number",
+        "null"
+       ]
+      },
+      "kind": {
+       "type": "string"
+      },
+      "library": {
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "library_id": {
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "per_minute": {
+       "type": "number"
+      },
+      "percent": {
+       "type": "number"
+      },
+      "queued": {
+       "type": "number"
+      },
+      "running": {
+       "type": "number"
+      },
+      "total": {
+       "type": "number"
+      }
+     },
+     "required": [
+      "kind",
+      "library_id",
+      "library",
+      "queued",
+      "running",
+      "done",
+      "total",
+      "percent",
+      "per_minute",
+      "eta_ms"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   },
+   "scans": {
+    "items": {
+     "properties": {
+      "dirs": {
+       "type": "number"
+      },
+      "eta_ms": {
+       "type": [
+        "number",
+        "null"
+       ]
+      },
+      "expected_dirs": {
+       "type": [
+        "number",
+        "null"
+       ]
+      },
+      "library": {
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "library_id": {
+       "type": "string"
+      },
+      "percent": {
+       "type": [
+        "number",
+        "null"
+       ]
+      },
+      "saving": {
+       "type": "boolean"
+      },
+      "started_at": {
+       "type": "number"
+      }
+     },
+     "required": [
+      "library_id",
+      "library",
+      "dirs",
+      "expected_dirs",
+      "percent",
+      "saving",
+      "started_at",
+      "eta_ms"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   }
+  },
+  "required": [
+   "scans",
+   "queues",
+   "paused_until"
+  ],
+  "type": "object"
+ },
  "Library": {
   "properties": {
    "country": {
@@ -1024,7 +1285,8 @@
    "kind": {
     "enum": [
      "movies",
-     "shows"
+     "shows",
+     "audiobooks"
     ],
     "type": "string"
    },
@@ -1119,6 +1381,807 @@
  "LibraryPage": {
   "$ref": "#/components/schemas/PageLibrary"
  },
+ "LibraryStats": {
+  "properties": {
+   "breakdowns": {
+    "properties": {
+     "audio_codec": {
+      "items": {
+       "$ref": "#/components/schemas/LibraryStatsRow"
+      },
+      "type": "array"
+     },
+     "audio_language": {
+      "items": {
+       "$ref": "#/components/schemas/LibraryStatsRow"
+      },
+      "type": "array"
+     },
+     "bitrate": {
+      "items": {
+       "$ref": "#/components/schemas/LibraryStatsRow"
+      },
+      "type": "array"
+     },
+     "channels": {
+      "items": {
+       "$ref": "#/components/schemas/LibraryStatsRow"
+      },
+      "type": "array"
+     },
+     "container": {
+      "items": {
+       "$ref": "#/components/schemas/LibraryStatsRow"
+      },
+      "type": "array"
+     },
+     "decade": {
+      "items": {
+       "$ref": "#/components/schemas/LibraryStatsRow"
+      },
+      "type": "array"
+     },
+     "genre": {
+      "items": {
+       "$ref": "#/components/schemas/LibraryStatsRow"
+      },
+      "type": "array"
+     },
+     "growth": {
+      "items": {
+       "$ref": "#/components/schemas/LibraryStatsRow"
+      },
+      "type": "array"
+     },
+     "hdr": {
+      "items": {
+       "$ref": "#/components/schemas/LibraryStatsRow"
+      },
+      "type": "array"
+     },
+     "match": {
+      "items": {
+       "$ref": "#/components/schemas/LibraryStatsRow"
+      },
+      "type": "array"
+     },
+     "rating": {
+      "items": {
+       "$ref": "#/components/schemas/LibraryStatsRow"
+      },
+      "type": "array"
+     },
+     "resolution": {
+      "items": {
+       "$ref": "#/components/schemas/LibraryStatsRow"
+      },
+      "type": "array"
+     },
+     "subtitle_language": {
+      "items": {
+       "$ref": "#/components/schemas/LibraryStatsRow"
+      },
+      "type": "array"
+     },
+     "video_codec": {
+      "items": {
+       "$ref": "#/components/schemas/LibraryStatsRow"
+      },
+      "type": "array"
+     }
+    },
+    "type": "object"
+   },
+   "generated_at": {
+    "type": "number"
+   },
+   "heaviest": {
+    "items": {
+     "$ref": "#/components/schemas/LibraryStatsHeavy"
+    },
+    "type": "array"
+   },
+   "libraries": {
+    "items": {
+     "$ref": "#/components/schemas/LibraryStatsLibrary"
+    },
+    "type": "array"
+   },
+   "took_ms": {
+    "type": "number"
+   }
+  },
+  "required": [
+   "generated_at",
+   "took_ms",
+   "libraries",
+   "breakdowns",
+   "heaviest"
+  ],
+  "type": "object"
+ },
+ "LibraryStatsHeavy": {
+  "properties": {
+   "duration_ms": {
+    "type": "number"
+   },
+   "files": {
+    "type": "number"
+   },
+   "id": {
+    "type": "string"
+   },
+   "kind": {
+    "type": "string"
+   },
+   "library": {
+    "type": "string"
+   },
+   "size": {
+    "type": "number"
+   },
+   "title": {
+    "type": "string"
+   },
+   "year": {
+    "type": [
+     "number",
+     "null"
+    ]
+   }
+  },
+  "required": [
+   "id",
+   "title",
+   "year",
+   "kind",
+   "library",
+   "files",
+   "size",
+   "duration_ms"
+  ],
+  "type": "object"
+ },
+ "LibraryStatsLibrary": {
+  "description": "Statistiche delle librerie (GET /api/v1/libraries/stats, solo amministratori).",
+  "properties": {
+   "audiobooks": {
+    "type": "number"
+   },
+   "avg_bitrate": {
+    "type": "number"
+   },
+   "collections": {
+    "type": "number"
+   },
+   "duration_ms": {
+    "type": "number"
+   },
+   "episodes": {
+    "type": "number"
+   },
+   "extras": {
+    "type": "number"
+   },
+   "extras_size": {
+    "type": "number"
+   },
+   "files": {
+    "type": "number"
+   },
+   "id": {
+    "type": "string"
+   },
+   "kind": {
+    "enum": [
+     "movies",
+     "shows",
+     "audiobooks"
+    ],
+    "type": "string"
+   },
+   "missing": {
+    "type": "number"
+   },
+   "movies": {
+    "type": "number"
+   },
+   "multi_version_extra_size": {
+    "type": "number"
+   },
+   "multi_version_items": {
+    "type": "number"
+   },
+   "name": {
+    "type": "string"
+   },
+   "plays": {
+    "type": "number"
+   },
+   "probe_failed": {
+    "type": "number"
+   },
+   "probe_pending": {
+    "type": "number"
+   },
+   "seasons": {
+    "type": "number"
+   },
+   "series": {
+    "type": "number"
+   },
+   "size": {
+    "type": "number"
+   },
+   "strm": {
+    "type": "number"
+   },
+   "video_duration_ms": {
+    "type": "number"
+   },
+   "video_files": {
+    "type": "number"
+   },
+   "video_size": {
+    "type": "number"
+   },
+   "watched_ms": {
+    "type": "number"
+   }
+  },
+  "required": [
+   "id",
+   "name",
+   "kind",
+   "files",
+   "size",
+   "duration_ms",
+   "video_files",
+   "video_size",
+   "video_duration_ms",
+   "movies",
+   "series",
+   "seasons",
+   "episodes",
+   "audiobooks",
+   "collections",
+   "missing",
+   "probe_failed",
+   "probe_pending",
+   "strm",
+   "extras",
+   "extras_size",
+   "avg_bitrate",
+   "multi_version_items",
+   "multi_version_extra_size",
+   "plays",
+   "watched_ms"
+  ],
+  "type": "object"
+ },
+ "LibraryStatsRow": {
+  "description": "Un gruppo di una dimensione in una libreria: `files` conta i file (o i titoli per generi, voti, associazione).",
+  "properties": {
+   "duration_ms": {
+    "type": "number"
+   },
+   "files": {
+    "type": "number"
+   },
+   "key": {
+    "type": "string"
+   },
+   "lib": {
+    "type": "string"
+   },
+   "size": {
+    "type": "number"
+   }
+  },
+  "required": [
+   "lib",
+   "key",
+   "files",
+   "size",
+   "duration_ms"
+  ],
+  "type": "object"
+ },
+ "LiveChannel": {
+  "properties": {
+   "catchup_days": {
+    "type": "number"
+   },
+   "favorite": {
+    "type": "boolean"
+   },
+   "group": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "hidden": {
+    "type": "boolean"
+   },
+   "id": {
+    "type": "string"
+   },
+   "logo": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "name": {
+    "type": "string"
+   },
+   "next": {
+    "anyOf": [
+     {
+      "$ref": "#/components/schemas/LiveProgram"
+     },
+     {
+      "type": "null"
+     }
+    ]
+   },
+   "now": {
+    "anyOf": [
+     {
+      "$ref": "#/components/schemas/LiveProgram"
+     },
+     {
+      "type": "null"
+     }
+    ]
+   },
+   "number": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "programs": {
+    "items": {
+     "$ref": "#/components/schemas/LiveProgram"
+    },
+    "type": "array"
+   },
+   "radio": {
+    "type": "boolean"
+   },
+   "recordable": {
+    "type": "boolean"
+   },
+   "source_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "id",
+   "number",
+   "name",
+   "group",
+   "logo",
+   "radio",
+   "catchup_days",
+   "favorite",
+   "recordable"
+  ],
+  "type": "object"
+ },
+ "LiveGuide": {
+  "properties": {
+   "channels": {
+    "items": {
+     "$ref": "#/components/schemas/LiveChannel"
+    },
+    "type": "array"
+   },
+   "end": {
+    "type": "number"
+   },
+   "now": {
+    "type": "number"
+   },
+   "start": {
+    "type": "number"
+   }
+  },
+  "required": [
+   "start",
+   "end",
+   "now",
+   "channels"
+  ],
+  "type": "object"
+ },
+ "LivePlay": {
+  "properties": {
+   "chain": {
+    "type": "string"
+   },
+   "channel": {
+    "$ref": "#/components/schemas/LiveChannel"
+   },
+   "codecs": {
+    "additionalProperties": {},
+    "type": "object"
+   },
+   "hls_url": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "method": {
+    "type": "string"
+   },
+   "session_id": {
+    "type": "string"
+   },
+   "stream_token": {
+    "type": "string"
+   },
+   "stream_url": {
+    "type": [
+     "string",
+     "null"
+    ]
+   }
+  },
+  "required": [
+   "session_id",
+   "stream_token",
+   "method",
+   "chain",
+   "hls_url",
+   "stream_url",
+   "channel",
+   "codecs"
+  ],
+  "type": "object"
+ },
+ "LiveProgram": {
+  "description": "Live TV.",
+  "properties": {
+   "category": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "channel": {
+    "$ref": "#/components/schemas/LiveChannel"
+   },
+   "channel_id": {
+    "type": "string"
+   },
+   "description": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "end_ms": {
+    "type": "number"
+   },
+   "episode": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "id": {
+    "type": "string"
+   },
+   "image": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "is_new": {
+    "type": "boolean"
+   },
+   "rating": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "recording": {
+    "anyOf": [
+     {
+      "properties": {
+       "id": {
+        "type": "string"
+       },
+       "kind": {
+        "enum": [
+         "once",
+         "series"
+        ],
+        "type": "string"
+       },
+       "status": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "id",
+       "kind",
+       "status"
+      ],
+      "type": "object"
+     },
+     {
+      "type": "null"
+     }
+    ]
+   },
+   "season": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "start_ms": {
+    "type": "number"
+   },
+   "subtitle": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "title": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "id",
+   "channel_id",
+   "start_ms",
+   "end_ms",
+   "title",
+   "subtitle",
+   "category",
+   "season",
+   "episode",
+   "is_new"
+  ],
+  "type": "object"
+ },
+ "LiveRecording": {
+  "properties": {
+   "channel": {
+    "anyOf": [
+     {
+      "$ref": "#/components/schemas/LiveChannel"
+     },
+     {
+      "type": "null"
+     }
+    ]
+   },
+   "description": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "end_ms": {
+    "type": "number"
+   },
+   "id": {
+    "type": "string"
+   },
+   "item_id": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "kind": {
+    "enum": [
+     "once",
+     "series"
+    ],
+    "type": "string"
+   },
+   "mine": {
+    "type": "boolean"
+   },
+   "shared": {
+    "type": "boolean"
+   },
+   "start_ms": {
+    "type": "number"
+   },
+   "status": {
+    "type": "string"
+   },
+   "subtitle": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "title": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "id",
+   "kind",
+   "title",
+   "subtitle",
+   "description",
+   "start_ms",
+   "end_ms",
+   "status",
+   "channel",
+   "item_id",
+   "mine",
+   "shared"
+  ],
+  "type": "object"
+ },
+ "LiveSource": {
+  "properties": {
+   "active_streams": {
+    "type": "number"
+   },
+   "channel_profile": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "channels": {
+    "type": "number"
+   },
+   "enabled": {
+    "type": "boolean"
+   },
+   "epg_days": {
+    "type": "number"
+   },
+   "epg_refresh_hours": {
+    "type": "number"
+   },
+   "epg_url": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "has_api_key": {
+    "type": "boolean"
+   },
+   "has_password": {
+    "type": "boolean"
+   },
+   "id": {
+    "type": "string"
+   },
+   "kind": {
+    "$ref": "#/components/schemas/LiveSourceKind"
+   },
+   "last_epg_at": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "last_message": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "last_refresh_at": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "last_status": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "max_streams": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "name": {
+    "type": "string"
+   },
+   "output_profile": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
+   "recordings_path": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
+   "refresh_hours": {
+    "type": "number"
+   },
+   "url": {
+    "type": "string"
+   },
+   "username": {
+    "type": [
+     "string",
+     "null"
+    ]
+   }
+  },
+  "required": [
+   "id",
+   "kind",
+   "name",
+   "url",
+   "epg_url",
+   "has_api_key",
+   "username",
+   "has_password",
+   "channel_profile",
+   "output_profile",
+   "recordings_path",
+   "max_streams",
+   "refresh_hours",
+   "epg_refresh_hours",
+   "epg_days",
+   "enabled",
+   "last_refresh_at",
+   "last_epg_at",
+   "last_status",
+   "last_message",
+   "channels",
+   "active_streams"
+  ],
+  "type": "object"
+ },
+ "LiveSourceKind": {
+  "enum": [
+   "dispatcharr",
+   "m3u",
+   "hdhomerun",
+   "xtream"
+  ],
+  "type": "string"
+ },
+ "LiveStatus": {
+  "properties": {
+   "can_record": {
+    "type": "boolean"
+   },
+   "channels": {
+    "type": "number"
+   },
+   "enabled": {
+    "type": "boolean"
+   }
+  },
+  "required": [
+   "enabled",
+   "channels",
+   "can_record"
+  ],
+  "type": "object"
+ },
  "LoginRequest": {
   "properties": {
    "client": {
@@ -1190,6 +2253,12 @@
       "type": "boolean"
      },
      "allow_download": {
+      "type": "boolean"
+     },
+     "allow_livetv": {
+      "type": "boolean"
+     },
+     "allow_recording": {
       "type": "boolean"
      },
      "allow_remote": {
@@ -1499,6 +2568,9 @@
    },
    "library": {
     "properties": {
+     "audiobooks": {
+      "type": "number"
+     },
      "episodes": {
       "type": "number"
      },
@@ -1719,6 +2791,13 @@
      "properties": {
       "added_at": {
        "type": "number"
+      },
+      "authors": {
+       "description": "Audiolibri: i primi autori, separati da virgole.",
+       "type": [
+        "string",
+        "null"
+       ]
       },
       "available": {
        "type": "boolean"
@@ -1999,6 +3078,12 @@
     },
     "type": "array"
    },
+   "book_duration_ms": {
+    "type": [
+     "number",
+     "null"
+    ]
+   },
    "chain": {
     "type": "string"
    },
@@ -2026,6 +3111,13 @@
    },
    "method": {
     "$ref": "#/components/schemas/Method"
+   },
+   "part_offset_ms": {
+    "description": "Audiolibro: inizio della parte nel libro e durata del libro.",
+    "type": [
+     "number",
+     "null"
+    ]
    },
    "reasons": {
     "items": {
@@ -2262,6 +3354,13 @@
      "properties": {
       "added_at": {
        "type": "number"
+      },
+      "authors": {
+       "description": "Audiolibri: i primi autori, separati da virgole.",
+       "type": [
+        "string",
+        "null"
+       ]
       },
       "available": {
        "type": "boolean"
@@ -3110,6 +4209,12 @@
    "duration_ms": {
     "type": "number"
    },
+   "executor": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
    "id": {
     "type": "string"
    },
@@ -3160,6 +4265,12 @@
    },
    "server_now": {
     "type": "number"
+   },
+   "source": {
+    "type": [
+     "string",
+     "null"
+    ]
    },
    "started_at": {
     "type": "number"
@@ -3284,6 +4395,12 @@
      "null"
     ]
    },
+   "logo": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
    "name": {
     "type": "string"
    },
@@ -3296,8 +4413,17 @@
    "setup_required": {
     "type": "boolean"
    },
+   "source_url": {
+    "type": [
+     "string",
+     "null"
+    ]
+   },
    "version": {
     "type": "string"
+   },
+   "white_label": {
+    "type": "boolean"
    }
   },
   "required": [
@@ -3382,6 +4508,13 @@
    "allow_download": {
     "type": "boolean"
    },
+   "allow_livetv": {
+    "description": "Live TV: canali, gruppi consentiti (vuoto = tutti), registrazioni.",
+    "type": "boolean"
+   },
+   "allow_recording": {
+    "type": "boolean"
+   },
    "allow_remote": {
     "type": "boolean"
    },
@@ -3391,6 +4524,12 @@
    "allow_transcode": {
     "type": "boolean"
    },
+   "allowed_genres": {
+    "items": {
+     "type": "string"
+    },
+    "type": "array"
+   },
    "avatar": {
     "type": [
      "string",
@@ -3399,6 +4538,13 @@
    },
    "block_unrated": {
     "type": "boolean"
+   },
+   "blocked_genres": {
+    "description": "Generi nascosti e consentiti (vuoto = tutti).",
+    "items": {
+     "type": "string"
+    },
+    "type": "array"
    },
    "created_at": {
     "type": "number"
@@ -3431,6 +4577,12 @@
     ]
    },
    "library_ids": {
+    "items": {
+     "type": "string"
+    },
+    "type": "array"
+   },
+   "livetv_groups": {
     "items": {
      "type": "string"
     },
@@ -3546,6 +4698,9 @@
      "type": "string"
     },
     "type": "array"
+   },
+   "home_sections_version": {
+    "type": "number"
    },
    "max_bitrate_local": {
     "type": "number"

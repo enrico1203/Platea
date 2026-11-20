@@ -34,6 +34,7 @@ const LivePlayer = lazy(() => import("./pages/LivePlayer"));
 const AdminLiveTV = lazy(() => import("./pages/admin/LiveTV"));
 const AdminOverview = lazy(() => import("./pages/admin/Overview"));
 const AdminLibraries = lazy(() => import("./pages/admin/Libraries"));
+const AdminLibraryStats = lazy(() => import("./pages/admin/LibraryStats"));
 const AdminUsers = lazy(() => import("./pages/admin/Users"));
 const AdminJobs = lazy(() => import("./pages/admin/Jobs"));
 const AdminReview = lazy(() => import("./pages/admin/Review"));
@@ -84,6 +85,7 @@ function Routed() {
           <Route path="about" element={<About />} />
           <Route path="admin" element={<Guard admin><AdminOverview /></Guard>} />
           <Route path="admin/libraries" element={<Guard admin><AdminLibraries /></Guard>} />
+          <Route path="admin/libraries/stats" element={<Guard admin><AdminLibraryStats /></Guard>} />
           <Route path="admin/users" element={<Guard admin><AdminUsers /></Guard>} />
           <Route path="admin/jobs" element={<Guard admin><AdminJobs /></Guard>} />
           <Route path="admin/review" element={<Guard admin><AdminReview /></Guard>} />

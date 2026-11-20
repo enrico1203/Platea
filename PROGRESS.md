@@ -477,6 +477,19 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-20 — **0.1.24**: statistiche delle librerie (Amministrazione › Librerie › Statistiche,
+  `/admin/libraries/stats`; API `GET /api/v1/libraries/stats`, solo admin). Riepilogo (TB, durata, film, serie,
+  audiolibri, quota 4K/HDR, HEVC/AV1, bitrate medio, riproduzioni), confronto tra librerie (barre + tabella),
+  composizione per libreria (risoluzione, codec video/audio, HDR, canali, contenitore, associazione metadati),
+  dettaglio filtrabile per libreria (crescita cumulata e mensile per data dei file, decenni, bitrate, lingue audio e
+  sottotitoli, generi, voti, titoli più pesanti, stato dei file). Server: una passata in streaming su `media_files`
+  (primo flusso video/audio con sottoquery) + poche GROUP BY; risultato in memoria 10 minuti (`?refresh=true` per
+  ricalcolare), timeout 180 s. Misurato su copia del DB (393k file, 1,5M flussi): ~9 s il primo calcolo, poi 3 ms.
+  Negli audiolibri il flusso video (copertina) non conta come video. Grafici in `components/StatCharts.tsx`,
+  palette `--chart-1…8` + `--chart-other` (chiaro e scuro). Provato con Playwright: desktop scuro/chiaro e 390 px.
+  Nota: `platea <qualsiasi cosa diversa da reset-password>` avvia un secondo server (nel container rimette in coda i
+  lavori "in corso"): non usarlo per `--help`.
+
 - 2026-11-20 — **0.1.23**: in Jellyfin per Android TV toccare un attore non apriva nulla: `/Items/<persona>`
   rispondeva 404. Ora c'è la scheda della persona (`person_dto`: nome, foto, TMDB) e `/Items` filtra per `PersonIds`
   (righe Film/Serie/Episodi della pagina persona). Da confermare dall'app.

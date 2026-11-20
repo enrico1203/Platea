@@ -115,7 +115,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     const num = (n: number, digits = 0) => nf(digits).format(n);
     const bytes = (n: number | null | undefined) => {
       if (n == null) return "—";
-      const units = ["B", "KB", "MB", "GB", "TB"];
+      const units = ["B", "KB", "MB", "GB", "TB", "PB"];
       let v = n;
       let i = 0;
       while (v >= 1000 && i < units.length - 1) { v /= 1000; i++; }

@@ -19,6 +19,7 @@ pub mod playback;
 pub mod playlists;
 pub mod quickconnect;
 pub mod setup;
+pub mod stats;
 pub mod subtitles;
 pub mod system;
 pub mod users;
@@ -176,6 +177,7 @@ pub fn router(state: Shared) -> Router {
     let api = setup::routes(api);
     let api = auth::routes(api);
     let api = users::routes(api);
+    let api = stats::routes(api);
     let api = libraries::routes(api);
     let api = items::routes(api);
     let api = playback::routes(api);
@@ -314,6 +316,7 @@ mod openapi_tests {
         let api = super::setup::routes(api);
         let api = super::auth::routes(api);
         let api = super::users::routes(api);
+        let api = super::stats::routes(api);
         let api = super::libraries::routes(api);
         let api = super::items::routes(api);
         let api = super::playback::routes(api);
