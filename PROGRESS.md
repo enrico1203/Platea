@@ -477,6 +477,16 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-20 — **0.1.20**: film MKV grande da mount cloud con sottotitolo interno attivo: nero in Safari (HLS nativo),
+  sia in copia sia nella transcodifica di ripiego. Causa: Safari non mostra il video finché la traccia `<track>`
+  attiva non è caricata, e il WebVTT di un sottotitolo interno si estrae leggendo tutto il file (13 GB a ~22 MB/s,
+  ~10 min). In più a ogni nuova sessione (ripiego, riprova) la richiesta si chiudeva, l'FFmpeg dell'estrazione veniva
+  ucciso a metà (`kill_on_drop`) e ripartiva da zero: non finiva mai, lasciando `.tmp.vtt` vuoti in cache.
+  Ora: il player crea le tracce senza src, scarica il WebVTT con fetch e lo aggancia (blob) quando è pronto, quindi il
+  video parte subito e i sottotitoli compaiono dopo; l'estrazione gira in un task separato e arriva in fondo anche se
+  il player chiude la richiesta (le richieste successive aspettano lo stesso lavoro); tempo limite 10 min + 5 MB/s
+  della dimensione; i `.tmp.vtt` rimasti si cancellano all'avvio e in caso di errore o timeout.
+
 - 2026-11-19 — **0.1.19**: ancora 404 aprendo un canale da Swiftfin. Causa: `lt_channels_rows` (e `visible_channels`
   della web app) mescolava `?1` e `?` anonimi; sqlx (SQLite) numera i `?` anonimi da 1, quindi `c.id = ?` riceveva
   l'id dell'utente → "Canale non trovato" su scheda, PlaybackInfo, `/Items?ids=`. Nella web app lo stesso errore

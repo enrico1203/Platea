@@ -930,11 +930,19 @@ async fn subtitle(State(state): State<Shared>, Path((id, name)): Path<(String, S
     if !cache.exists() {
         // Stesso sottotitolo chiesto da due sessioni (ripiego alla transcodifica, cambio di traccia): una sola lettura
         // del file, l'altra richiesta aspetta il risultato. Su un mount cloud ogni lettura completa costa gigabyte.
-        let job = state.subtitle_jobs.lock().unwrap().entry(cache.clone()).or_default().clone();
-        let _job = job.lock().await;
-        let res = extract_subtitle(&state, &s, &info, &cache, idx, external, ext_path).await;
-        state.subtitle_jobs.lock().unwrap().remove(&cache);
-        res?;
+        // L'estrazione gira in un task a sé: se il player chiude la richiesta (ripiego alla transcodifica, nuova
+        // sessione) arriva comunque in fondo e riempie la cache. Prima veniva uccisa a metà e ripartiva da zero a
+        // ogni tentativo: su un file grande in cloud non finiva mai.
+        let task_state = state.clone();
+        let task_cache = cache.clone();
+        let task = tokio::spawn(async move {
+            let job = task_state.subtitle_jobs.lock().unwrap().entry(task_cache.clone()).or_default().clone();
+            let _job = job.lock().await;
+            let res = extract_subtitle(&task_state, &s, &info, &task_cache, idx, external, ext_path).await;
+            task_state.subtitle_jobs.lock().unwrap().remove(&task_cache);
+            res
+        });
+        task.await.map_err(|e| ApiError::Internal(e.into()))??;
     }
     let body = tokio::fs::read(&cache).await.map_err(|e| ApiError::Internal(e.into()))?;
     Ok(Response::builder()
@@ -991,10 +999,20 @@ async fn extract_subtitle(
                 cmd.args(["-map", &format!("0:{idx}")]);
             }
             cmd.args(["-c:s", "webvtt", "-f", "webvtt"]).arg(&tmp).kill_on_drop(true).stdin(std::process::Stdio::null());
-            let out = tokio::time::timeout(Duration::from_secs(600), cmd.output())
-                .await
-                .map_err(|_| ApiError::coded(StatusCode::GATEWAY_TIMEOUT, "SubtitleTimeout", "Estrazione del sottotitolo oltre il tempo limite"))?
-                .map_err(|e| ApiError::Internal(e.into()))?;
+            // Il file si legge tutto: il tempo limite cresce con la dimensione (10 minuti più 5 MB/s, su un mount
+            // cloud 13 GB richiedono una decina di minuti).
+            let limit = Duration::from_secs(600 + info.size.max(0) as u64 / 5_000_000);
+            let out = match tokio::time::timeout(limit, cmd.output()).await {
+                Ok(Ok(out)) => out,
+                Ok(Err(e)) => {
+                    let _ = tokio::fs::remove_file(&tmp).await;
+                    return Err(ApiError::Internal(e.into()));
+                }
+                Err(_) => {
+                    let _ = tokio::fs::remove_file(&tmp).await;
+                    return Err(ApiError::coded(StatusCode::GATEWAY_TIMEOUT, "SubtitleTimeout", "Estrazione del sottotitolo oltre il tempo limite"));
+                }
+            };
             if !out.status.success() {
                 let _ = tokio::fs::remove_file(&tmp).await;
                 return Err(ApiError::coded(

@@ -119,6 +119,14 @@ async fn run(boot: boot::BootConfig) -> anyhow::Result<()> {
         }
         return Err(e.into());
     }
+    // Estrazioni di sottotitoli interrotte (riavvio, versioni precedenti): file temporanei rimasti a metà.
+    if let Ok(dir) = std::fs::read_dir(boot.subtitles_dir()) {
+        for e in dir.flatten() {
+            if e.file_name().to_string_lossy().ends_with(".tmp.vtt") {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    }
     let secret = boot.load_secret()?;
     let db = db::Db::open(&boot).await?;
     let settings = settings::Settings::load(db.clone()).await?;

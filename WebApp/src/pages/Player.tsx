@@ -134,15 +134,18 @@ export default function Player() {
     hlsRef.current = null;
     window.clearTimeout(stallRef.current);
     video.removeAttribute("src");
+    for (const el of Array.from(video.querySelectorAll("track"))) if (el.src.startsWith("blob:")) URL.revokeObjectURL(el.src);
     while (video.firstChild) video.removeChild(video.firstChild);
-    // Sottotitoli di testo: consegnati a parte in WebVTT, il video non viene toccato.
+    // Sottotitoli di testo: consegnati a parte in WebVTT, il video non viene toccato. La traccia nasce senza src:
+    // Safari non mostra il video finché la traccia attiva non è caricata, e un sottotitolo interno di un file
+    // grande in cloud può richiedere minuti. Il WebVTT si scarica a parte e si aggancia quando è pronto.
     for (const s of p.subtitles) {
       if (!s.url) continue;
       const tr = document.createElement("track");
       tr.kind = "subtitles";
       tr.label = [s.language?.toUpperCase(), s.title, s.forced ? t("item.forced") : null].filter(Boolean).join(" · ") || `#${s.index}`;
       if (s.language) tr.srclang = s.language;
-      tr.src = mediaUrl(s.url)!;
+      tr.dataset.url = mediaUrl(s.url)!;
       tr.dataset.index = String(s.index);
       video.appendChild(tr);
     }
@@ -413,7 +416,25 @@ export default function Player() {
     for (const tr of Array.from(v.textTracks)) tr.mode = "disabled";
     const els = Array.from(v.querySelectorAll("track"));
     const idx = els.findIndex((e) => e.dataset.index === String(subIndex));
-    if (idx >= 0) v.textTracks[idx].mode = "showing";
+    if (idx < 0) return;
+    const el = els[idx];
+    if (el.src) {
+      v.textTracks[idx].mode = "showing";
+      return;
+    }
+    const url = el.dataset.url;
+    if (!url) return;
+    let cancelled = false;
+    fetch(url)
+      .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((b) => {
+        if (cancelled || !el.isConnected) return;
+        if (!el.src) el.src = URL.createObjectURL(b);
+        const i = Array.from(v.querySelectorAll("track")).indexOf(el);
+        if (i >= 0) v.textTracks[i].mode = "showing";
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
   }, [subIndex, info]);
 
   const poke = useCallback(() => {
