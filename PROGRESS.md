@@ -477,6 +477,10 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-20 — **0.1.23**: in Jellyfin per Android TV toccare un attore non apriva nulla: `/Items/<persona>`
+  rispondeva 404. Ora c'è la scheda della persona (`person_dto`: nome, foto, TMDB) e `/Items` filtra per `PersonIds`
+  (righe Film/Serie/Episodi della pagina persona). Da confermare dall'app.
+
 - 2026-11-20 — **0.1.22**: Jellyfin per Android TV (0.20, Fire TV) crashava aprendo una libreria e dopo un cambio di
   traccia audio. Ora `POST /ClientLog/Document` scrive nel log (WARN "rapporto di errore dall'app") i crash report
   che l'app manda da sola: stack trace e logcat. Cause: (1) le librerie non avevano `DisplayPreferencesId`, che l'app

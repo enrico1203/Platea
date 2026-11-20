@@ -1293,12 +1293,55 @@ async fn item_q(State(state): State<Shared>, user: AuthUser, Path(item): Path<St
     item_detail(&state, &user, &item).await
 }
 
+/// Scheda di una persona del cast: la apre Jellyfin per Android TV toccando un attore (prima 404, non succedeva nulla).
+async fn person_dto(state: &Shared, pid: i64) -> ApiResult<Value> {
+    let (name, tmdb): (String, Option<i64>) = sqlx::query_as("SELECT name, tmdb_id FROM people WHERE id = ?")
+        .bind(pid)
+        .fetch_optional(&state.db.read)
+        .await?
+        .ok_or_else(|| ApiError::not_found("Persona"))?;
+    let image: Option<i64> =
+        sqlx::query_scalar("SELECT id FROM images WHERE person_id = ? AND kind = 'profile'").bind(pid).fetch_optional(&state.db.read).await?;
+    let id = guid(state, NS_PERSON, pid);
+    let mut provider = serde_json::Map::new();
+    if let Some(t) = tmdb {
+        provider.insert("Tmdb".into(), json!(t.to_string()));
+    }
+    let mut tags = serde_json::Map::new();
+    if let Some(i) = image {
+        tags.insert("Primary".into(), json!(state.ids.encode(i)));
+    }
+    Ok(json!({
+        "Name": name,
+        "ServerId": state.server_id,
+        "Id": id,
+        "Etag": format!("p{pid}"),
+        "SortName": name,
+        "Type": "Person",
+        "IsFolder": false,
+        "LocationType": "Virtual",
+        "MediaType": "Unknown",
+        "ProviderIds": provider,
+        "ImageTags": tags,
+        "BackdropImageTags": [],
+        "ImageBlurHashes": {},
+        "People": [],
+        "Genres": [],
+        "GenreItems": [],
+        "Studios": [],
+        "Taglines": [],
+        "RemoteTrailers": [],
+        "UserData": { "PlaybackPositionTicks": 0, "PlayCount": 0, "IsFavorite": false, "Played": false, "Key": format!("person{pid}"), "ItemId": id },
+    }))
+}
+
 async fn item_detail(state: &Shared, user: &AuthUser, item: &str) -> ApiResult<Json<Value>> {
     match parse_ref(state, item) {
         Some(Ref::Item(i)) => Ok(Json(detail_dto(state, user, i).await?)),
         Some(Ref::Channel(c)) => Ok(Json(lt_channel_dto(state, user, c, true).await?)),
         Some(Ref::Program(p)) => Ok(Json(lt_program_dto_by_id(state, user, p).await?)),
         Some(Ref::LiveView) => Ok(Json(live_view_dto(state))),
+        Some(Ref::Person(p)) => Ok(Json(person_dto(state, p).await?)),
         Some(Ref::Library(l)) => {
             let row: (String, String) = sqlx::query_as("SELECT name, kind FROM libraries WHERE id = ?")
                 .bind(l)
@@ -1328,6 +1371,7 @@ struct ItemsQuery {
     is_favorite: Option<bool>,
     is_played: Option<bool>,
     genres: Option<String>,
+    person_ids: Option<String>,
     years: Option<String>,
     name_starts_with: Option<String>,
     #[serde(alias = "userId", alias = "UserId")]
@@ -1379,6 +1423,7 @@ fn normalize_query(uri: &Uri) -> ItemsQuery {
         is_favorite: b("isfavorite"),
         is_played: b("isplayed"),
         genres: s("genres"),
+        person_ids: s("personids"),
         years: s("years"),
         name_starts_with: s("namestartswith"),
         user_id: s("userid"),
@@ -1503,6 +1548,18 @@ async fn query_items(state: &Shared, user: &AuthUser, q: ItemsQuery) -> ApiResul
     if let Some(g) = &q.genres {
         let first = g.split('|').next().unwrap_or(g).to_string();
         push(&mut sql, " AND EXISTS (SELECT 1 FROM item_genres ig JOIN genres g ON g.id = ig.genre_id WHERE ig.item_id = i.id AND g.name = ?)", json!(first));
+    }
+    // Pagina di una persona (Jellyfin per Android TV: film, serie ed episodi con `PersonIds`).
+    if let Some(p) = &q.person_ids {
+        let ids: Vec<String> = p
+            .split(',')
+            .filter_map(|x| match parse_ref(state, x.trim()) {
+                Some(Ref::Person(id)) => Some(id.to_string()),
+                _ => None,
+            })
+            .collect();
+        let ids = if ids.is_empty() { "0".to_string() } else { ids.join(",") };
+        sql.push_str(&format!(" AND EXISTS (SELECT 1 FROM item_people ip WHERE ip.item_id = i.id AND ip.person_id IN ({ids}))"));
     }
     if let Some(y) = &q.years {
         let years: Vec<String> = y.split(',').filter_map(|x| x.trim().parse::<i64>().ok()).map(|x| x.to_string()).collect();
