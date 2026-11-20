@@ -1790,7 +1790,8 @@ async fn playback_info(
     if let Some(Ref::Channel(c)) = parse_ref(&state, &item) {
         let play_session = crate::util::random_hex(16);
         grant_stream(&play_session, &user, -c, crate::auth::peer_ip(&state, &parts));
-        return Ok(Json(json!({ "MediaSources": [lt_media_source(&state, &user, c, &play_session).await?], "PlaySessionId": play_session })));
+        let base = request_base(&state, headers);
+        return Ok(Json(json!({ "MediaSources": [lt_media_source(&state, &user, c, &play_session, &base).await?], "PlaySessionId": play_session })));
     }
     let id = item_id(&state, &item)?;
     let row = crate::api::items::load_item(&state, &user, id).await?;
@@ -2774,7 +2775,7 @@ async fn lt_channel_dto(state: &Shared, user: &AuthUser, id: i64, current: bool)
     let cur = if current { current_programs(state, &[c.id]).await?.remove(&c.id) } else { None };
     let mut v = channel_value(state, &c, cur);
     if current {
-        v["MediaSources"] = json!([lt_media_source(state, user, c.id, "").await?]);
+        v["MediaSources"] = json!([lt_media_source(state, user, c.id, "", "").await?]);
     }
     Ok(v)
 }
@@ -3145,8 +3146,23 @@ async fn lt_stream(state: &Shared, user: &AuthUser, channel: i64) -> ApiResult<R
     Ok(Response::builder().header(header::CONTENT_TYPE, "video/mp2t").header(header::CACHE_CONTROL, "no-store").body(Body::from_stream(body)).unwrap())
 }
 
+/// Indirizzo del server come lo vede il client (dietro un proxy: X-Forwarded-*), per gli URL assoluti.
+fn request_base(state: &Shared, headers: &HeaderMap) -> String {
+    let first =
+        |name: &str| headers.get(name).and_then(|v| v.to_str().ok()).and_then(|v| v.split(',').next()).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+    match first("x-forwarded-host").or_else(|| first("host")) {
+        Some(host) => {
+            let proto = first("x-forwarded-proto").filter(|p| p == "http" || p == "https").unwrap_or_else(|| "http".into());
+            format!("{proto}://{host}")
+        }
+        None => state.settings.get().general.public_url.trim_end_matches('/').to_string(),
+    }
+}
+
 /// Sorgente di un canale per PlaybackInfo: MPEG-TS infinito, letto dal client così com'è.
-async fn lt_media_source(state: &Shared, user: &AuthUser, channel: i64, play_session: &str) -> ApiResult<Value> {
+/// `Path` è un URL assoluto: con `IsRemote` Jellyfin per Android TV e Findroid lo aprono così com'è (un percorso
+/// relativo li faceva fallire). L'accesso passa dal permesso legato al `PlaySessionId`.
+async fn lt_media_source(state: &Shared, user: &AuthUser, channel: i64, play_session: &str, base: &str) -> ApiResult<Value> {
     if !user.perms.allow_livetv {
         return Err(ApiError::Forbidden("Live TV non abilitata".into()));
     }
@@ -3155,6 +3171,7 @@ async fn lt_media_source(state: &Shared, user: &AuthUser, channel: i64, play_ses
     let codecs: Value = codecs.as_deref().and_then(|x| serde_json::from_str(x).ok()).unwrap_or(json!({}));
     let id = guid(state, NS_CHANNEL, c.id);
     let url = format!("/Videos/{id}/stream.ts?static=true&MediaSourceId={id}&PlaySessionId={play_session}");
+    let path = format!("{base}{url}");
     let mut streams = Vec::new();
     if let Some(v) = codecs["video"].as_str() {
         streams.push(json!({ "Type": "Video", "Codec": v, "Index": 0, "Width": codecs["width"], "Height": codecs["height"], "IsInterlaced": codecs["interlaced"].as_bool().unwrap_or(false),
@@ -3171,7 +3188,7 @@ async fn lt_media_source(state: &Shared, user: &AuthUser, channel: i64, play_ses
     Ok(json!({
         "Protocol": "Http",
         "Id": id,
-        "Path": url,
+        "Path": path,
         "Type": "Default",
         "Container": "ts",
         "Name": c.name,
@@ -3182,7 +3199,11 @@ async fn lt_media_source(state: &Shared, user: &AuthUser, channel: i64, play_ses
         "IgnoreDts": true,
         "IgnoreIndex": true,
         "GenPtsInput": true,
-        "SupportsTranscoding": false,
+        // Ripiego delle app senza direct play (Jellyfin per Android TV dopo un errore, o con "riproduzione diretta"
+        // della Live TV spenta): stesso flusso TS, che il server già adatta solo come trasporto.
+        "SupportsTranscoding": true,
+        "TranscodingUrl": url,
+        "TranscodingContainer": "ts",
         "SupportsDirectStream": true,
         "SupportsDirectPlay": true,
         "IsInfiniteStream": true,

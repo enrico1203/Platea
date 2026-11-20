@@ -477,6 +477,14 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-20 — **0.1.21**: canale Live TV da Jellyfin per Android TV → errore, senza mai chiedere il flusso. Causa
+  (letto il codice dell'app): con `SupportsDirectPlay` e `IsRemote` l'app apre `Path` così com'è, e `Path` era un
+  percorso relativo (`/Videos/…/stream.ts`), che ExoPlayer non apre; lo stesso fa Findroid con `Protocol: Http`. Dopo
+  il primo errore l'app spegne il direct play e cerca `TranscodingUrl`, che mancava (`SupportsTranscoding: false`).
+  Ora `Path` è assoluto (host visto dal client, `X-Forwarded-Proto/Host` dietro il tunnel, altrimenti l'indirizzo
+  pubblico delle impostazioni) e c'è un `TranscodingUrl` sullo stesso flusso TS; l'accesso resta legato al
+  `PlaySessionId`. Da confermare dall'app.
+
 - 2026-11-20 — **0.1.20**: film MKV grande da mount cloud con sottotitolo interno attivo: nero in Safari (HLS nativo),
   sia in copia sia nella transcodifica di ripiego. Causa: Safari non mostra il video finché la traccia `<track>`
   attiva non è caricata, e il WebVTT di un sottotitolo interno si estrae leggendo tutto il file (13 GB a ~22 MB/s,
