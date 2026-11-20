@@ -87,6 +87,7 @@ pub fn router() -> Router<Shared> {
         .route("/Sessions/Playing/Stopped", post(stopped))
         .route("/Sessions/Playing/Ping", post(ping))
         .route("/Sessions/Capabilities", post(ok_empty))
+        .route("/ClientLog/Document", post(client_log))
         .route("/Sessions/Capabilities/Full", post(ok_empty))
         .route("/Users/{user}/PlayedItems/{item}", post(played_add_u).delete(played_del_u))
         .route("/UserPlayedItems/{item}", post(played_add).delete(played_del))
@@ -404,6 +405,15 @@ async fn ping() -> &'static str {
     "Jellyfin Server"
 }
 
+/// Rapporti di errore delle app (Jellyfin per Android TV manda qui i crash): nel log del server, per capire cosa
+/// non le piace delle risposte. Testo limitato, nessun file scritto.
+async fn client_log(user: AuthUser, headers: HeaderMap, body: axum::body::Bytes) -> Json<Value> {
+    let client = auth_fields(&headers).get("client").cloned().unwrap_or_default();
+    let text = String::from_utf8_lossy(&body[..body.len().min(16 * 1024)]).into_owned();
+    tracing::warn!(user = %user.username, client = %client, "rapporto di errore dall'app:\n{text}");
+    Json(json!({ "FileName": format!("platea_{}.log", crate::util::random_hex(8)) }))
+}
+
 async fn ok_empty() -> StatusCode {
     StatusCode::NO_CONTENT
 }
@@ -686,6 +696,8 @@ async fn library_dto(state: &Shared, id: i64, name: &str, kind: &str) -> Value {
         "Etag": format!("{id}"),
         "Type": "CollectionFolder",
         "CollectionType": if kind == "movies" { "movies" } else { "tvshows" },
+        // Jellyfin per Android TV lo vuole per aprire una libreria di film o serie (requireNotNull: senza, crash).
+        "DisplayPreferencesId": guid(state, NS_LIBRARY, id).replace('-', ""),
         "IsFolder": true,
         "ChildCount": count,
         "LocationType": "FileSystem",
@@ -1819,7 +1831,14 @@ async fn playback_info(
         return Ok(direct());
     }
     let max_bitrate = num("maxstreamingbitrate", "MaxStreamingBitrate").filter(|b| *b > 0).map(|b| b as u64);
-    let profile = super::jellyfin_profile::convert(profile_json, max_bitrate);
+    let mut profile = super::jellyfin_profile::convert(profile_json, max_bitrate);
+    // Direct play rifiutato dall'app (Jellyfin per Android TV dopo un errore o un cambio di traccia audio): le serve un
+    // `TranscodingUrl`, senza va in crash. Niente file diretto nel profilo, così si passa da HLS (remux se basta).
+    let no_direct_play = b["EnableDirectPlay"].as_bool() == Some(false) || q.get("enabledirectplay").is_some_and(|v| v.eq_ignore_ascii_case("false"));
+    if no_direct_play {
+        profile.containers.clear();
+        profile.protocols.retain(|p| p == "hls");
+    }
     let source = b["MediaSourceId"].as_str().map(String::from).or_else(|| q.get("mediasourceid").cloned());
     let fid = choose_file(&state, id, source.as_deref()).await?;
     let info = crate::api::playback::load_file(&state, fid).await?;
@@ -2308,6 +2327,7 @@ fn root_dto(state: &Shared) -> Value {
         "ServerId": state.server_id,
         "Id": "e9d5075a555c1cbc394eec4cef295274",
         "Type": "UserRootFolder",
+        "DisplayPreferencesId": "e9d5075a555c1cbc394eec4cef295274",
         "IsFolder": true,
         "CollectionType": "folders",
         "LocationType": "Remote",
@@ -2566,6 +2586,7 @@ fn live_view_dto(state: &Shared) -> Value {
         "Etag": "livetv",
         "Type": "UserView",
         "CollectionType": "livetv",
+        "DisplayPreferencesId": "livetv",
         "IsFolder": true,
         "ChildCount": 0,
         "LocationType": "Virtual",

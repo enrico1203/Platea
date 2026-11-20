@@ -477,6 +477,14 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-20 — **0.1.22**: Jellyfin per Android TV (0.20, Fire TV) crashava aprendo una libreria e dopo un cambio di
+  traccia audio. Ora `POST /ClientLog/Document` scrive nel log (WARN "rapporto di errore dall'app") i crash report
+  che l'app manda da sola: stack trace e logcat. Cause: (1) le librerie non avevano `DisplayPreferencesId`, che l'app
+  vuole per film e serie (`requireNotNull`); aggiunto a librerie, Live TV e cartella radice. (2) Dopo un errore o un
+  cambio d'audio l'app chiede PlaybackInfo con `EnableDirectPlay=false` e pretende un `TranscodingUrl`; rispondevamo
+  col solo direct play → crash (PlayMethod null). Ora in quel caso il profilo perde il file diretto e si passa da HLS
+  (remux se basta). Da confermare dall'app.
+
 - 2026-11-20 — **0.1.21**: canale Live TV da Jellyfin per Android TV → errore, senza mai chiedere il flusso. Causa
   (letto il codice dell'app): con `SupportsDirectPlay` e `IsRemote` l'app apre `Path` così com'è, e `Path` era un
   percorso relativo (`/Videos/…/stream.ts`), che ExoPlayer non apre; lo stesso fa Findroid con `Protocol: Http`. Dopo
