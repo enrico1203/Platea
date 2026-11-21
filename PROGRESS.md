@@ -477,6 +477,8 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-22 — **0.1.30**: nella libreria (web) l'ordinamento "Data di uscita" (`sort=premiere`, dal più recente),
+  oltre ad "Anno" che guarda solo l'anno. Senza data completa vale l'anno.
 - 2026-11-22 — **0.1.29**: app Jellyfin per Roku. Entrava (login, home, ultimi aggiunti) ma libreria, ricerca e
   riproduzione rapida davano 404: l'app chiede `/items/` con la barra finale e `/persons`, `/artists`,
   `/items/filters` tutti minuscoli. Ora `normalize_uri` toglie la barra finale (fuori da `/api/`) e conosce anche

@@ -118,6 +118,7 @@ export default function Library() {
   const groups: Group[] = [
     { key: "sort", label: t("library.sort"), value: sort, def: "title", set: setSort, options: [
       { value: "title", label: t("library.sortTitle") }, { value: "added", label: t("library.sortAdded") }, { value: "year", label: t("library.sortYear") },
+      { value: "premiere", label: t("library.sortPremiere") },
       { value: "rating", label: t("library.sortRating") }, { value: "played", label: lib?.kind === "audiobooks" ? t("library.sortListened") : t("library.sortPlayed") },
     ] },
     { key: "filter", label: t("library.filter"), value: filter, def: "all", set: setFilter, options: [

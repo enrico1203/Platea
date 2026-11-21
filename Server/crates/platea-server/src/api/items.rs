@@ -288,7 +288,8 @@ async fn list(State(state): State<Shared>, user: AuthUser, Query(q): Query<ListQ
         "added" => ("i.added_at", false),
         "year" => ("COALESCE(i.year, 0)", false),
         "rating" => ("COALESCE(i.community_rating, 0)", false),
-        "premiere" => ("COALESCE(i.premiere_date, '')", true),
+        // Senza data completa vale l'anno ("2023" viene dopo "2023-05-01" in ordine decrescente).
+        "premiere" => ("COALESCE(i.premiere_date, CAST(i.year AS TEXT), '')", true),
         "index" => ("COALESCE(i.index_number, 0)", false),
         "played" => ("COALESCE(u.last_played_at, 0)", false),
         other => return Err(ApiError::BadRequest(format!("Ordinamento sconosciuto: {other}"))),

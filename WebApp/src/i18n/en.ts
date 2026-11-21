@@ -145,6 +145,7 @@ const en = {
     sortTitle: "Title",
     sortAdded: "Date added",
     sortYear: "Year",
+    sortPremiere: "Release date",
     sortRating: "Rating",
     sortPlayed: "Last watched",
     sortListened: "Last listened",

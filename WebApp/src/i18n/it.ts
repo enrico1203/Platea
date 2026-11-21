@@ -146,6 +146,7 @@ const it = {
     sortTitle: "Titolo",
     sortAdded: "Data di aggiunta",
     sortYear: "Anno",
+    sortPremiere: "Data di uscita",
     sortRating: "Voto",
     sortPlayed: "Ultima visione",
     sortListened: "Ultimo ascolto",
