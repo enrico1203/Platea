@@ -128,3 +128,36 @@ fn extras_kind_and_owner() {
     assert!(extra_info("Matrix (1999)/Sample/sample.mkv").is_none());
     assert!(extra_info("Matrix (1999)/Matrix (1999).mkv").is_none());
 }
+
+/// Trattino basso come separatore: per `\b` della crate regex `_` è una lettera, quindi
+/// `_S01E01` e `_Episodio_01` non venivano riconosciuti e il file era scartato.
+#[test]
+fn underscore_separators() {
+    let cases: &[(&str, Option<u32>, &[u32])] = &[
+        ("Serie/Season 01/La_storia_degli_S01E01_Episodio.mkv", Some(1), &[1]),
+        ("Serie/Stagione 1/La_storia_degli_S01E05_Titolo_lungo.mkv", Some(1), &[5]),
+        ("Serie/La_storia_degli_S02E03E04_x265.mkv", Some(2), &[3, 4]),
+        ("Serie/La_storia_degli_1x07_Finale.mkv", Some(1), &[7]),
+        ("Serie/Season 1/La_storia_Episodio_03.mkv", Some(1), &[3]),
+        ("Serie/Season 1/La_storia_Ep_04_1080p.mkv", Some(1), &[4]),
+        ("Serie/Season 1/La_storia_degli_883_-_S01E06_-_TBA.mkv", Some(1), &[6]),
+        ("Serie/Season 1/La storia degli 883 - S01E06 - TBA.mkv", Some(1), &[6]),
+        ("Cherry Season (2014)/Cherry_Season_–_La_stagione_del_cuore_1×52_–_Streaming_Ita.mkv", Some(1), &[52]),
+        ("Hardcore Pawn (2010)/Season 1/Season 1E02.mkv", Some(1), &[2]),
+        ("80nostalgia/Stagione 2/SS02E05.mkv", Some(2), &[5]),
+        ("80nostalgia/Specials/SS0E01.mkv", Some(0), &[1]),
+        ("H2O (2006)/Season 1/[S1.Ep10] H2O - La verità della videocamera.mkv", Some(1), &[10]),
+        ("Adventure Time (2010)/S01/7.mkv", Some(1), &[7]),
+        ("Monogatari/Season 4/12.mp4", Some(4), &[12]),
+    ];
+    for (path, season, eps) in cases {
+        let e = parse_episode(path).unwrap_or_else(|| panic!("non riconosciuto: {path}"));
+        assert_eq!((e.season, e.episodes.as_slice()), (*season, *eps), "percorso: {path}");
+    }
+    // Senza cartella della serie il titolo viene dal nome, con gli spazi al posto dei trattini bassi.
+    let e = parse_episode("La_storia_degli_883_S01E02_Titolo.mkv").unwrap();
+    assert_eq!((e.series_title.as_str(), e.season, e.episodes.as_slice()), ("La storia degli 883", Some(1), &[2][..]));
+    // Data con trattini bassi.
+    let e = parse_episode("Show/Show_2024_03_15_Puntata.mkv").unwrap();
+    assert_eq!(e.air_date.as_deref(), Some("2024-03-15"));
+}

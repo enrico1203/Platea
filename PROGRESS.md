@@ -477,6 +477,25 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-21 — **0.1.27**: episodi persi o letti male per colpa del trattino basso. Per `\b` della crate regex `_` è
+  una lettera: `Serie_S01E01_Titolo`, `_1x01`, `_Episodio_01` e le date `2019_09_03_` non venivano riconosciuti. Il
+  file veniva scartato in silenzio (contato solo in "non riconosciuti") oppure finiva sul numero sciolto sbagliato
+  (`100 Day Dream Home_S01E09` → E100; tutti gli episodi di "112 - Fire Squad" in un unico E112; le puntate Rai
+  `…_2400` fuse in un E2400). Ora `parse_episode` lavora sul nome con `_` → spazio e `×` → `x`; riconosce anche
+  `Season 1E01`, `SS01E01`, `S1.Ep10` e il solo numero dentro la cartella della stagione (`Season 1/7.mkv`).
+  Migrazione 0027 `libraries.naming_rev` + `scanner::NAMING_REV` (= 1): alla prima scansione completa una libreria di
+  serie rilegge i file già noti (in memoria, nessun accesso al disco) e sposta quelli che ora sono un altro episodio
+  (`reread_known`); episodi/stagioni/serie rimasti vuoti spariscono, visti/avanzamento passano all'episodio nuovo se
+  i file sono andati tutti lì. **Aumentare `NAMING_REV` a ogni modifica di `platea-naming` che cambia il risultato
+  per file già riconosciuti.** Misure sui nomi veri (sola lettura, ~318k file di serie): nessun file riconosciuto
+  bene cambia; 1.091 file letti male vengono corretti. Provato su copia del DB (coda vuota, analisi fuori fascia, rete
+  interna): non riconosciuti Serie TV 4.880 → 427, Anime SUB ITA 1.471 → 294, Cartoons 2.307 → 1.635, Anime ITA
+  1.077 → 745; 6.828 file aggiunti, 665 riassegnati, 0 elementi vuoti; "Nord Sud Ovest Est: La leggendaria storia
+  degli 883" da E6–E7 a E1–E7. Restano non riconosciuti per lo più nomi senza numero d'episodio (Walt Disney
+  Treasures, cortometraggi con solo l'anno, `1x02a`, "100ª puntata", `Claymore01`).
+  Corretto anche `Cargo.lock` della 0.1.26: il sed della versione aveva cambiato `libredox` 0.1.25 → 0.1.26
+  (inesistente, `--locked` falliva). Le versioni in `Cargo.lock` si cambiano solo sui pacchetti platea-*.
+
 - 2026-11-21 — **0.1.26**: filtri della libreria dietro un pulsante (richiesta dell'utente: le pillole della 0.1.25 non
   bastavano). Barra: ricerca + pulsante **Filtri** (icona a cursori, stessa altezza della ricerca, blu con il numero dei
   filtri attivi). Il pannello (`FilterSheet` in `pages/Library.tsx`) sale dal basso su telefono (maniglia, max 88dvh) e

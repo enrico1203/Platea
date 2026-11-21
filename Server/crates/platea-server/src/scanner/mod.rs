@@ -51,7 +51,16 @@ pub struct ScanStats {
     pub files_opened: usize,
     /// File spariti ma non segnati come mancanti: troppi insieme, si attende la conferma.
     pub held: usize,
+    /// File già noti spostati su un altro episodio dopo un cambio delle regole dei nomi.
+    pub reassigned: usize,
 }
+
+/// Versione delle regole con cui `platea_naming` legge i nomi degli episodi. Va aumentata quando una modifica
+/// cambia il risultato per file già riconosciuti: alla scansione completa successiva le librerie di serie
+/// rileggono i loro file e li spostano sull'episodio giusto.
+/// 1: il trattino basso fa da separatore (`Serie_S01E09_Titolo` era letto come episodio 100 o scartato),
+///    `Season 1E01`, `SS01E01`, `S1.Ep10`, `1×52`, numero da solo nella cartella della stagione.
+pub const NAMING_REV: i64 = 1;
 
 /// Scansioni in corso, per la percentuale e la stima nella dashboard. Ogni voce sparisce quando la scansione
 /// finisce (anche con un errore): la tiene viva la guardia restituita da `start`.
@@ -274,9 +283,11 @@ struct ItemIndex {
 }
 
 pub async fn scan_library(state: &Shared, library_id: i64, subpath: Option<String>) -> anyhow::Result<()> {
-    let lib: Option<(String, String, String)> =
-        sqlx::query_as("SELECT name, kind, scan_profile FROM libraries WHERE id = ?").bind(library_id).fetch_optional(&state.db.read).await?;
-    let Some((lib_name, kind, profile)) = lib else { return Ok(()) };
+    let lib: Option<(String, String, String, i64)> =
+        sqlx::query_as("SELECT name, kind, scan_profile, naming_rev FROM libraries WHERE id = ?").bind(library_id).fetch_optional(&state.db.read).await?;
+    let Some((lib_name, kind, profile, naming_rev)) = lib else { return Ok(()) };
+    // Regole dei nomi più nuove di quelle con cui la libreria è stata letta: solo nelle scansioni complete.
+    let reread = kind == "shows" && subpath.is_none() && naming_rev < NAMING_REV;
     let paths: Vec<(i64, String)> =
         sqlx::query_as("SELECT id, path FROM library_paths WHERE library_id = ?").bind(library_id).fetch_all(&state.db.read).await?;
     let settings = state.settings.get();
@@ -332,7 +343,7 @@ pub async fn scan_library(state: &Shared, library_id: i64, subpath: Option<Strin
             tracing::warn!(library = %lib_name, errors = listing.errors.len(), first = %listing.errors[0], "cartelle non leggibili durante l'elenco");
         }
         progress.set_saving(true);
-        let stats = apply_listing(state, library_id, &kind, path_id, &root_path, &start_rel, listing).await?;
+        let stats = apply_listing(state, library_id, &kind, path_id, &root_path, &start_rel, listing, reread).await?;
         total.listed += stats.listed;
         total.added += stats.added;
         total.changed += stats.changed;
@@ -342,6 +353,14 @@ pub async fn scan_library(state: &Shared, library_id: i64, subpath: Option<Strin
         total.unrecognized += stats.unrecognized;
         total.dirs += stats.dirs;
         total.held += stats.held;
+        total.reassigned += stats.reassigned;
+    }
+    if total.reassigned > 0 {
+        tracing::info!(library = %lib_name, files = total.reassigned, "nomi riletti con le regole nuove: file spostati sull'episodio giusto");
+    }
+    // Rilettura fatta su tutte le radici: non serve ripeterla. Con una radice non raggiungibile si riprova.
+    if reread && problems.is_empty() {
+        sqlx::query("UPDATE libraries SET naming_rev = ? WHERE id = ?").bind(NAMING_REV).bind(library_id).execute(&state.db.write).await?;
     }
 
     let status = if !problems.is_empty() {
@@ -361,7 +380,7 @@ pub async fn scan_library(state: &Shared, library_id: i64, subpath: Option<Strin
         )
     } else if problems.is_empty() {
         format!(
-            "{} file in {} cartelle, {} nuovi, {} modificati, {} spostati, {} mancanti, {} non riconosciuti, {} ms",
+            "{} file in {} cartelle, {} nuovi, {} modificati, {} spostati, {} mancanti, {} non riconosciuti, {} riassegnati, {} ms",
             total.listed,
             total.dirs,
             total.added,
@@ -369,6 +388,7 @@ pub async fn scan_library(state: &Shared, library_id: i64, subpath: Option<Strin
             total.moved,
             total.missing,
             total.unrecognized,
+            total.reassigned,
             t0.elapsed().as_millis()
         )
     } else {
@@ -497,7 +517,17 @@ async fn episode_hints(state: &Shared, root: &Path, plexmatch: &[String]) -> Has
     out
 }
 
-async fn apply_listing(state: &Shared, library_id: i64, kind: &str, path_id: i64, root: &Path, start_rel: &str, listing: Listing) -> anyhow::Result<ScanStats> {
+#[allow(clippy::too_many_arguments)]
+async fn apply_listing(
+    state: &Shared,
+    library_id: i64,
+    kind: &str,
+    path_id: i64,
+    root: &Path,
+    start_rel: &str,
+    listing: Listing,
+    reread: bool,
+) -> anyhow::Result<ScanStats> {
     let mut listing = listing;
     let audiobooks = kind == "audiobooks";
     if !audiobooks {
@@ -721,6 +751,11 @@ async fn apply_listing(state: &Shared, library_id: i64, kind: &str, path_id: i64
         stats.changed = changed.len();
     }
 
+    if reread {
+        stats.reassigned =
+            reread_known(state, &mut idx, library_id, kind, &by_path, &hints, now, &mut match_ids, &mut refresh_series, &mut touched_items).await?;
+    }
+
     // File tornati disponibili e file scomparsi (non spostati).
     let mut tx = state.db.write.begin().await?;
     for id in &returned {
@@ -809,6 +844,93 @@ async fn apply_listing(state: &Shared, library_id: i64, kind: &str, path_id: i64
     }
     jobs::enqueue_batch(state, batch).await?;
     Ok(stats)
+}
+
+/// Rilegge i nomi dei file già riconosciuti (solo in memoria, nessun accesso al disco) e sposta sull'episodio
+/// giusto quelli che con le regole attuali risultano un altro. Un episodio rimasto senza file sparisce,
+/// e se tutti i suoi file sono andati su uno stesso episodio questo ne eredita visti, avanzamento e preferiti.
+/// Restituisce quanti file sono stati spostati.
+#[allow(clippy::too_many_arguments)]
+async fn reread_known(
+    state: &Shared,
+    idx: &mut ItemIndex,
+    library_id: i64,
+    kind: &str,
+    files: &HashMap<String, DbFile>,
+    hints: &HashMap<String, String>,
+    now: i64,
+    match_ids: &mut HashSet<i64>,
+    refresh_series: &mut HashSet<i64>,
+    touched: &mut HashSet<i64>,
+) -> anyhow::Result<usize> {
+    let mut known: Vec<(&DbFile, i64)> = files.values().filter(|f| f.extra_of.is_none()).filter_map(|f| f.item_id.map(|i| (f, i))).collect();
+    known.sort_by(|a, b| a.0.relative_path.cmp(&b.0.relative_path));
+    // Episodio di partenza → episodi di arrivo dei suoi file.
+    let mut moved: HashMap<i64, HashSet<i64>> = HashMap::new();
+    let mut count = 0;
+    for chunk in known.chunks(2000) {
+        let mut tx = state.db.write.begin().await?;
+        for (f, old) in chunk {
+            let rel = hints.get(&f.relative_path).map(String::as_str).unwrap_or(&f.relative_path);
+            // Nome che le regole nuove non leggono più: il file resta dov'è.
+            let Some((new, _)) = identify(&mut tx, idx, library_id, kind, rel, now, match_ids, refresh_series).await? else { continue };
+            if new != *old {
+                sqlx::query("UPDATE media_files SET item_id = ? WHERE id = ?").bind(new).bind(f.id).execute(&mut *tx).await?;
+                moved.entry(*old).or_default().insert(new);
+                touched.insert(new);
+                count += 1;
+            }
+        }
+        tx.commit().await?;
+    }
+    if moved.is_empty() {
+        return Ok(0);
+    }
+    let mut tx = state.db.write.begin().await?;
+    for (old, targets) in &moved {
+        let left: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM media_files WHERE item_id = ?").bind(old).fetch_one(&mut *tx).await?;
+        if left > 0 {
+            touched.insert(*old);
+            continue;
+        }
+        if targets.len() == 1 {
+            let new = *targets.iter().next().unwrap();
+            sqlx::query(
+                "INSERT OR IGNORE INTO user_item_data (user_id, item_id, position_ms, played, play_count, last_played_at, favorite, audio_index, subtitle_index)
+                 SELECT user_id, ?, position_ms, played, play_count, last_played_at, favorite, audio_index, subtitle_index FROM user_item_data WHERE item_id = ?",
+            )
+            .bind(new)
+            .bind(old)
+            .execute(&mut *tx)
+            .await?;
+        }
+        let up: Option<(Option<i64>, Option<i64>)> =
+            sqlx::query_as("SELECT parent_id, series_id FROM items WHERE id = ? AND kind = 'episode'").bind(old).fetch_optional(&mut *tx).await?;
+        let Some((season, series)) = up else { continue };
+        sqlx::query("DELETE FROM items WHERE id = ?").bind(old).execute(&mut *tx).await?;
+        idx.episodes.retain(|_, v| v != old);
+        // Stagione e serie rimaste vuote.
+        for (id, kind) in [(season, "season"), (series, "series")] {
+            let Some(id) = id else { continue };
+            let gone = sqlx::query("DELETE FROM items WHERE id = ? AND kind = ? AND NOT EXISTS (SELECT 1 FROM items c WHERE c.parent_id = ?)")
+                .bind(id)
+                .bind(kind)
+                .bind(id)
+                .execute(&mut *tx)
+                .await?
+                .rows_affected();
+            if gone > 0 {
+                idx.seasons.retain(|_, v| *v != id);
+                idx.series.retain(|_, v| *v != id);
+                match_ids.remove(&id);
+                refresh_series.remove(&id);
+            } else {
+                touched.insert(id);
+            }
+        }
+    }
+    tx.commit().await?;
+    Ok(count)
 }
 
 /// Crea o trova l'elemento logico per un file. Restituisce (item_id, etichetta versione).

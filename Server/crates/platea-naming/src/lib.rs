@@ -100,7 +100,9 @@ static RE_QUALITY: Lazy<Regex> = Lazy::new(|| {
     .unwrap()
 });
 
-static RE_SXXEXX: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)\bs(\d{1,4})[ ._-]?e(\d{1,4})((?:(?:[ ._-]?-?[ ._-]?e|-)\d{1,4})*)").unwrap());
+/// `S01E02`, anche `SS01E02`, `Season 1E02`, `Stagione 1E02` e `S1.Ep10`.
+static RE_SXXEXX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)\b(?:ss?|season[ ._]?|stagione[ ._]?)(\d{1,4})[ ._-]?ep?(\d{1,4})((?:(?:[ ._-]?-?[ ._-]?e|-)\d{1,4})*)").unwrap());
 static RE_EXTRA_EP: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)(?:e|-)(\d{1,4})").unwrap());
 static RE_NXNN: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)\b(\d{1,2})x(\d{2,3})((?:-(?:\d{1,2}x)?\d{2,3})*)\b").unwrap());
 static RE_DATE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b((?:19|20)\d\d)[.\-_ ](\d\d)[.\-_ ](\d\d)\b").unwrap());
@@ -464,7 +466,13 @@ fn detect_version(stem: &str, folder: Option<&str>) -> Option<String> {
 pub fn parse_episode(rel_path: &str) -> Option<EpisodeName> {
     let parts: Vec<&str> = rel_path.split('/').filter(|p| !p.is_empty()).collect();
     let file = *parts.last()?;
-    let stem = file_stem(file);
+    let raw_stem = file_stem(file);
+    // Il trattino basso fa da spazio (`Serie_S01E01_Titolo`): per `\b` della crate regex `_` è una lettera,
+    // quindi senza questa sostituzione `_S01E01`, `_1x01` ed `_Episodio_01` non verrebbero riconosciuti
+    // e il file sarebbe scartato. Il segno di moltiplicazione vale come `x` (`1×52`).
+    // Da qui in poi si lavora solo su `stem`; il nome originale serve solo per gli identificativi.
+    let stem_owned = raw_stem.replace('_', " ").replace('×', "x");
+    let stem = stem_owned.as_str();
     let dirs = &parts[..parts.len() - 1];
 
     // Stagione dalla cartella più vicina che la indica.
@@ -528,7 +536,11 @@ pub fn parse_episode(rel_path: &str) -> Option<EpisodeName> {
     } else if season_from_dir.is_some() || series_dir.is_some() {
         // "Episodio 5", "Ep05", oppure numerazione assoluta degli anime "[Gruppo] Titolo - 012".
         let cleaned = RE_BRACKETS.replace_all(stem, " ").to_string();
-        if let Some(c) = RE_EPISODE_WORD.captures(&cleaned) {
+        let bare = cleaned.trim();
+        if season_from_dir.is_some() && (1..=4).contains(&bare.len()) && bare.bytes().all(|b| b.is_ascii_digit()) {
+            // Solo il numero dentro la cartella della stagione: `Season 1/7.mkv`.
+            episodes.push(bare.parse().ok()?);
+        } else if let Some(c) = RE_EPISODE_WORD.captures(&cleaned) {
             let n: u32 = c[1].parse().ok()?;
             if season_from_dir.is_some() {
                 episodes.push(n);
@@ -568,7 +580,7 @@ pub fn parse_episode(rel_path: &str) -> Option<EpisodeName> {
             let prefix = &stem[..name_prefix_end.unwrap_or(0)];
             let (t, y) = parse_title_year(prefix);
             let key = normalize_title(&t);
-            (t, y, extract_ids(stem), key)
+            (t, y, extract_ids(raw_stem), key)
         }
     };
     if series_title.is_empty() {
