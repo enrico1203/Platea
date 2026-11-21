@@ -68,6 +68,8 @@ pub struct EpisodeName {
     pub air_date: Option<String>,
     /// Numerazione assoluta (anime).
     pub absolute: Option<u32>,
+    /// Mezzo episodio (`1x02a`, `01b`, `02C`): le parti dello stesso episodio diventano sue versioni.
+    pub segment: Option<char>,
     /// Chiave che identifica la serie: primo componente del percorso o titolo normalizzato.
     pub series_key: String,
 }
@@ -104,12 +106,31 @@ static RE_QUALITY: Lazy<Regex> = Lazy::new(|| {
 static RE_SXXEXX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)\b(?:ss?|season[ ._]?|stagione[ ._]?)(\d{1,4})[ ._-]?ep?(\d{1,4})((?:(?:[ ._-]?-?[ ._-]?e|-)\d{1,4})*)").unwrap());
 static RE_EXTRA_EP: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)(?:e|-)(\d{1,4})").unwrap());
-static RE_NXNN: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)\b(\d{1,2})x(\d{2,3})((?:-(?:\d{1,2}x)?\d{2,3})*)\b").unwrap());
+/// `1x02`, `1x2`, `1x02-03`. Dopo il numero non deve esserci una lettera o una cifra (si controlla a parte:
+/// la crate regex non ha il lookahead), salvo la lettera di un mezzo episodio (`1x02a`).
+static RE_NXNN: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)\b(\d{1,2})x(\d{1,3})((?:-(?:\d{1,2}x)?\d{2,3})*)").unwrap());
 static RE_DATE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b((?:19|20)\d\d)[.\-_ ](\d\d)[.\-_ ](\d\d)\b").unwrap());
 static RE_SEASON_DIR: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)^(?:season|stagione|staffel|saison|temporada|series|s)[ ._-]*(\d{1,4})\b").unwrap());
+/// Data giorno-mese-anno: `Puntata del 05.10.1978`, `WWE.Raw.02.05.2022`.
+static RE_DATE_DMY: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b(\d{2})[.\-_ ](\d{2})[.\-_ ]((?:19|20)\d\d)\b").unwrap());
 static RE_SPECIALS_DIR: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)^(?:specials?|speciali|extras? speciali)$").unwrap());
-static RE_ABSOLUTE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?:^|[ ._])(?:-|ep|episode|episodio|#)?[ ._]?(\d{2,4})(?:v\d)?(?:[ ._]|$)").unwrap());
-static RE_EPISODE_WORD: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)\b(?:episode|episodio|ep|e)[ ._-]?(\d{1,4})\b").unwrap());
+/// Numero sciolto: `Titolo - 012`, `012.Titolo`, `Sailor Moon (128)`, `15)Titolo`, `51ª puntata`, `02C Titolo`.
+static RE_ABSOLUTE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)(?:^|[ ._(-])(?:-|ep|episode|episodio|#)?[ ._]?(\d{2,4})([a-d])?(?:v\d)?(?:[ ._)ª°º-]|$)").unwrap());
+/// Numero tra parentesi anche di una cifra sola (`Bosko (7)`), oppure all'inizio seguito da `)` (`7)Titolo`).
+static RE_PAREN_NUM: Lazy<Regex> = Lazy::new(|| Regex::new(r"\((\d{1,4})\)|^(\d{1,4})\)").unwrap());
+static RE_EPISODE_WORD: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)\b(?:episode|episodio|puntata|ep|e)[ ._-]?(\d{1,4})([a-d])?\b").unwrap());
+static RE_LEAD_PAREN: Lazy<Regex> = Lazy::new(|| Regex::new(r"^(\d{1,4})\)").unwrap());
+/// Numero all'inizio seguito da ` - `: `02 - 600 milioni di anni fa` è il 2.
+static RE_LEAD_DASH: Lazy<Regex> = Lazy::new(|| Regex::new(r"^(\d{1,3}) - ").unwrap());
+/// Intervallo all'inizio del nome: `001-002.Doraemon`, `05-08 Titolo`.
+static RE_LEAD_RANGE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^(\d{1,4}) ?- ?(\d{1,4})(?:[ .]|$)").unwrap());
+/// Numero tra trattini: `Titolo - 1 - Nome episodio`, `Titolo - 1`.
+static RE_DASHED_NUM: Lazy<Regex> = Lazy::new(|| Regex::new(r" - (\d{1,4})(?: - |\s*$)").unwrap());
+/// Titolo attaccato al numero, in fondo al nome: `Claymore01`, `DNAngel01` (eventuale `.avi` doppio in coda).
+static RE_GLUED_NUM: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)[a-z](\d{2,3})\s*(?:\.(?:avi|mkv|mp4))?\s*$").unwrap());
+/// Stagione scritta nel nome del file quando l'episodio è indicato a parte (`S2020 Puntata 1`, `Stagione 2 - 05`).
+static RE_SEASON_IN_NAME: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)\b(?:s|season|stagione)[ .]?(\d{1,4})\b").unwrap());
 
 const EXTRA_DIRS: &[&str] = &[
     "extras",
@@ -127,9 +148,29 @@ const EXTRA_DIRS: &[&str] = &[
     "clips",
     "other",
     "contenuti speciali",
+    "bonus",
 ];
-const EXTRA_SUFFIXES: &[&str] =
-    &["-trailer", "-sample", "-featurette", "-behindthescenes", "-deleted", "-interview", "-scene", "-short", "-clip", "-other", ".sample", "-extra"];
+/// Suffissi degli extra. Trailer e campioni anche con `.`, `_` o spazio (`Film trailer.mkv`), come in Jellyfin;
+/// gli altri solo col trattino: "The_Big_Short" è un film, non un corto.
+const EXTRA_SUFFIXES: &[&str] = &[
+    "-trailer",
+    ".trailer",
+    "_trailer",
+    " trailer",
+    "-sample",
+    ".sample",
+    "_sample",
+    " sample",
+    "-featurette",
+    "-behindthescenes",
+    "-deleted",
+    "-interview",
+    "-scene",
+    "-short",
+    "-clip",
+    "-other",
+    "-extra",
+];
 
 /// Estensione in minuscolo, senza punto.
 pub fn extension(name: &str) -> Option<String> {
@@ -173,7 +214,7 @@ pub fn is_extra(rel_path: &str) -> bool {
         }
     }
     let stem = file_stem(parts.last().copied().unwrap_or("")).to_ascii_lowercase();
-    EXTRA_SUFFIXES.iter().any(|s| stem.ends_with(s)) || stem == "sample" || stem == "trailer"
+    EXTRA_SUFFIXES.iter().any(|s| stem.ends_with(s) && (!s.starts_with(' ') || !RE_SXXEXX.is_match(&stem))) || stem == "sample" || stem == "trailer"
 }
 
 /// Un contenuto extra riconosciuto: tipo, titolo da mostrare e cartella del titolo a cui appartiene.
@@ -196,7 +237,7 @@ fn kind_from_dir(d: &str) -> Option<&'static str> {
         "scenes" => "scene",
         "shorts" => "short",
         "clips" => "clip",
-        "extras" | "extra" | "other" | "contenuti speciali" => "extra",
+        "extras" | "extra" | "other" | "contenuti speciali" | "bonus" => "extra",
         "samples" | "sample" => "sample",
         _ => return None,
     })
@@ -221,6 +262,9 @@ pub fn extra_info(rel_path: &str) -> Option<ExtraInfo> {
     let owner_dir = parts[..parts.len().saturating_sub(1)].join("/");
     let by_suffix: &[(&str, &str)] = &[
         ("-trailer", "trailer"),
+        (".trailer", "trailer"),
+        ("_trailer", "trailer"),
+        (" trailer", "trailer"),
         ("-featurette", "featurette"),
         ("-behindthescenes", "behindthescenes"),
         ("-deleted", "deleted"),
@@ -232,7 +276,8 @@ pub fn extra_info(rel_path: &str) -> Option<ExtraInfo> {
         ("-extra", "extra"),
     ];
     for (suffix, kind) in by_suffix {
-        if lower.ends_with(suffix) {
+        // "S00E01 Series Trailer" è uno speciale della serie, non un extra.
+        if lower.ends_with(suffix) && (!suffix.starts_with(' ') || !RE_SXXEXX.is_match(&lower)) {
             let base = stem[..stem.len() - suffix.len()].trim();
             let title = match *kind {
                 "trailer" => "Trailer".to_string(),
@@ -263,7 +308,7 @@ pub fn extract_ids(s: &str) -> ExternalIds {
     }
     if let Some(c) = RE_IMDB.captures(s) {
         ids.imdb = Some(c[1].to_ascii_lowercase());
-    } else if let Some(c) = RE_IMDB_BARE.captures(s) {
+    } else if let Some(c) = RE_IMDB_BARE.captures(&s.replace('_', " ")) {
         ids.imdb = Some(c[1].to_string());
     }
     if let Some(c) = RE_TVDB.captures(s) {
@@ -331,8 +376,26 @@ fn tidy_title(s: &str) -> String {
     RE_SPACES.replace_all(s, " ").trim().to_string()
 }
 
+/// Parentesi vuote o con zero: Radarr e Sonarr scrivono così l'anno che non conoscono (`Titolo () WEBDL-1080p`,
+/// `Titolo (0)`). Il titolo finisce lì.
+static RE_NO_YEAR: Lazy<Regex> = Lazy::new(|| Regex::new(r"\(\s*0?\s*\)").unwrap());
+/// Anno attaccato all'ultima parola (`Il.Castello.Nel.Cielo1986.ITA.1080p`): vale solo se dopo ci sono etichette di qualità.
+static RE_YEAR_GLUED: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)[a-z]((?:19|20)\d\d)\b").unwrap());
+
+/// Ultimo anno plausibile per un'uscita: un "anno" più avanti fa parte del titolo ("Borgman 2030").
+fn max_year() -> u16 {
+    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    (1970 + secs / 31_556_952) as u16 + 2
+}
+
 /// Separa titolo e anno da una stringa già pulita.
 fn split_title_year(clean: &str) -> (String, Option<u16>) {
+    if let Some(m) = RE_NO_YEAR.find(clean) {
+        let title = tidy_title(&clean[..m.start()]);
+        if !title.is_empty() {
+            return (title, None);
+        }
+    }
     // Anno tra parentesi: il caso più affidabile.
     if let Some(c) = RE_YEAR_PAREN.captures_iter(clean).last() {
         let m = c.get(0).unwrap();
@@ -345,9 +408,10 @@ fn split_title_year(clean: &str) -> (String, Option<u16>) {
     }
     // Anno nudo: l'ultimo che non sia all'inizio del nome ("2001 Odissea nello spazio 1968").
     let years: Vec<_> = RE_YEAR.captures_iter(clean).collect();
+    let latest = max_year();
     for c in years.iter().rev() {
         let m = c.get(1).unwrap();
-        if m.start() == 0 {
+        if m.start() == 0 || m.as_str().parse::<u16>().is_ok_and(|y| y > latest) {
             continue;
         }
         let title = tidy_title(&clean[..m.start()]);
@@ -355,12 +419,36 @@ fn split_title_year(clean: &str) -> (String, Option<u16>) {
             return (title, c[1].parse().ok());
         }
     }
+    if let Some(c) = RE_YEAR_GLUED.captures(clean) {
+        let m = c.get(1).unwrap();
+        let rest = &clean[m.end()..];
+        let quality_follows = RE_QUALITY.find(rest).is_some_and(|q| rest[..q.start()].trim().is_empty());
+        let year: u16 = m.as_str().parse().unwrap_or(0);
+        if quality_follows && year <= latest {
+            let title = tidy_title(&clean[..m.start()]);
+            if !title.is_empty() {
+                return (title, Some(year));
+            }
+        }
+    }
     (tidy_title(cut_at_quality(clean)), None)
 }
 
 /// Titolo e anno da un nome qualunque (cartella o file senza estensione).
 pub fn parse_title_year(name: &str) -> (String, Option<u16>) {
-    split_title_year(&base_clean(name))
+    let (title, year) = split_title_year(&base_clean(name));
+    // Un titolo senza lettere ("2007)") vuol dire che il vero titolo era tra parentesi quadre; "1917" resta com'è.
+    if title.chars().any(char::is_alphabetic) {
+        return (title, year);
+    }
+    // Titolo tutto tra parentesi quadre ("[REC] (2007)"): si tiene il contenuto.
+    let unwrapped = RE_ANY_ID_TAG.replace_all(name, " ").replace(['[', ']', '{', '}'], " ");
+    let (t2, y2) = split_title_year(&base_clean(&unwrapped));
+    if t2.chars().any(char::is_alphabetic) {
+        (t2, y2.or(year))
+    } else {
+        (title, year)
+    }
 }
 
 /// Cartella di un disco Blu-ray copiato così com'è (`Film (2000)/BDMV/STREAM/00800.m2ts`): il percorso della cartella
@@ -458,7 +546,7 @@ fn detect_version(stem: &str, folder: Option<&str>) -> Option<String> {
         }
     }
     static RE_RES: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)\b(2160p|1080p|720p|576p|480p|4k)\b").unwrap());
-    RE_RES.captures(stem).map(|c| c[1].to_string())
+    RE_RES.captures(&stem.replace('_', " ")).map(|c| c[1].to_string())
 }
 
 /// Lettura del nome di un episodio dal percorso relativo alla radice della libreria.
@@ -505,19 +593,38 @@ pub fn parse_episode(rel_path: &str) -> Option<EpisodeName> {
     let mut absolute = None;
     let mut name_prefix_end = None;
 
+    let mut segment = None;
+    let nxnn = RE_NXNN.captures_iter(stem).find_map(|c| {
+        let end = c.get(0).unwrap().end();
+        match after_number(stem, end) {
+            After::Clean => Some((c, None)),
+            After::Segment(l) => Some((c, Some(l))),
+            After::Word => None,
+        }
+    });
     if let Some(c) = RE_SXXEXX.captures(stem) {
         season = c[1].parse().ok();
         let first: u32 = c[2].parse().ok()?;
         episodes.push(first);
+        let end = c.get(0).unwrap().end();
         if let Some(extra) = c.get(3) {
-            for e in RE_EXTRA_EP.captures_iter(extra.as_str()) {
-                if let Ok(n) = e[1].parse::<u32>() {
-                    expand_range(&mut episodes, n);
-                }
+            let mut extras: Vec<u32> = RE_EXTRA_EP.captures_iter(extra.as_str()).filter_map(|e| e[1].parse().ok()).collect();
+            // `S01E01-720p`: l'ultimo "episodio" è la risoluzione.
+            if !extras.is_empty() && matches!(stem[end..].chars().next(), Some('p' | 'P' | 'i' | 'I')) {
+                extras.pop();
+            }
+            for n in extras {
+                expand_range(&mut episodes, n);
+            }
+        }
+        if extra_is_empty(&c) {
+            if let After::Segment(l) = after_number(stem, end) {
+                segment = Some(l);
             }
         }
         name_prefix_end = Some(c.get(0).unwrap().start());
-    } else if let Some(c) = RE_NXNN.captures(stem) {
+    } else if let Some((c, seg)) = nxnn {
+        segment = seg;
         season = c[1].parse().ok();
         let first: u32 = c[2].parse().ok()?;
         episodes.push(first);
@@ -533,35 +640,20 @@ pub fn parse_episode(rel_path: &str) -> Option<EpisodeName> {
     } else if let Some(c) = RE_DATE.captures(stem) {
         air_date = Some(format!("{}-{}-{}", &c[1], &c[2], &c[3]));
         name_prefix_end = Some(c.get(0).unwrap().start());
+    } else if let Some((date, start)) =
+        (season_from_dir.is_some() || series_dir.is_some()).then(|| loose_episode(stem).is_none().then(|| dmy_date(stem)).flatten()).flatten()
+    {
+        // Nessun numero d'episodio ma una data giorno-mese-anno: episodio per data.
+        air_date = Some(date);
+        name_prefix_end = Some(start);
     } else if season_from_dir.is_some() || series_dir.is_some() {
-        // "Episodio 5", "Ep05", oppure numerazione assoluta degli anime "[Gruppo] Titolo - 012".
-        let cleaned = RE_BRACKETS.replace_all(stem, " ").to_string();
-        let bare = cleaned.trim();
-        if season_from_dir.is_some() && (1..=4).contains(&bare.len()) && bare.bytes().all(|b| b.is_ascii_digit()) {
-            // Solo il numero dentro la cartella della stagione: `Season 1/7.mkv`.
-            episodes.push(bare.parse().ok()?);
-        } else if let Some(c) = RE_EPISODE_WORD.captures(&cleaned) {
-            let n: u32 = c[1].parse().ok()?;
-            if season_from_dir.is_some() {
-                episodes.push(n);
-            } else {
-                absolute = Some(n);
-                episodes.push(n);
-            }
-        } else {
-            let without_quality = strip_quality_numbers(&cleaned);
-            let caps: Vec<_> = RE_ABSOLUTE.captures_iter(&without_quality).collect();
-            let c = caps.last()?;
-            let n: u32 = c[1].parse().ok()?;
-            if (1900..=2099).contains(&n) && c[1].len() == 4 {
-                return None;
-            }
-            if season_from_dir.is_some() {
-                episodes.push(n);
-            } else {
-                absolute = Some(n);
-                episodes.push(n);
-            }
+        let found = loose_episode(stem)?;
+        episodes = found.episodes;
+        segment = found.segment;
+        season = if season_from_dir.is_some() { None } else { found.season };
+        // Senza stagione (né dalla cartella né dal nome) il numero è assoluto.
+        if season_from_dir.is_none() && season.is_none() {
+            absolute = episodes.first().copied();
         }
     } else {
         return None;
@@ -587,7 +679,104 @@ pub fn parse_episode(rel_path: &str) -> Option<EpisodeName> {
         return None;
     }
 
-    Some(EpisodeName { series_title, series_year, series_ids, season, episodes, air_date, absolute, series_key })
+    Some(EpisodeName { series_title, series_year, series_ids, season, episodes, air_date, absolute, segment, series_key })
+}
+
+/// Data `GG.MM.AAAA` come `AAAA-MM-GG`, con giorno e mese plausibili; con la posizione dove inizia.
+fn dmy_date(stem: &str) -> Option<(String, usize)> {
+    RE_DATE_DMY.captures_iter(stem).find_map(|c| {
+        let (d, m): (u32, u32) = (c[1].parse().ok()?, c[2].parse().ok()?);
+        ((1..=31).contains(&d) && (1..=12).contains(&m)).then(|| (format!("{}-{}-{}", &c[3], &c[2], &c[1]), c.get(0).unwrap().start()))
+    })
+}
+
+/// Cosa segue un numero di episodio nel nome.
+enum After {
+    /// Fine del nome o un separatore.
+    Clean,
+    /// Una lettera a–d da sola: mezzo episodio (`1x02a`).
+    Segment(char),
+    /// Altre lettere o cifre: il numero fa parte di una parola, non è un episodio.
+    Word,
+}
+
+fn after_number(s: &str, end: usize) -> After {
+    let mut it = s[end..].chars();
+    match it.next() {
+        None => After::Clean,
+        Some(c) if !c.is_alphanumeric() => After::Clean,
+        Some(c) if matches!(c.to_ascii_lowercase(), 'a'..='d') && it.next().is_none_or(|n| !n.is_alphanumeric()) => After::Segment(c.to_ascii_uppercase()),
+        _ => After::Word,
+    }
+}
+
+fn extra_is_empty(c: &regex::Captures) -> bool {
+    c.get(3).is_none_or(|m| m.as_str().is_empty())
+}
+
+struct Loose {
+    episodes: Vec<u32>,
+    segment: Option<char>,
+    season: Option<u32>,
+}
+
+fn is_year(n: u32, digits: usize) -> bool {
+    digits == 4 && (1900..=2099).contains(&n)
+}
+
+/// Episodio senza `S01E02` né `1x02`, quando la cartella dice già che è una serie: numero da solo, intervallo
+/// iniziale, "Episodio 5" / "Puntata 5", ` - 5 - `, numerazione assoluta degli anime, titolo attaccato al numero.
+fn loose_episode(stem: &str) -> Option<Loose> {
+    let cleaned = RE_BRACKETS.replace_all(stem, " ").to_string();
+    let bare = cleaned.trim();
+    let season = RE_SEASON_IN_NAME.captures(bare).and_then(|c| c[1].parse().ok());
+    let one = |n: u32, segment: Option<char>| Some(Loose { episodes: vec![n], segment, season });
+    // Solo il numero: `7.mkv`.
+    if (1..=4).contains(&bare.len()) && bare.bytes().all(|b| b.is_ascii_digit()) {
+        return one(bare.parse().ok()?, None);
+    }
+    // Intervallo iniziale: `001-002.Titolo`.
+    if let Some(c) = RE_LEAD_RANGE.captures(bare) {
+        let (a, b): (u32, u32) = (c[1].parse().ok()?, c[2].parse().ok()?);
+        // Intervallo corto: "02 - 600 milioni di anni fa" è l'episodio 2, non dal 2 al 600.
+        if !is_year(a, c[1].len()) && !is_year(b, c[2].len()) && b > a && b - a <= 50 {
+            let mut episodes = vec![a];
+            expand_range(&mut episodes, b);
+            return Some(Loose { episodes, segment: None, season });
+        }
+    }
+    // Numerazione all'inizio, con la parentesi o con il trattino: `45) Donald Duck - The Spirit of 43 (HD 1080)` è il 45.
+    if let Some(c) = RE_LEAD_PAREN.captures(bare).or_else(|| RE_LEAD_DASH.captures(bare)) {
+        return one(c[1].parse().ok()?, None);
+    }
+    if let Some(c) = RE_EPISODE_WORD.captures(&cleaned) {
+        return one(c[1].parse().ok()?, c.get(2).and_then(|m| m.as_str().chars().next()).map(|l| l.to_ascii_uppercase()));
+    }
+    let without_quality = strip_quality_numbers(&cleaned);
+    if let Some(c) = RE_DASHED_NUM.captures(&without_quality) {
+        let n: u32 = c[1].parse().ok()?;
+        if !is_year(n, c[1].len()) {
+            return one(n, None);
+        }
+    }
+    // L'ultimo numero che non sia un anno: "Topolino - The Jazz Fool (1929) - 12" e "15)Titolo (1939)" danno 12 e 15.
+    let pick = |caps: Vec<regex::Captures>| -> Option<(u32, Option<char>)> {
+        caps.iter().rev().find_map(|c| {
+            let m = c.get(1).or_else(|| c.get(2))?;
+            let n: u32 = m.as_str().parse().ok()?;
+            (!is_year(n, m.as_str().len())).then(|| (n, c.get(2).filter(|_| c.get(1).is_some()).and_then(|l| l.as_str().chars().next())))
+        })
+    };
+    if let Some((n, seg)) = pick(RE_ABSOLUTE.captures_iter(&without_quality).collect()) {
+        return one(n, seg.map(|l| l.to_ascii_uppercase()));
+    }
+    if let Some((n, _)) = pick(RE_PAREN_NUM.captures_iter(stem).collect()) {
+        return one(n, None);
+    }
+    if let Some(c) = RE_GLUED_NUM.captures(&cleaned) {
+        return one(c[1].parse().ok()?, None);
+    }
+    None
 }
 
 fn expand_range(episodes: &mut Vec<u32>, n: u32) {
@@ -601,9 +790,14 @@ fn expand_range(episodes: &mut Vec<u32>, n: u32) {
     }
 }
 
+/// Toglie i numeri che non sono episodi: risoluzioni, codec, canali audio, anni e date (`del 24-03-1979`).
 fn strip_quality_numbers(s: &str) -> String {
-    static RE: Lazy<Regex> =
-        Lazy::new(|| Regex::new(r"(?i)\b(?:2160p|1080p|1080i|720p|576p|480p|x26[45]|h\.?26[45]|10bit|8bit|5\.1|7\.1|(?:19|20)\d\d)\b").unwrap());
+    static RE: Lazy<Regex> = Lazy::new(|| {
+        Regex::new(
+            r"(?i)\b(?:\d{1,2}[-./]\d{1,2}[-./](?:19|20)\d\d|2160p|1080p|1080i|720p|576p|480p|x26[45]|h\.?26[45]|10 ?bit|8 ?bit|5\.1|7\.1|(?:19|20)\d\d)\b",
+        )
+        .unwrap()
+    });
     RE.replace_all(s, " ").to_string()
 }
 
@@ -699,22 +893,73 @@ pub fn title_similarity(a: &str, b: &str) -> f64 {
     (2 * hits) as f64 / total as f64
 }
 
-/// Lingua dal nome di un file di sottotitoli esterno: `Film.it.forced.srt` → ("it", forced).
-pub fn subtitle_language(file: &str) -> (Option<String>, bool, bool) {
-    let stem = file_stem(file.rsplit('/').next().unwrap_or(file));
+/// Codice di lingua da un pezzo del nome di un sottotitolo: codici ISO 639-1 e 639-2 noti (restano come sono,
+/// "it", "ita", "heb") oppure il nome della lingua scritto per intero (in italiano, inglese o nella lingua stessa),
+/// che diventa il codice ISO 639-2. Qualunque altra parola di due o tre lettere non è una lingua ("le", "the").
+fn language_token(t: &str) -> Option<String> {
+    const CODES: &[&str] = &[
+        "it", "en", "fr", "de", "es", "pt", "nl", "ru", "ja", "zh", "ko", "ar", "he", "el", "pl", "sv", "no", "nb", "da", "fi", "tr", "cs", "hu", "ro", "bg",
+        "hr", "sr", "sk", "sl", "uk", "hi", "th", "vi", "id", "ms", "fa", "ca", "eu", "gl", "is", "et", "lv", "lt", "ga", "ita", "eng", "fre", "fra", "ger",
+        "deu", "spa", "por", "dut", "nld", "rus", "jpn", "jap", "chi", "zho", "kor", "ara", "heb", "gre", "ell", "pol", "swe", "nor", "nob", "dan", "fin",
+        "tur", "cze", "ces", "hun", "rum", "ron", "bul", "hrv", "srp", "slo", "slk", "slv", "ukr", "hin", "tha", "vie", "ind", "may", "msa", "per", "fas",
+        "cat", "baq", "eus", "glg", "ice", "isl", "est", "lav", "lit", "gle",
+    ];
+    const NAMES: &[(&str, &[&str])] = &[
+        ("ita", &["italiano", "italian", "italiani"]),
+        ("eng", &["inglese", "english", "englisch"]),
+        ("fra", &["francese", "french", "francais", "français"]),
+        ("deu", &["tedesco", "german", "deutsch"]),
+        ("spa", &["spagnolo", "spanish", "espanol", "español", "castellano"]),
+        ("por", &["portoghese", "portuguese", "portugues", "português", "brasiliano"]),
+        ("nld", &["olandese", "dutch", "nederlands"]),
+        ("rus", &["russo", "russian"]),
+        ("jpn", &["giapponese", "japanese"]),
+        ("zho", &["cinese", "chinese"]),
+        ("kor", &["coreano", "korean"]),
+        ("ara", &["arabo", "arabic"]),
+        ("heb", &["ebraico", "hebrew"]),
+        ("ell", &["greco", "greek"]),
+        ("pol", &["polacco", "polish"]),
+        ("swe", &["svedese", "swedish"]),
+        ("tur", &["turco", "turkish"]),
+    ];
+    let l = t.to_lowercase();
+    if CODES.contains(&l.as_str()) {
+        return Some(if l == "jap" { "jpn".into() } else { l });
+    }
+    NAMES.iter().find(|(_, names)| names.contains(&l.as_str())).map(|(code, _)| code.to_string())
+}
+
+/// Lingua, forzati e SDH dalle parole di un nome, partendo dalla fine (la prima lingua trovata vince).
+fn subtitle_flags<'a>(tokens: impl Iterator<Item = &'a str>) -> (Option<String>, bool, bool) {
     let mut lang = None;
     let mut forced = false;
     let mut sdh = false;
-    for part in stem.rsplit('.').take(3) {
-        let p = part.to_ascii_lowercase();
-        match p.as_str() {
-            "forced" | "forzati" => forced = true,
+    for part in tokens {
+        match part.to_lowercase().as_str() {
+            "forced" | "forzati" | "forzato" | "forzata" => forced = true,
             "sdh" | "cc" | "hi" => sdh = true,
-            _ if (p.len() == 2 || p.len() == 3) && p.chars().all(|c| c.is_ascii_alphabetic()) && lang.is_none() => lang = Some(p),
+            _ if lang.is_none() => lang = language_token(part),
             _ => {}
         }
     }
     (lang, forced, sdh)
+}
+
+/// Lingua dal nome di un file di sottotitoli esterno: `Film.it.forced.srt` → ("it", forced).
+/// Guarda solo le ultime tre parti separate da punti; con il nome del video conviene [`subtitle_tags`].
+pub fn subtitle_language(file: &str) -> (Option<String>, bool, bool) {
+    let stem = file_stem(file.rsplit('/').next().unwrap_or(file));
+    subtitle_flags(stem.rsplit('.').take(3))
+}
+
+/// Lingua, forzati e SDH di un sottotitolo accanto al video `video_stem`: si legge solo la parte del nome dopo
+/// quella del video (`Film (2020).Italiano.forced.srt` → "ita", forzati), così le parole del titolo non contano.
+pub fn subtitle_tags(video_stem: &str, file: &str) -> (Option<String>, bool, bool) {
+    let name = file.rsplit('/').next().unwrap_or(file);
+    let Some(rest) = name.strip_prefix(video_stem) else { return subtitle_language(name) };
+    let rest = rest.rsplit_once('.').map(|(a, _)| a).unwrap_or("");
+    subtitle_flags(rest.rsplit(['.', '_', '-', ' ', '[', ']', '(', ')']).filter(|p| !p.is_empty()))
 }
 
 #[cfg(test)]

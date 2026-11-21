@@ -477,6 +477,25 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-21 — **0.1.28**: revisione di tutte le regole che leggono i nomi, misurata sui ~462k file veri (sola lettura,
+  confronto prima/dopo su ogni nome: nessun file riconosciuto bene cambia, nessuno si perde).
+  Episodi (`NAMING_REV` = 2, rilettura automatica alla prossima scansione completa): date e risoluzioni non sono
+  più numeri d'episodio (`Puntata del 24-03-1979`, `10 Bit`, `S01E01-720p`); vincono la numerazione iniziale
+  (`02 - Titolo`, `45) Titolo (HD 1080)`) e la stagione nel nome (`Bates Motel - S05 - 09`, `Stagione_1_…_Ep_106`,
+  `S2020 Puntata 3`); nuove forme: intervallo iniziale `001-002.Titolo`, `Titolo (128)`, `15)Titolo`, numero da solo
+  anche senza cartella della stagione, ` - 4 - `, `1x1`, `Claymore01`, "Puntata 5", `51ª puntata`, date
+  `GG.MM.AAAA` (episodi per data), mezzi episodi `1x02a`/`01b`/`02C` come versioni "Parte A/B" dello stesso episodio.
+  Esempi: Galaxy Express 999 da 2 episodi fusi (E999, E555) a 115; Bates Motel da 19 a 50.
+  Titoli: `()`/`(0)`/`Unknown` di Radarr e Sonarr (anno sconosciuto) tolti, anno attaccato (`Cielo1986.ITA.1080p`),
+  anni futuri restano nel titolo (`Borgman 2030`), titolo tra quadre (`[REC] (2007)`), IMDb e risoluzione dopo `_`.
+  Extra: cartella `Bonus`, `Film trailer.mkv`/`Film_trailer.mkv` (non se c'è `SxxExx`: "S00E01 Series Trailer" è uno
+  speciale). Sottotitoli: lingua letta solo dopo il nome del video (`subtitle_tags`), codici noti o nomi per intero
+  (Italiano, Inglese, English…→ ita, eng…), niente lingue finte ("le"); la scansione confronta anche lingua e forzati e
+  corregge quelli già registrati. Prova su copia del DB: non riconosciuti Serie TV 4.880 → 147, Anime SUB ITA 1.471 →
+  69, Cartoons 2.307 → 1.043, Anime ITA 1.077 → 217; 855 file riassegnati, 0 elementi vuoti. Restano soprattutto le
+  raccolte di cortometraggi con il solo anno (Walt Disney Treasures). I film già in libreria non si rileggono
+  (cambierebbe il loro raggruppamento): le regole nuove valgono per i file nuovi.
+
 - 2026-11-21 — **0.1.27**: episodi persi o letti male per colpa del trattino basso. Per `\b` della crate regex `_` è
   una lettera: `Serie_S01E01_Titolo`, `_1x01`, `_Episodio_01` e le date `2019_09_03_` non venivano riconosciuti. Il
   file veniva scartato in silenzio (contato solo in "non riconosciuti") oppure finiva sul numero sciolto sbagliato

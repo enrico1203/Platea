@@ -161,3 +161,83 @@ fn underscore_separators() {
     let e = parse_episode("Show/Show_2024_03_15_Puntata.mkv").unwrap();
     assert_eq!(e.air_date.as_deref(), Some("2024-03-15"));
 }
+
+/// Forme di numerazione trovate nelle librerie vere che prima finivano tra i "non riconosciuti".
+#[test]
+fn loose_numbering() {
+    // (percorso, stagione, episodi, mezzo episodio)
+    type Case<'a> = (&'a str, Option<u32>, &'a [u32], Option<char>);
+    let cases: &[Case] = &[
+        ("Doraemon 2005/001-002.Doraemon.2005.@CartoonAnimeITA.mkv", None, &[1, 2], None),
+        ("Chi's Sweet Home (2008)/05-08.CHI.Casa.Dolce.Casa.mkv", None, &[5, 6, 7, 8], None),
+        ("Sailor Moon/Sailor Moon (128) [DVDRip AC3 ITA JAP Sub ITA].mkv", None, &[128], None),
+        ("Bosko - Cortometraggi/Bosko (7).avi", None, &[7], None),
+        ("Peperino Cortometraggi/15)Capitan Paperino - Sea Scouts (1939).mkv", None, &[15], None),
+        ("Cristoforo Colombo (1968)/3.mkv", None, &[3], None),
+        ("La vita privata delle piante (1995)/La vita privata delle piante - 4 - Piante in marcia.mkv", None, &[4], None),
+        ("A che punto è la notte (0)/A che Punto é la Notte 1x1.mkv", Some(1), &[1], None),
+        ("Claymore (2007)/Claymore01.mkv", None, &[1], None),
+        ("Saiunkoku (2006)/Season 1/-UMS-SaiunkokuMonogatari02[DVDrip].avi.mkv", Some(1), &[2], None),
+        ("Le Ragazze (2018)/Le Ragazze_S2020_Puntata 3.mkv", Some(2020), &[3], None),
+        ("Anche i ricchi piangono (1979)/Anche i R/Anche i ricchi piangono 51ª [101+102] puntata (Antenna Sud).mp4", None, &[51], None),
+        ("Curious George (2006)/Stagione 1/1x02a.CC.George.(Alex69Picci).mkv", Some(1), &[2], Some('A')),
+        ("Cyborg Kuro-Chan (1999)/01b.Kurochan.@CartoonAnimeITA.mkv", None, &[1], Some('B')),
+        ("Tom E Jerry Kids/Tom E Jerry Kids - Ita - 02C Amico Mio.mkv", None, &[2], Some('C')),
+        ("Serie/Season 1/Serie S01E04b.mkv", Some(1), &[4], Some('B')),
+        // `-720p` non è un intervallo di episodi.
+        ("Serie/Serie S01E01-720p.mkv", Some(1), &[1], None),
+        ("Serie/Serie S01E01-E03.mkv", Some(1), &[1, 2, 3], None),
+        ("Luna Park (1979)/03 Luna park - Puntata del 07-04-1979.mp4", None, &[3], None),
+        ("La vita sulla Terra/02 - 600 milioni di anni fa.divx", None, &[2], None),
+        ("Peperino Cortometraggi/45) DONALD DUCK The Spirit of 43 (HD 1080).mkv", None, &[45], None),
+        ("Paradise Kiss (2005)/[Tsunami] - Paradise Kiss - 04 - George (RAW 720p H265 10 Bit FLAC ITA-JAP).mkv", None, &[4], None),
+        ("Bates Motel (2013)/Bates Motel - S05 - 09 - Orario delle visite.mkv", Some(5), &[9], None),
+    ];
+    for (path, season, eps, seg) in cases {
+        let e = parse_episode(path).unwrap_or_else(|| panic!("non riconosciuto: {path}"));
+        assert_eq!((e.season, e.episodes.as_slice(), e.segment), (*season, *eps, *seg), "percorso: {path}");
+    }
+    // Una parola che inizia con una lettera a–d dopo il numero non è un mezzo episodio.
+    assert_eq!(parse_episode("Serie/Season 1/Serie 1x05Dark.mkv").and_then(|e| e.segment), None);
+    // Cortometraggi con il solo anno: non sono episodi.
+    assert!(parse_episode("Walt Disney/Alice.Gets.in.Dutch.1924.480p.DVD.DD.2.0.ENG.Sub.ENG.x264-HANDJOB.mkv").is_none());
+}
+
+#[test]
+fn titles_without_year_or_with_odd_year() {
+    assert_eq!(parse_title_year("1975 - L’anno che ha stravolto il mondo () WEBDL-1080p []"), ("1975 - L’anno che ha stravolto il mondo".into(), None));
+    assert_eq!(parse_title_year("Quello Che Gli Altri Non Vedono () Unknown [tt27942025]"), ("Quello Che Gli Altri Non Vedono".into(), None));
+    assert_eq!(parse_title_year("Stanze da Sogno (0)"), ("Stanze da Sogno".into(), None));
+    assert_eq!(parse_title_year("Il.Castello.Nel.Cielo1986.ITA.AC3.Sub.1080p.BluRay.x264-HRS"), ("Il Castello Nel Cielo".into(), Some(1986)));
+    assert_eq!(parse_title_year("[REC] (2007) Bluray-720p"), ("REC".into(), Some(2007)));
+    assert_eq!(parse_title_year("Borgman 2030"), ("Borgman 2030".into(), None));
+    assert_eq!(parse_title_year("Blade Runner 2049 (2017)"), ("Blade Runner 2049".into(), Some(2017)));
+    assert_eq!(parse_title_year("Space 1999"), ("Space".into(), Some(1999)));
+    // Un titolo che finisce con un anno senza etichette dopo resta com'è.
+    assert_eq!(parse_title_year("Apollo1969"), ("Apollo1969".into(), None));
+    let m = parse_movie("Film_2019/Film_2019_1080p_tt1234567.mkv");
+    assert_eq!((m.version.as_deref(), m.ids.imdb.as_deref()), (Some("1080p"), Some("tt1234567")));
+}
+
+#[test]
+fn extras_and_subtitles() {
+    assert!(is_extra("Alex Cross (2024)/Alex Cross trailer.mkv"));
+    assert!(is_extra("Film (2020)/Film_trailer.mkv"));
+    assert!(is_extra("Josee (2020)/Bonus/NCED - 1080p.mkv"));
+    assert_eq!(extra_info("Josee (2020)/Bonus/NCED.mkv").map(|x| (x.kind, x.owner_dir)), Some(("extra", "Josee (2020)".into())));
+    assert!(!is_extra("The Big Short (2015)/The_Big_Short.mkv"));
+    assert!(!is_extra("Power On (2021)/Stagione 00/S00E01 Series Trailer.mp4"));
+    let e = parse_episode("La sberla (1978)/Puntata del 05.10.1978.mp4").unwrap();
+    assert_eq!(e.air_date.as_deref(), Some("1978-10-05"));
+    let e = parse_episode("Wrestling/WWE.Raw.02.05.2022.720p.HDTV.AC3.iTALiAN.x264-SpyRo.mp4").unwrap();
+    assert_eq!(e.air_date.as_deref(), Some("2022-05-02"));
+    let v = "Terrace House S02E046_Addio";
+    assert_eq!(subtitle_tags(v, "Terrace House S02E046_Addio.Italiano.srt"), (Some("ita".into()), false, false));
+    assert_eq!(subtitle_tags(v, "Terrace House S02E046_Addio.Inglese.forced.srt"), (Some("eng".into()), true, false));
+    assert_eq!(subtitle_tags("Film (2020)", "Film (2020).it.srt"), (Some("it".into()), false, false));
+    assert_eq!(subtitle_tags("Film (2020)", "Film (2020)_ita.srt"), (Some("ita".into()), false, false));
+    assert_eq!(subtitle_tags("Film (2020)", "Film (2020).heb.srt"), (Some("heb".into()), false, false));
+    // Senza nulla dopo il nome del video: lingua sconosciuta, anche se il titolo contiene "Le" o "The".
+    assert_eq!(subtitle_tags("Le.Monde.The.End", "Le.Monde.The.End.srt"), (None, false, false));
+    assert_eq!(subtitle_tags("12 Monkeys - S01E05", "12 Monkeys - S01E05.XviD-Pir8.en.srt").0.as_deref(), Some("en"));
+}

@@ -60,7 +60,10 @@ pub struct ScanStats {
 /// rileggono i loro file e li spostano sull'episodio giusto.
 /// 1: il trattino basso fa da separatore (`Serie_S01E09_Titolo` era letto come episodio 100 o scartato),
 ///    `Season 1E01`, `SS01E01`, `S1.Ep10`, `1×52`, numero da solo nella cartella della stagione.
-pub const NAMING_REV: i64 = 1;
+/// 2: date e risoluzioni non sono più numeri d'episodio (`Puntata del 24-03-1979`, `10 Bit`), la numerazione
+///    iniziale (`02 - Titolo`, `15)Titolo`) e la stagione nel nome (`Serie - S05 - 09`) vincono, mezzi episodi
+///    (`1x02a`) come versioni dello stesso episodio, date giorno-mese-anno.
+pub const NAMING_REV: i64 = 2;
 
 /// Scansioni in corso, per la percentuale e la stima nella dashboard. Ogni voce sparisce quando la scansione
 /// finisce (anche con un errore): la tiene viva la guardia restituita da `start`.
@@ -873,9 +876,9 @@ async fn reread_known(
         for (f, old) in chunk {
             let rel = hints.get(&f.relative_path).map(String::as_str).unwrap_or(&f.relative_path);
             // Nome che le regole nuove non leggono più: il file resta dov'è.
-            let Some((new, _)) = identify(&mut tx, idx, library_id, kind, rel, now, match_ids, refresh_series).await? else { continue };
+            let Some((new, label)) = identify(&mut tx, idx, library_id, kind, rel, now, match_ids, refresh_series).await? else { continue };
             if new != *old {
-                sqlx::query("UPDATE media_files SET item_id = ? WHERE id = ?").bind(new).bind(f.id).execute(&mut *tx).await?;
+                sqlx::query("UPDATE media_files SET item_id = ?, version_label = ? WHERE id = ?").bind(new).bind(label).bind(f.id).execute(&mut *tx).await?;
                 moved.entry(*old).or_default().insert(new);
                 touched.insert(new);
                 count += 1;
@@ -973,6 +976,8 @@ async fn identify(
     }
 
     let Some(e) = naming::parse_episode(rel) else { return Ok(None) };
+    // Mezzi episodi (`1x02a`, `1x02b`): versioni dello stesso episodio, con l'etichetta della parte.
+    let part = e.segment.map(|c| format!("Parte {c}"));
     let series_id = match idx.series.get(&e.series_key) {
         Some(id) => *id,
         None => {
@@ -1001,7 +1006,7 @@ async fn identify(
         }
     };
     if let Some(id) = idx.episodes.get(&(season_id, ep_no)) {
-        return Ok(Some((*id, None)));
+        return Ok(Some((*id, part)));
     }
     refresh_series.insert(series_id);
     let title = format!("Episodio {ep_no}");
@@ -1015,7 +1020,7 @@ async fn identify(
         .execute(&mut **tx)
         .await?;
     idx.episodes.insert((season_id, ep_no), id);
-    Ok(Some((id, None)))
+    Ok(Some((id, part)))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1102,37 +1107,41 @@ pub async fn update_availability(state: &Shared, items: &HashSet<i64>) -> anyhow
 
 /// Allinea i sottotitoli esterni (`Film.it.srt` accanto a `Film.mkv`) alle tracce nel database.
 async fn sync_external_subtitles(state: &Shared, path_id: i64, subs: &HashMap<String, Vec<String>>, videos: &[Entry]) -> anyhow::Result<()> {
-    // Sidecar attesi per ogni video.
-    let mut expected: HashMap<String, Vec<String>> = HashMap::new();
+    // Sidecar attesi per ogni video, con lingua e forzati letti dalla parte del nome dopo quella del video.
+    let mut expected: HashMap<String, Vec<(String, Option<String>, bool)>> = HashMap::new();
     for v in videos {
         let dir = parent_dir(&v.rel);
         let Some(names) = subs.get(dir) else { continue };
         let file = v.rel.rsplit('/').next().unwrap_or(&v.rel);
         let stem = file.rsplit_once('.').map(|(s, _)| s).unwrap_or(file);
-        let mut list: Vec<String> = names
+        let mut list: Vec<(String, Option<String>, bool)> = names
             .iter()
             .filter(|n| n.starts_with(stem) && n.len() > stem.len() && n.as_bytes()[stem.len()] == b'.')
-            .map(|n| if dir.is_empty() { n.clone() } else { format!("{dir}/{n}") })
+            .map(|n| {
+                let (lang, forced, _sdh) = naming::subtitle_tags(stem, n);
+                (if dir.is_empty() { n.clone() } else { format!("{dir}/{n}") }, lang, forced)
+            })
             .collect();
         list.sort();
         if !list.is_empty() {
             expected.insert(v.rel.clone(), list);
         }
     }
-    // Sidecar attuali nel database (una query sola).
-    let rows: Vec<(i64, String, Option<String>)> = sqlx::query_as(
-        "SELECT f.id, f.relative_path, s.external_path FROM media_files f
+    // Sidecar attuali nel database (una query sola). Si confrontano anche lingua e forzati: quando cambiano le regole
+    // di lettura dei nomi, i sottotitoli già registrati si correggono alla scansione successiva.
+    let rows: Vec<(i64, String, Option<String>, Option<String>, Option<i64>)> = sqlx::query_as(
+        "SELECT f.id, f.relative_path, s.external_path, s.language, s.is_forced FROM media_files f
          LEFT JOIN media_streams s ON s.file_id = f.id AND s.is_external = 1 AND s.external_path NOT LIKE '@platea/%'
          WHERE f.library_path_id = ?",
     )
     .bind(path_id)
     .fetch_all(&state.db.read)
     .await?;
-    let mut current: HashMap<String, (i64, Vec<String>)> = HashMap::new();
-    for (id, rel, ext) in rows {
+    let mut current: HashMap<String, (i64, Vec<(String, Option<String>, bool)>)> = HashMap::new();
+    for (id, rel, ext, lang, forced) in rows {
         let e = current.entry(rel).or_insert((id, vec![]));
         if let Some(x) = ext {
-            e.1.push(x);
+            e.1.push((x, lang, forced.unwrap_or(0) != 0));
         }
     }
     let mut tx = state.db.write.begin().await?;
@@ -1149,9 +1158,8 @@ async fn sync_external_subtitles(state: &Shared, path_id: i64, subs: &HashMap<St
             .bind(file_id)
             .execute(&mut *tx)
             .await?;
-        for (i, p) in want.iter().enumerate() {
+        for (i, (p, lang, forced)) in want.iter().enumerate() {
             let name = p.rsplit('/').next().unwrap_or(p);
-            let (lang, forced, _sdh) = naming::subtitle_language(name);
             let codec = match naming::extension(name).as_deref() {
                 Some("srt") => "subrip",
                 Some("vtt") => "webvtt",
@@ -1170,7 +1178,7 @@ async fn sync_external_subtitles(state: &Shared, path_id: i64, subs: &HashMap<St
             .bind(codec)
             .bind(lang)
             .bind(name)
-            .bind(forced as i64)
+            .bind(*forced as i64)
             .bind(p)
             .execute(&mut *tx)
             .await?;
