@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#050608" />
+<title>Offline</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #050608; color: #f2f4f8; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { min-height: 100%; display: grid; place-items: center; padding: 24px; box-sizing: border-box; text-align: center; }
+  h1 { font-size: 22px; font-weight: 650; margin: 16px 0 8px; }
+  p { margin: 0 0 24px; color: #9aa3b2; font-size: 16px; line-height: 1.5; max-width: 32ch; }
+  button { font: inherit; font-size: 16px; font-weight: 600; color: #fff; background: #2f6bff; border: 0; border-radius: 10px; padding: 12px 22px; cursor: pointer; }
+  svg { width: 48px; height: 48px; color: #9aa3b2; }
+</style>
+</head>
+<body>
+<main>
+  <div>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h.01"/><path d="M8.5 16.43a5 5 0 0 1 7 0"/><path d="M5 12.86a10 10 0 0 1 5.17-2.69"/><path d="M19 12.86a10 10 0 0 0-2.01-1.52"/><path d="M2 8.82a15 15 0 0 1 4.18-2.65"/><path d="M22 8.82a15 15 0 0 0-11.29-3.76"/><path d="m2 2 20 20"/></svg>
+    <h1 id="t">Sei offline</h1>
+    <p id="d">Il server non è raggiungibile. Controlla la connessione e riprova.</p>
+    <button id="b" type="button">Riprova</button>
+  </div>
+</main>
+<script>
+  if (!/^it\b/i.test(navigator.language || "")) {
+    document.documentElement.lang = "en";
+    document.getElementById("t").textContent = "You're offline";
+    document.getElementById("d").textContent = "The server can't be reached. Check your connection and try again.";
+    document.getElementById("b").textContent = "Try again";
+  }
+  document.getElementById("b").addEventListener("click", () => location.reload());
+  window.addEventListener("online", () => location.reload());
+</script>
+</body>
+</html>

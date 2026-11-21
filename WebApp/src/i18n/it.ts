@@ -501,6 +501,17 @@ const it = {
     taglineWhite: "Media server",
     sourceCode: "Codice sorgente",
   },
+  install: {
+    button: "Installa l'app",
+    title: "Installa l'app",
+    iosStep1: "Tocca Condividi nella barra di Safari (il quadrato con la freccia).",
+    iosStep2: "Scorri e scegli \"Aggiungi alla schermata Home\".",
+    iosStep3: "Tocca \"Aggiungi\": l'icona compare nella schermata Home e si apre a tutto schermo.",
+    iosNote: "Su iPhone si installa da Safari (da iOS 16.4 anche da Chrome ed Edge, dal pulsante Condividi).",
+    androidStep1: "Apri il menu del browser (i tre puntini in alto a destra).",
+    androidStep2: "Scegli \"Installa app\" o \"Aggiungi a schermata Home\".",
+    androidNote: "Con Chrome di solito basta il pulsante: se il browser non lo propone, segui questi passi.",
+  },
   admin: {
     progress: {
       title: "Avanzamento",

@@ -500,6 +500,17 @@ const en = {
     taglineWhite: "Media server",
     sourceCode: "Source code",
   },
+  install: {
+    button: "Install the app",
+    title: "Install the app",
+    iosStep1: "Tap Share in the Safari toolbar (the square with the arrow).",
+    iosStep2: "Scroll and choose \"Add to Home Screen\".",
+    iosStep3: "Tap \"Add\": the icon appears on the Home Screen and opens full screen.",
+    iosNote: "On iPhone install from Safari (since iOS 16.4 also from Chrome and Edge, via Share).",
+    androidStep1: "Open the browser menu (the three dots at the top right).",
+    androidStep2: "Choose \"Install app\" or \"Add to Home screen\".",
+    androidNote: "In Chrome the button is usually enough: if the browser doesn't offer it, follow these steps.",
+  },
   admin: {
     progress: {
       title: "Progress",

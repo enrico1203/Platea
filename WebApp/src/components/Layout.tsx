@@ -9,6 +9,7 @@ import { useSession } from "../session";
 import { useT } from "../i18n";
 import { AudioBar } from "../audio/AudioBar";
 import { useLiveStatus } from "../pages/LiveTV";
+import { InstallButton } from "./InstallButton";
 
 export function useLibraries() {
   return useQuery({ queryKey: ["libraries"], queryFn: () => api<Page<Library>>("/api/v1/libraries").then((r) => r.items), staleTime: 60_000 });
@@ -145,7 +146,10 @@ export function Layout() {
       <div className="app__content">
         <header className="topbar">
           <Logo />
-          <NavLink to="/account" className="icon-btn" aria-label={t("nav.account")}><Avatar name={me?.username ?? ""} url={me?.avatar ?? null} size={30} /></NavLink>
+          <div className="topbar__actions">
+            <InstallButton />
+            <NavLink to="/account" className="icon-btn" aria-label={t("nav.account")}><Avatar name={me?.username ?? ""} url={me?.avatar ?? null} size={30} /></NavLink>
+          </div>
         </header>
         {me?.is_admin && inAdmin && <AdminSubnav />}
         <main className="main">

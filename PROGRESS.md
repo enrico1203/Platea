@@ -477,6 +477,16 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-22 — **0.1.32**: web UI come app (PWA). Service worker `WebApp/public/sw.js`: pagine sempre dalla rete,
+  senza rete `offline.html`; cache solo di `/assets/` (hash nel nome, massimo 150 file); mai API, video, immagini
+  del server o manifest. Manifest con `id`/`scope` e icona `maskable` (Android): dal logo PNG la genera il server
+  (`/api/v1/branding/icon-maskable-512.png`, logo nel 60% centrale su fondo #050608, rigenerata a ogni logo nuovo),
+  senza logo `public/icon-maskable-512.png`; con logo SVG o monogramma nessuna maskable. Pulsante "Installa l'app"
+  nella barra in alto (solo telefono: `.topbar`, iPhone/iPad e Android) accanto all'utente, nascosto se la pagina è
+  già aperta come app (`display-mode: standalone` / `navigator.standalone`) o dopo `appinstalled`. Android/Chrome:
+  prompt di sistema (`beforeinstallprompt` tenuto da `initPwa` in `lib/pwa.ts`); iPhone o browser senza prompt:
+  finestra con i passi (Condividi → Aggiungi alla schermata Home / menu ⋮ → Installa app). Niente screenshot nel
+  manifest (mostrerebbero le librerie).
 - 2026-11-22 — **0.1.31** (solo web): la fascia oraria delle analisi non restava salvata. Nel modulo della libreria
   un valore non intero ("2-5" in una casella, "2:00") diventava `null` in silenzio (`Number` → NaN → JSON null) e
   il salvataggio riusciva con il campo vuoto. Ora le ore accettano "2", "02", "2:00"; "2-5" nella prima casella

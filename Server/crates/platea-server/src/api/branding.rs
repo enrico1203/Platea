@@ -68,6 +68,13 @@ pub fn routes(api: Api) -> Api {
     api.get("/api/v1/branding/logo", "Sistema", Access::Public, "Logo caricato dall'amministratore (SVG o PNG)", logo)
         .get("/api/v1/branding/icon-192.png", "Sistema", Access::Public, "Icona quadrata 192×192 ricavata dal logo", icon_192)
         .get("/api/v1/branding/icon-512.png", "Sistema", Access::Public, "Icona quadrata 512×512 ricavata dal logo", icon_512)
+        .get(
+            "/api/v1/branding/icon-maskable-512.png",
+            "Sistema",
+            Access::Public,
+            "Icona 512×512 a pieno riquadro per Android (logo nella zona sicura su fondo scuro)",
+            icon_maskable,
+        )
         .get("/api/v1/branding/icon.svg", "Sistema", Access::Public, "Icona con l'iniziale del nome del server (senza logo, con Platea nascosto)", monogram)
         .get("/api/v1/branding/manifest.webmanifest", "Sistema", Access::Public, "Manifest della web app con nome e icone del server", manifest)
         .get("/api/v1/branding/head.html", "Sistema", Access::Public, "Titolo, descrizione e icone per la testata di index.html", head)
@@ -190,13 +197,25 @@ async fn head(State(state): State<Shared>) -> Response {
 pub async fn manifest(State(state): State<Shared>) -> Response {
     let name = display_name(&state);
     let (icons, _) = icons(&state);
-    let icons: Vec<Value> = icons.iter().map(|i| json!({ "src": i.href, "sizes": i.sizes, "type": i.mime, "purpose": "any" })).collect();
+    let mut icons: Vec<Value> = icons.iter().map(|i| json!({ "src": i.href, "sizes": i.sizes, "type": i.mime, "purpose": "any" })).collect();
+    // Android: icona a pieno riquadro, altrimenti il logo finisce dentro un cerchio bianco.
+    match state.branding.logo() {
+        Some(Logo { kind: LogoKind::Png, version }) => icons.push(
+            json!({ "src": format!("/api/v1/branding/icon-maskable-512.png?v={version}"), "sizes": "512x512", "type": "image/png", "purpose": "maskable" }),
+        ),
+        None if !state.settings.get().general.white_label => {
+            icons.push(json!({ "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }))
+        }
+        _ => {}
+    }
     let short: String = name.chars().take(12).collect();
     let m = json!({
         "name": name,
         "short_name": short,
         "description": description(&state),
+        "id": "/",
         "start_url": "/",
+        "scope": "/",
         "display": "standalone",
         "background_color": "#050608",
         "theme_color": "#050608",
@@ -267,6 +286,42 @@ async fn icon_512(State(state): State<Shared>) -> ApiResult<Response> {
     serve_file(&state, "icon-512.png", "image/png").await
 }
 
+/// Icona "maskable" di Android: si genera la prima volta dal logo PNG e resta nella cartella del branding.
+async fn icon_maskable(State(state): State<Shared>) -> ApiResult<Response> {
+    if !matches!(state.branding.logo().map(|l| l.kind), Some(LogoKind::Png)) {
+        return Err(ApiError::not_found("Icona"));
+    }
+    let d = dir(&state.boot.data_dir);
+    if !d.join(MASKABLE).exists() {
+        let d2 = d.clone();
+        tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+            let img = image::open(d2.join("logo.png"))?;
+            let mut out = std::io::Cursor::new(Vec::new());
+            image::DynamicImage::ImageRgba8(maskable_icon(&img, 512)).write_to(&mut out, image::ImageFormat::Png)?;
+            let tmp = d2.join(format!("{MASKABLE}.tmp"));
+            std::fs::write(&tmp, out.into_inner())?;
+            std::fs::rename(&tmp, d2.join(MASKABLE))?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| ApiError::Internal(e.into()))?
+        .map_err(ApiError::Internal)?;
+    }
+    serve_file(&state, MASKABLE, "image/png").await
+}
+
+const MASKABLE: &str = "icon-maskable-512.png";
+
+/// Fondo pieno con il logo dentro la zona sicura (il cerchio centrale dell'80%): Android ritaglia il resto.
+fn maskable_icon(img: &image::DynamicImage, size: u32) -> image::RgbaImage {
+    let inner = size * 3 / 5;
+    let fit = img.resize(inner, inner, image::imageops::FilterType::Lanczos3).to_rgba8();
+    let mut canvas = image::RgbaImage::from_pixel(size, size, image::Rgba([0x05, 0x06, 0x08, 0xff]));
+    let (x, y) = ((size - fit.width()) / 2, (size - fit.height()) / 2);
+    image::imageops::overlay(&mut canvas, &fit, x as i64, y as i64);
+    canvas
+}
+
 /// Un SVG si riconosce dal contenuto: testo UTF-8 con un elemento <svg>.
 fn looks_like_svg(b: &[u8]) -> bool {
     let head = &b[..b.len().min(4096)];
@@ -294,7 +349,7 @@ fn store_logo(d: &Path, body: &[u8]) -> anyhow::Result<LogoKind> {
     if looks_like_svg(body) {
         anyhow::ensure!(body.len() <= MAX_SVG, "SVG troppo grande (massimo 1 MB)");
         write("logo.svg", body)?;
-        for f in ["logo.png", "icon-192.png", "icon-512.png"] {
+        for f in ["logo.png", "icon-192.png", "icon-512.png", MASKABLE] {
             let _ = std::fs::remove_file(d.join(f));
         }
         return Ok(LogoKind::Svg);
@@ -309,6 +364,7 @@ fn store_logo(d: &Path, body: &[u8]) -> anyhow::Result<LogoKind> {
     write("logo.png", &png(&logo)?)?;
     write("icon-192.png", &png(&image::DynamicImage::ImageRgba8(square_icon(&img, 192)))?)?;
     write("icon-512.png", &png(&image::DynamicImage::ImageRgba8(square_icon(&img, 512)))?)?;
+    let _ = std::fs::remove_file(d.join(MASKABLE));
     let _ = std::fs::remove_file(d.join("logo.svg"));
     Ok(LogoKind::Png)
 }
@@ -333,7 +389,7 @@ async fn put_logo(State(state): State<Shared>, AdminUser(admin): AdminUser, body
 
 async fn delete_logo(State(state): State<Shared>, AdminUser(admin): AdminUser) -> ApiResult<Json<Value>> {
     let d = dir(&state.boot.data_dir);
-    for f in ["logo.json", "logo.svg", "logo.png", "icon-192.png", "icon-512.png"] {
+    for f in ["logo.json", "logo.svg", "logo.png", "icon-192.png", "icon-512.png", MASKABLE] {
         let _ = tokio::fs::remove_file(d.join(f)).await;
     }
     *state.branding.logo.write().unwrap() = None;
@@ -344,6 +400,18 @@ async fn delete_logo(State(state): State<Shared>, AdminUser(admin): AdminUser) -
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn maskable_icon_fills_square_and_keeps_logo_in_safe_zone() {
+        let logo = image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(300, 100, image::Rgba([255, 0, 0, 255])));
+        let icon = maskable_icon(&logo, 512);
+        assert_eq!(icon.dimensions(), (512, 512));
+        assert_eq!(icon.get_pixel(0, 0).0, [0x05, 0x06, 0x08, 0xff]);
+        assert_eq!(icon.get_pixel(256, 256).0, [255, 0, 0, 255]);
+        // Fuori dal 60% centrale resta il fondo.
+        assert_eq!(icon.get_pixel(256, 60).0, [0x05, 0x06, 0x08, 0xff]);
+        assert_eq!(icon.get_pixel(90, 256).0, [0x05, 0x06, 0x08, 0xff]);
+    }
 
     #[test]
     fn svg_detection() {
