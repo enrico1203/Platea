@@ -1061,7 +1061,7 @@ dependencies = [
 
 [[package]]
 name = "libredox"
-version = "0.1.25"
+version = "0.1.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "61ff90caf6077a803a240f62fdbe88645a890bbca49ef8174c3cb0404362171d"
 dependencies = [
@@ -1395,7 +1395,7 @@ checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 
 [[package]]
 name = "platea-naming"
-version = "0.1.25"
+version = "0.1.26"
 dependencies = [
  "once_cell",
  "regex",
@@ -1404,7 +1404,7 @@ dependencies = [
 
 [[package]]
 name = "platea-playback"
-version = "0.1.25"
+version = "0.1.26"
 dependencies = [
  "serde",
  "serde_json",
@@ -1412,7 +1412,7 @@ dependencies = [
 
 [[package]]
 name = "platea-server"
-version = "0.1.25"
+version = "0.1.26"
 dependencies = [
  "anyhow",
  "argon2",

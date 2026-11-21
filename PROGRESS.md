@@ -477,6 +477,15 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-21 — **0.1.26**: filtri della libreria dietro un pulsante (richiesta dell'utente: le pillole della 0.1.25 non
+  bastavano). Barra: ricerca + pulsante **Filtri** (icona a cursori, stessa altezza della ricerca, blu con il numero dei
+  filtri attivi). Il pannello (`FilterSheet` in `pages/Library.tsx`) sale dal basso su telefono (maniglia, max 88dvh) e
+  scorre da destra su desktop (420px); gruppi Ordina per / Mostra / Video / Decennio / Genere come pillole a scelta
+  singola (radiogroup), applicate subito; in fondo Azzera filtri e Mostra i risultati. Esc e tocco fuori chiudono, il
+  focus torna al pulsante, la pagina sotto non scorre. Sotto la barra i filtri attivi (e l'ordinamento se non è per
+  titolo) come pillole con X; "Azzera filtri" da due in su. Riga delle lettere allineata al bordo della ricerca.
+  Provato con Playwright a 390 e 1360 px.
+
 - 2026-11-21 — **0.1.25**: pagina di una libreria ridisegnata (da telefono i cinque menu a tendina sembravano messi a
   caso). Ora una barra sola: ricerca, poi ordinamento e filtri come pillole (`Pick` in `pages/Library.tsx`: select
   nativo invisibile sopra la pillola, quindi su iPhone la ruota di sistema e 16px). Un filtro mostra il suo nome finché è

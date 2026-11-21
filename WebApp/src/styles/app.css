@@ -406,47 +406,64 @@ a.person:focus-visible .person__img { outline: 2px solid var(--focus); outline-o
 }
 @media (prefers-reduced-motion: reduce) { .pl-session__bar .pl-session__pos { transition: none; } }
 
-/* Libreria: ricerca, ordinamento e filtri in una barra sola.
-   Desktop: ricerca a sinistra, pillole a destra sulla stessa riga (vanno a capo se servono).
-   Telefono: ricerca a tutta larghezza, pillole e lettere in una riga scorrevole ciascuna, a filo dei bordi. */
+/* Libreria: ricerca e pulsante Filtri sulla stessa riga, stessa altezza; sotto, i filtri attivi da togliere uno a uno.
+   Il pannello dei filtri sale dal basso su telefono e scorre da destra su desktop. */
 .page-head:has(+ .lib-toolbar) { margin-bottom: var(--space-5); }
-.lib-toolbar { display: flex; align-items: center; gap: var(--space-3) var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-4); }
-.lib-toolbar__search { flex: 1 1 260px; max-width: 380px; cursor: text; }
+.lib-toolbar { display: flex; align-items: stretch; gap: var(--space-2); max-width: 560px; margin-bottom: var(--space-4); }
+.lib-toolbar__search { flex: 1; min-width: 0; cursor: text; }
 .lib-toolbar__search input::-webkit-search-cancel-button { filter: grayscale(1); opacity: .6; }
-.lib-toolbar__picks { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.lib-toolbar__sep { width: 1px; height: 20px; background: var(--line-strong); margin: 0 var(--space-1); flex: none; }
-.pick { position: relative; display: inline-flex; align-items: center; gap: 6px; flex: none; height: 36px; padding: 0 10px 0 14px; border: 1px solid var(--line-strong); border-radius: var(--radius-full); background: var(--surface-1); color: var(--ink-muted); font: 500 14px/20px var(--font-sans); white-space: nowrap; cursor: pointer; transition: background-color .12s ease, border-color .12s ease, color .12s ease; }
-.pick:hover { background: var(--surface-2); color: var(--ink); }
-.pick:has(> svg:first-child) { padding-left: 12px; }
-.pick > svg { width: 15px; height: 15px; flex: none; }
-.pick .pick__chev { width: 14px; height: 14px; color: var(--ink-subtle); }
-.pick__text { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
-.pick select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; appearance: none; border: 0; font-size: 16px; }
-.pick:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
-.pick.is-on { background: var(--blue-soft); border-color: color-mix(in srgb, var(--blue) 55%, transparent); color: var(--blue-text); }
-.pick.is-on .pick__chev { color: var(--blue-text); }
-.lib-toolbar__clear { display: inline-flex; align-items: center; gap: 4px; flex: none; height: 36px; padding: 0 8px; border: 0; border-radius: var(--radius-sm); background: none; color: var(--ink-subtle); font: 500 14px/20px var(--font-sans); white-space: nowrap; cursor: pointer; }
-.lib-toolbar__clear:hover { color: var(--ink); }
-.lib-toolbar__clear:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.lib-toolbar__clear svg { width: 15px; height: 15px; }
-.lib-letters { margin-bottom: var(--space-5); }
+.lib-toolbar__filters { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); flex: none; height: 40px; padding: 0 var(--space-4) 0 14px; border: 1px solid var(--line-control); border-radius: var(--radius-md); background: var(--surface-2); color: var(--ink); font: 500 14px/20px var(--font-sans); white-space: nowrap; cursor: pointer; transition: background-color .12s ease, border-color .12s ease; }
+.lib-toolbar__filters:hover { background: var(--surface-3); }
+.lib-toolbar__filters:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.lib-toolbar__filters svg { width: 18px; height: 18px; flex: none; }
+.lib-toolbar__filters.is-on { border-color: var(--blue); background: var(--blue-soft); color: var(--blue-text); }
+.lib-toolbar__count { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; margin-right: -4px; border-radius: var(--radius-full); background: var(--blue); color: var(--on-blue); font: 600 12px/1 var(--font-mono); font-variant-numeric: tabular-nums; }
+
+.lib-active { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-bottom: var(--space-4); }
+.lib-active__chip { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 8px 0 12px; border: 1px solid color-mix(in srgb, var(--blue) 50%, transparent); border-radius: var(--radius-full); background: var(--blue-soft); color: var(--blue-text); font: 500 13px/18px var(--font-sans); white-space: nowrap; cursor: pointer; }
+.lib-active__chip svg { width: 14px; height: 14px; flex: none; opacity: .8; }
+.lib-active__chip:hover svg:last-child { opacity: 1; }
+.lib-active__chip--sort { border-color: var(--line-strong); background: var(--surface-2); color: var(--ink); padding-left: 10px; }
+.lib-active__clear { height: 32px; padding: 0 2px; border: 0; background: none; color: var(--ink-subtle); font: 500 13px/18px var(--font-sans); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-strong); }
+.lib-active__clear:hover { color: var(--ink); }
+.lib-active__chip:focus-visible, .lib-active__clear:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* Le lettere sono centrate in bottoni da 28px: si sposta la riga perché "#" stia sul bordo della ricerca. */
+.lib-letters { margin-bottom: var(--space-5); margin-left: -9px; }
+
+.fsheet-backdrop { position: fixed; inset: 0; z-index: 50; background: var(--scrim); display: flex; justify-content: flex-end; animation: fade .18s ease; }
+.fsheet { display: flex; flex-direction: column; width: min(420px, 100%); height: 100%; background: var(--surface-1); border-left: 1px solid var(--line-strong); box-shadow: var(--shadow-pop); outline: none; animation: fsheet-in-side .22s cubic-bezier(.2, .8, .2, 1); }
+.fsheet__grip { display: none; }
+.fsheet__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-4) var(--space-4) var(--space-3) var(--space-5); border-bottom: 1px solid var(--line); }
+.fsheet__body { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: var(--space-2) var(--space-5) var(--space-5); }
+.fsheet__group { padding: var(--space-4) 0; }
+.fsheet__group + .fsheet__group { border-top: 1px solid var(--line); }
+.fsheet__label { margin: 0 0 var(--space-3); font: 600 12px/16px var(--font-sans); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-subtle); }
+.fsheet__chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.fchip { height: 36px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: var(--radius-full); background: var(--surface-2); color: var(--ink-muted); font: 500 14px/20px var(--font-sans); white-space: nowrap; cursor: pointer; transition: background-color .12s ease, border-color .12s ease, color .12s ease; }
+.fchip:hover { color: var(--ink); border-color: var(--line-control); }
+.fchip.is-on { background: var(--blue); border-color: var(--blue); color: var(--on-blue); }
+.fchip:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.fsheet__foot { display: flex; gap: var(--space-3); padding: var(--space-3) var(--space-5) calc(var(--space-3) + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--surface-1); }
+.fsheet__foot .pl-btn { flex: 1; height: 44px; }
+.fsheet__foot .pl-btn:disabled { opacity: .45; cursor: default; background: none; }
+@keyframes fsheet-in-side { from { transform: translateX(32px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes fsheet-in-up { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+
 @media (max-width: 900px) {
-  .lib-toolbar { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: var(--space-3); }
-  .lib-toolbar__search { max-width: none; flex: none; height: 44px; }
-  /* Righe scorrevoli che arrivano al bordo dello schermo: si capisce che c'è altro a destra. */
-  .lib-toolbar__picks, .lib-letters { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain;
-    margin-inline: calc(-1 * var(--page-pad, var(--space-4))); padding-inline: var(--page-pad, var(--space-4)); scroll-padding-inline: var(--page-pad, var(--space-4)); }
-  .lib-toolbar__picks::-webkit-scrollbar, .lib-letters::-webkit-scrollbar { display: none; }
-  .lib-toolbar__picks { padding-block: 3px; }
-  .lib-toolbar__picks > * { order: 2; }
-  .lib-toolbar__picks > .pick:first-child, .lib-toolbar__sep { order: 0; }
-  /* Azzera: subito dopo l'ordinamento, tondo con la sola X: in fondo alla riga scorrevole non si vedrebbe. */
-  .lib-toolbar__clear { order: 1; justify-content: center; width: 36px; padding: 0; border: 1px solid var(--line-strong); border-radius: var(--radius-full); }
-  .lib-toolbar__clear svg { width: 16px; height: 16px; }
-  .lib-toolbar__clear-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .lib-toolbar { max-width: none; }
+  .lib-toolbar__search, .lib-toolbar__filters { height: 44px; }
+  .lib-letters { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain;
+    margin-inline: calc(-1 * var(--space-4)); padding-inline: 5px var(--space-4); }
+  .lib-letters::-webkit-scrollbar { display: none; }
   .lib-letters button { min-width: 32px; height: 36px; flex: none; }
+  .fsheet-backdrop { align-items: flex-end; }
+  .fsheet { width: 100%; height: auto; max-height: 88dvh; border-left: 0; border-top: 1px solid var(--line-strong); border-radius: 20px 20px 0 0; animation-name: fsheet-in-up; }
+  .fsheet__grip { display: block; width: 36px; height: 5px; margin: 8px auto 0; border-radius: var(--radius-full); background: var(--line-control); }
+  .fsheet__head { padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4); }
+  .fsheet__body { padding: 0 var(--space-4) var(--space-4); }
+  .fsheet__foot { padding-inline: var(--space-4); }
 }
-@media (prefers-reduced-motion: reduce) { .pick { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .fsheet, .fsheet-backdrop { animation: none; } .fchip, .lib-toolbar__filters { transition: none; } }
 
 /* Torna su: in basso a destra, sopra la barra delle schede su telefono. */
 .back-to-top { position: fixed; right: var(--space-5); bottom: var(--space-5); z-index: 25; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); box-shadow: 0 6px 20px rgba(0,0,0,.35); cursor: pointer; opacity: 0; transform: translateY(8px); pointer-events: none; transition: opacity .16s ease, transform .16s ease, background-color .12s ease; }
