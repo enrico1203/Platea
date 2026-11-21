@@ -131,8 +131,6 @@ const en = {
   },
   library: {
     searchIn: "Search {name}",
-    searchPlaceholder: "Title, original title too",
-    searchPlaceholderBooks: "Title or author",
     audiobooks: "Audiobooks",
     audiobooksHint: "A folder with audio files is a book (CD1, Disc 2 subfolders belong to it); every .m4b is a book of its own. Metadata from metadata.json, NFO, file tags and the folder name, then Audible. Covers from the folder, Audible or embedded in the files.",
     movies: "Movies",
@@ -164,6 +162,7 @@ const en = {
     decadeLabel: "{d}s",
     decadeOld: "Before 1950",
     video: "Video",
+    clearFilters: "Clear filters",
     empty: "Nothing matches these filters.",
     remoteProfile: "Remote storage (rclone, cloud)",
     remoteHint: "Scan every 6 hours, one analysis at a time, no automatic extraction: no file is opened without a reason.",

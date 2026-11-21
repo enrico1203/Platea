@@ -132,8 +132,6 @@ const it = {
   },
   library: {
     searchIn: "Cerca in {name}",
-    searchPlaceholder: "Titolo, anche originale",
-    searchPlaceholderBooks: "Titolo o autore",
     audiobooks: "Audiolibri",
     audiobooksHint: "Una cartella con file audio è un libro (le sottocartelle CD1, Disc 2 ne fanno parte); ogni .m4b è un libro a sé. Metadati da metadata.json, NFO, tag dei file e nome della cartella, poi Audible. Copertine dalla cartella, da Audible o incorporate nei file.",
     movies: "Film",
@@ -165,6 +163,7 @@ const it = {
     decadeLabel: "Anni '{d}",
     decadeOld: "Prima del 1950",
     video: "Video",
+    clearFilters: "Azzera filtri",
     empty: "Nessun elemento con questi filtri.",
     remoteProfile: "Storage remoto (rclone, cloud)",
     remoteHint: "Scansione ogni 6 ore, un'analisi alla volta, niente estrazioni automatiche: nessun file aperto senza motivo.",

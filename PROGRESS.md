@@ -477,6 +477,14 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-21 — **0.1.25**: pagina di una libreria ridisegnata (da telefono i cinque menu a tendina sembravano messi a
+  caso). Ora una barra sola: ricerca, poi ordinamento e filtri come pillole (`Pick` in `pages/Library.tsx`: select
+  nativo invisibile sopra la pillola, quindi su iPhone la ruota di sistema e 16px). Un filtro mostra il suo nome finché è
+  su "Tutti", poi il valore scelto in blu; "Azzera filtri" compare con almeno un filtro attivo. Desktop: ricerca e
+  pillole sulla stessa riga. ≤900px: ricerca a tutta larghezza, pillole e lettere in righe scorrevoli a filo dello
+  schermo, Azzera come X tonda subito dopo l'ordinamento. Provato con Playwright (390 px e 1360 px, nessuno scorrimento
+  orizzontale della pagina).
+
 - 2026-11-20 — **0.1.24**: statistiche delle librerie (Amministrazione › Librerie › Statistiche,
   `/admin/libraries/stats`; API `GET /api/v1/libraries/stats`, solo admin). Riepilogo (TB, durata, film, serie,
   audiolibri, quota 4K/HDR, HEVC/AV1, bitrate medio, riproduzioni), confronto tra librerie (barre + tabella),

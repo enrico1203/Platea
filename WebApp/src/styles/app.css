@@ -406,9 +406,47 @@ a.person:focus-visible .person__img { outline: 2px solid var(--focus); outline-o
 }
 @media (prefers-reduced-motion: reduce) { .pl-session__bar .pl-session__pos { transition: none; } }
 
-/* Ricerca nella libreria */
-.library-search { max-width: 420px; margin-bottom: var(--space-5); }
-@media (max-width: 900px) { .library-search { max-width: none; } }
+/* Libreria: ricerca, ordinamento e filtri in una barra sola.
+   Desktop: ricerca a sinistra, pillole a destra sulla stessa riga (vanno a capo se servono).
+   Telefono: ricerca a tutta larghezza, pillole e lettere in una riga scorrevole ciascuna, a filo dei bordi. */
+.page-head:has(+ .lib-toolbar) { margin-bottom: var(--space-5); }
+.lib-toolbar { display: flex; align-items: center; gap: var(--space-3) var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-4); }
+.lib-toolbar__search { flex: 1 1 260px; max-width: 380px; cursor: text; }
+.lib-toolbar__search input::-webkit-search-cancel-button { filter: grayscale(1); opacity: .6; }
+.lib-toolbar__picks { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.lib-toolbar__sep { width: 1px; height: 20px; background: var(--line-strong); margin: 0 var(--space-1); flex: none; }
+.pick { position: relative; display: inline-flex; align-items: center; gap: 6px; flex: none; height: 36px; padding: 0 10px 0 14px; border: 1px solid var(--line-strong); border-radius: var(--radius-full); background: var(--surface-1); color: var(--ink-muted); font: 500 14px/20px var(--font-sans); white-space: nowrap; cursor: pointer; transition: background-color .12s ease, border-color .12s ease, color .12s ease; }
+.pick:hover { background: var(--surface-2); color: var(--ink); }
+.pick:has(> svg:first-child) { padding-left: 12px; }
+.pick > svg { width: 15px; height: 15px; flex: none; }
+.pick .pick__chev { width: 14px; height: 14px; color: var(--ink-subtle); }
+.pick__text { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+.pick select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; appearance: none; border: 0; font-size: 16px; }
+.pick:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
+.pick.is-on { background: var(--blue-soft); border-color: color-mix(in srgb, var(--blue) 55%, transparent); color: var(--blue-text); }
+.pick.is-on .pick__chev { color: var(--blue-text); }
+.lib-toolbar__clear { display: inline-flex; align-items: center; gap: 4px; flex: none; height: 36px; padding: 0 8px; border: 0; border-radius: var(--radius-sm); background: none; color: var(--ink-subtle); font: 500 14px/20px var(--font-sans); white-space: nowrap; cursor: pointer; }
+.lib-toolbar__clear:hover { color: var(--ink); }
+.lib-toolbar__clear:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.lib-toolbar__clear svg { width: 15px; height: 15px; }
+.lib-letters { margin-bottom: var(--space-5); }
+@media (max-width: 900px) {
+  .lib-toolbar { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: var(--space-3); }
+  .lib-toolbar__search { max-width: none; flex: none; height: 44px; }
+  /* Righe scorrevoli che arrivano al bordo dello schermo: si capisce che c'è altro a destra. */
+  .lib-toolbar__picks, .lib-letters { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain;
+    margin-inline: calc(-1 * var(--page-pad, var(--space-4))); padding-inline: var(--page-pad, var(--space-4)); scroll-padding-inline: var(--page-pad, var(--space-4)); }
+  .lib-toolbar__picks::-webkit-scrollbar, .lib-letters::-webkit-scrollbar { display: none; }
+  .lib-toolbar__picks { padding-block: 3px; }
+  .lib-toolbar__picks > * { order: 2; }
+  .lib-toolbar__picks > .pick:first-child, .lib-toolbar__sep { order: 0; }
+  /* Azzera: subito dopo l'ordinamento, tondo con la sola X: in fondo alla riga scorrevole non si vedrebbe. */
+  .lib-toolbar__clear { order: 1; justify-content: center; width: 36px; padding: 0; border: 1px solid var(--line-strong); border-radius: var(--radius-full); }
+  .lib-toolbar__clear svg { width: 16px; height: 16px; }
+  .lib-toolbar__clear-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .lib-letters button { min-width: 32px; height: 36px; flex: none; }
+}
+@media (prefers-reduced-motion: reduce) { .pick { transition: none; } }
 
 /* Torna su: in basso a destra, sopra la barra delle schede su telefono. */
 .back-to-top { position: fixed; right: var(--space-5); bottom: var(--space-5); z-index: 25; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); box-shadow: 0 6px 20px rgba(0,0,0,.35); cursor: pointer; opacity: 0; transform: translateY(8px); pointer-events: none; transition: opacity .16s ease, transform .16s ease, background-color .12s ease; }
