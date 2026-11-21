@@ -477,6 +477,11 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-22 — **0.1.29**: app Jellyfin per Roku. Entrava (login, home, ultimi aggiunti) ma libreria, ricerca e
+  riproduzione rapida davano 404: l'app chiede `/items/` con la barra finale e `/persons`, `/artists`,
+  `/items/filters` tutti minuscoli. Ora `normalize_uri` toglie la barra finale (fuori da `/api/`) e conosce anche
+  Persons, Artists, Genres, Studios, Filters, Counts e gli altri segmenti delle route. Sorgente dell'app letto da
+  github.com/jellyfin/jellyfin-roku (`source/api/sdk.bs`). Test `roku_paths_are_normalized`.
 - 2026-11-21 — **0.1.28**: revisione di tutte le regole che leggono i nomi, misurata sui ~462k file veri (sola lettura,
   confronto prima/dopo su ogni nome: nessun file riconosciuto bene cambia, nessuno si perde).
   Episodi (`NAMING_REV` = 2, rilettura automatica alla prossima scansione completa): date e risoluzioni non sono

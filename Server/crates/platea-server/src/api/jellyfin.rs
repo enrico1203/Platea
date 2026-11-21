@@ -333,6 +333,22 @@ static CANONICAL: Lazy<HashMap<String, &'static str>> = Lazy::new(|| {
         "Folders",
         "Splashscreen",
         "Css",
+        "Css.css",
+        // App Jellyfin per Roku: percorsi tutti minuscoli (`/persons`, `/items/filters`).
+        "Artists",
+        "Persons",
+        "Genres",
+        "MusicGenres",
+        "Studios",
+        "Counts",
+        "Filters",
+        "Filters2",
+        "GroupingOptions",
+        "ClientLog",
+        "Document",
+        "Download",
+        "Plugins",
+        "VirtualFolders",
     ];
     words.iter().map(|w| (w.to_lowercase(), *w)).collect()
 });
@@ -345,6 +361,10 @@ pub fn normalize_uri<B>(mut req: axum::http::Request<B>) -> axum::http::Request<
         let fixed: Vec<String> =
             path.split('/').map(|seg| CANONICAL.get(&seg.to_lowercase()).map(|c| c.to_string()).unwrap_or_else(|| seg.to_string())).collect();
         let mut new_path = fixed.join("/");
+        // L'app per Roku chiede `/items/` con la barra finale: Jellyfin la accetta, axum no.
+        while new_path.len() > 1 && new_path.ends_with('/') {
+            new_path.pop();
+        }
         if let Some(rest) = new_path.strip_prefix("/emby").or_else(|| new_path.strip_prefix("/Emby")) {
             new_path = rest.to_string();
         }
@@ -2331,6 +2351,20 @@ async fn fav_del(State(s): State<Shared>, u: AuthUser, Path(i): Path<String>) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn roku_paths_are_normalized() {
+        let norm = |u: &str| {
+            let req = axum::http::Request::builder().uri(u).body(()).unwrap();
+            normalize_uri(req).uri().to_string()
+        };
+        assert_eq!(norm("/items/?searchTerm=x&limit=5"), "/Items?searchTerm=x&limit=5");
+        assert_eq!(norm("/persons?searchTerm=x"), "/Persons?searchTerm=x");
+        assert_eq!(norm("/artists"), "/Artists");
+        assert_eq!(norm("/items/filters"), "/Items/Filters");
+        assert_eq!(norm("/"), "/");
+        assert_eq!(norm("/api/v1/items/"), "/api/v1/items/");
+    }
 
     #[test]
     fn strip_nulls_recursive() {
