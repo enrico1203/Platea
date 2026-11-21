@@ -37,10 +37,26 @@ function LibraryDialog({ lib, onClose }: { lib: Library | null; onClose: () => v
       if (v === "local") setKf(true);
     }
   };
-  const n = (v: string) => (v.trim() === "" ? null : Number(v));
+  // Un valore non valido non diventa "vuoto" in silenzio: si ferma il salvataggio e si dice quale campo correggere.
+  const n = (v: string) => (v.trim() === "" ? null : /^\d+$/.test(v.trim()) ? Number(v.trim()) : NaN);
+  // Ore: "2", "02" o "2:00"; "2-5" nella prima casella riempie entrambe.
+  const hour = (v: string) => {
+    const m = v.trim().match(/^(\d{1,2})(?:[:.]00)?$/);
+    return v.trim() === "" ? null : m && Number(m[1]) <= 23 ? Number(m[1]) : NaN;
+  };
+  const changeWinStart = (v: string) => {
+    const r = v.match(/^\s*(\d{1,2})\s*[-–]\s*(\d{1,2})\s*$/);
+    if (r) { setWinStart(r[1]); setWinEnd(r[2]); } else setWinStart(v);
+  };
   const save = async () => {
     setError(null);
-    const body = { name, kind, paths, scan_profile: profile, language, country: language.split("-")[1], scan_interval_minutes: n(interval), probe_concurrency: n(conc) ?? 1, probe_per_minute: n(perMin), probe_window_start: n(winStart), probe_window_end: n(winEnd), probe_pause_on_play: pause, extract_keyframes: kf, trickplay: tp };
+    const bad = [
+      [interval, n(interval), "admin.libraries.interval"], [conc, n(conc), "admin.libraries.concurrency"], [perMin, n(perMin), "admin.libraries.perMinute"],
+      [winStart, hour(winStart), "admin.libraries.windowStart"], [winEnd, hour(winEnd), "admin.libraries.windowEnd"],
+    ].find(([, v]) => Number.isNaN(v));
+    if (bad) { setError(t("admin.libraries.invalidNumber", { field: t(bad[2] as "admin.libraries.interval"), value: String(bad[0]) })); return; }
+    if ((hour(winStart) === null) !== (hour(winEnd) === null)) { setError(t("admin.libraries.windowBoth")); return; }
+    const body = { name, kind, paths, scan_profile: profile, language, country: language.split("-")[1], scan_interval_minutes: n(interval), probe_concurrency: n(conc) ?? 1, probe_per_minute: n(perMin), probe_window_start: hour(winStart), probe_window_end: hour(winEnd), probe_pause_on_play: pause, extract_keyframes: kf, trickplay: tp };
     try {
       if (lib) await api(`/api/v1/libraries/${lib.id}`, { method: "PATCH", body });
       else await api("/api/v1/libraries", { body });
@@ -75,7 +91,7 @@ function LibraryDialog({ lib, onClose }: { lib: Library | null; onClose: () => v
         <TextField label={t("admin.libraries.interval")} inputMode="numeric" value={interval} onChange={(e) => setIntervalV(e.target.value)} hint={t("admin.libraries.intervalHint")} />
         <TextField label={t("admin.libraries.concurrency")} inputMode="numeric" value={conc} onChange={(e) => setConc(e.target.value)} />
         <TextField label={t("admin.libraries.perMinute")} inputMode="numeric" value={perMin} onChange={(e) => setPerMin(e.target.value)} hint={t("admin.libraries.perMinuteHint")} />
-        <TextField label={t("admin.libraries.windowStart")} inputMode="numeric" value={winStart} onChange={(e) => setWinStart(e.target.value)} hint="0–23" />
+        <TextField label={t("admin.libraries.windowStart")} inputMode="numeric" value={winStart} onChange={(e) => changeWinStart(e.target.value)} hint={t("admin.libraries.windowHint")} />
         <TextField label={t("admin.libraries.windowEnd")} inputMode="numeric" value={winEnd} onChange={(e) => setWinEnd(e.target.value)} hint="0–23" />
       </div>
       <Switch checked={pause} onChange={setPause} label={t("admin.libraries.pauseOnPlay")} />

@@ -477,6 +477,11 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-22 — **0.1.31** (solo web): la fascia oraria delle analisi non restava salvata. Nel modulo della libreria
+  un valore non intero ("2-5" in una casella, "2:00") diventava `null` in silenzio (`Number` → NaN → JSON null) e
+  il salvataggio riusciva con il campo vuoto. Ora le ore accettano "2", "02", "2:00"; "2-5" nella prima casella
+  riempie entrambe; un numero non valido (anche intervallo, analisi contemporanee e al minuto) ferma il salvataggio
+  con un messaggio, e serve indicare entrambe le ore. Server verificato a parte: PATCH con 2 e 5 si salva.
 - 2026-11-22 — **0.1.30**: nella libreria (web) l'ordinamento "Data di uscita" (`sort=premiere`, dal più recente),
   oltre ad "Anno" che guarda solo l'anno. Senza data completa vale l'anno.
 - 2026-11-22 — **0.1.29**: app Jellyfin per Roku. Entrava (login, home, ultimi aggiunti) ma libreria, ricerca e
