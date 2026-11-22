@@ -491,6 +491,8 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
   master già coperto; `Sessions/Playing/Stopped` con `PlaySessionId` ferma la conversione; `hls1/…`, `live.m3u8`,
   `subtitles.m3u8`, `Trickplay/…/tiles.m3u8`, `Audio/{id}/master.m3u8` non servono (playlist nostre con indirizzi
   relativi; sottotitoli esterni via DeliveryUrl; audio sempre diretto).
+  **Confermato con Infuse 8.5.10 su iPhone:** Transcodifica a 3 Mbit/s parte (master → main → segmenti TS 206, ripresa
+  dal segmento 14), `Stopped` chiude la sessione, nessun FFmpeg rimasto acceso.
 - 2026-11-22 — **0.1.39** (solo server): playlist principale HLS per le app Jellyfin. Con la 0.1.38 Infuse riceveva il
   `TranscodingUrl`, scaricava `main.m3u8` (200) e si fermava senza chiedere segmenti. Jellyfin dà come
   `TranscodingUrl` una `master.m3u8` con `#EXT-X-STREAM-INF`: ora c'è anche da noi (`/api/v1/hls/{s}/master.m3u8`,
