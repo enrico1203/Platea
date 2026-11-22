@@ -479,6 +479,14 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-22 — **0.1.41** (solo server): lo stream senza token segue l'IP del dispositivo. Findroid apre
+  `/Videos/{id}/stream?static=true` senza token né `PlaySessionId`, quindi il permesso del PlaybackInfo lo riconosceva
+  solo dall'IP. Un utente con Findroid: stream ok per ~2 min, poi 401 a ogni richiesta (Range) mentre `Progress` col token
+  continuava a dare 204 → l'IP del telefono era cambiato (Wi-Fi/rete mobile o IPv4/IPv6). Ora il permesso tiene fino a
+  4 indirizzi (`GRANT_MAX_IPS`) e ogni rapporto `Sessions/Playing*` col token di quel PlaybackInfo, per quell'elemento,
+  aggiunge il suo IP (`follow_grant_ip`; chiavi API escluse). Test `stream_grant_follows_device_ip`.
+  Fire TV senza audio su E-AC3: confermato dal log PlaybackInfo che l'app dichiara AC3/E-AC3/DTS in bitstream (Auto) e
+  niente downmix; il server è corretto, va cambiata l'impostazione nell'app (Bitstream Dolby Digital Plus → Disabilita).
 - 2026-11-22 — Tag e release v0.1.40 (l'ultima era la v0.1.23). Da ora un tag a ogni versione.
 - 2026-11-22 — CI Android: falliva a intermittenza (33 test su 40) perché Robolectric scaricava da solo, durante i test e
   senza tentativi, i jar `android-all-instrumented` (SDK 34 dei test e SDK 35 di `compileSdk`, ~150 MB l'uno). Ora li

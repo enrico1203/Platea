@@ -2032,7 +2032,9 @@ async fn playback_info(
 // Stream senza token. Jellyfin non chiede l'autenticazione su `/Videos/{id}/stream` e alcune app (Findroid, con
 // ExoPlayer) aprono l'URL così com'è, senza intestazioni né `api_key`. Platea non apre gli stream a chiunque: vale
 // solo per l'elemento di un PlaybackInfo fatto poco prima da un utente autenticato, riconosciuto dal `PlaySessionId`
-// che quella risposta ha dato oppure, se l'app non lo rimanda, dallo stesso indirizzo IP.
+// che quella risposta ha dato oppure, se l'app non lo rimanda, dallo stesso indirizzo IP. Il telefono può cambiare IP
+// a metà film (Wi-Fi ↔ rete mobile, IPv4 ↔ IPv6): i rapporti di riproduzione, che arrivano col token, aggiungono al
+// permesso l'indirizzo da cui arrivano (Findroid il 22/11: 401 sullo stream dopo due minuti, Progress sempre 204).
 
 const GRANT_TTL: Duration = Duration::from_secs(12 * 3600);
 
@@ -2040,9 +2042,12 @@ const GRANT_TTL: Duration = Duration::from_secs(12 * 3600);
 struct StreamGrant {
     user: AuthUser,
     item: i64,
-    ip: Option<std::net::IpAddr>,
+    /// Indirizzi da cui il dispositivo ha usato questo permesso, il più recente in fondo.
+    ips: Vec<std::net::IpAddr>,
     at: std::time::Instant,
 }
+
+const GRANT_MAX_IPS: usize = 4;
 
 static STREAM_GRANTS: Lazy<Mutex<HashMap<String, StreamGrant>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 
@@ -2057,7 +2062,7 @@ fn grant_stream(play_session: &str, user: &AuthUser, item: i64, ip: Option<std::
             map.remove(&oldest);
         }
     }
-    map.insert(play_session.to_string(), StreamGrant { user: user.clone(), item, ip, at: std::time::Instant::now() });
+    map.insert(play_session.to_string(), StreamGrant { user: user.clone(), item, ips: ip.into_iter().collect(), at: std::time::Instant::now() });
 }
 
 /// Il permesso valido per questa richiesta, se c'è: prima per `PlaySessionId`, poi per IP (il più recente).
@@ -2067,12 +2072,35 @@ fn find_grant(play_session: Option<&str>, item: i64, ip: Option<std::net::IpAddr
         Some((p, g)) if g.item == item && g.at.elapsed() < GRANT_TTL => Some(p.to_string()),
         Some(_) => None,
         None => ip.and_then(|ip| {
-            map.iter().filter(|(_, g)| g.item == item && g.ip == Some(ip) && g.at.elapsed() < GRANT_TTL).max_by_key(|(_, g)| g.at).map(|(k, _)| k.clone())
+            map.iter().filter(|(_, g)| g.item == item && g.ips.contains(&ip) && g.at.elapsed() < GRANT_TTL).max_by_key(|(_, g)| g.at).map(|(k, _)| k.clone())
         }),
     }?;
     let g = map.get_mut(&key)?;
     g.at = std::time::Instant::now();
     Some(g.clone())
+}
+
+/// Rapporto di riproduzione col token: i permessi di stream di quel token per quell'elemento valgono anche
+/// dall'indirizzo da cui arriva il rapporto.
+fn follow_grant_ip(token_id: i64, item: i64, ip: Option<std::net::IpAddr>) {
+    // token_id 0: chiavi API, non un dispositivo.
+    let Some(ip) = ip.filter(|_| token_id > 0) else { return };
+    let mut map = STREAM_GRANTS.lock().unwrap();
+    for g in map.values_mut().filter(|g| g.user.token_id == token_id && g.item == item && g.at.elapsed() < GRANT_TTL) {
+        if g.ips.last() == Some(&ip) {
+            continue;
+        }
+        let known = g.ips.contains(&ip);
+        g.ips.retain(|x| *x != ip);
+        if g.ips.len() >= GRANT_MAX_IPS {
+            g.ips.remove(0);
+        }
+        g.ips.push(ip);
+        g.at = std::time::Instant::now();
+        if !known {
+            tracing::info!(user = %g.user.username, client = %g.user.client, "stream senza token: nuovo indirizzo del dispositivo aggiunto al permesso");
+        }
+    }
 }
 
 /// Utente di una richiesta di stream: col token come sempre, altrimenti dal permesso del PlaybackInfo.
@@ -2373,6 +2401,7 @@ async fn report(state: &Shared, user: &AuthUser, r: &PlayReport) -> ApiResult<Op
     }) else {
         return Ok(None);
     };
+    follow_grant_ip(user.token_id, item, user.ip);
     let hls_session = r.play_session_id.as_deref().and_then(|p| state.sessions.get(p)).filter(|s| s.user_id == user.user_id);
     let s = match hls_session {
         Some(s) => s,
@@ -2471,6 +2500,42 @@ async fn fav_del(State(s): State<Shared>, u: AuthUser, Path(i): Path<String>) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stream_grant_follows_device_ip() {
+        let ip = |s: &str| Some(s.parse::<std::net::IpAddr>().unwrap());
+        let user = AuthUser {
+            user_id: 7,
+            token_id: 990_001,
+            username: "carlo".into(),
+            is_admin: false,
+            perms: crate::auth::Permissions::admin(),
+            device_id: "d".into(),
+            device_name: "A55".into(),
+            client: "Findroid".into(),
+            ip: ip("10.0.0.1"),
+        };
+        let item = 990_042;
+        grant_stream("sess-follow-ip", &user, item, ip("10.0.0.1"));
+        assert!(find_grant(None, item, ip("10.0.0.1")).is_some());
+        // Il telefono passa alla rete mobile: senza rapporto lo stream è rifiutato...
+        assert!(find_grant(None, item, ip("2001:db8::5")).is_none());
+        // ...dopo il primo Progress col token dal nuovo indirizzo, vale da entrambi.
+        follow_grant_ip(user.token_id, item, ip("2001:db8::5"));
+        assert!(find_grant(None, item, ip("2001:db8::5")).is_some());
+        assert!(find_grant(None, item, ip("10.0.0.1")).is_some());
+        // Un altro token, un altro elemento o una chiave API non spostano il permesso.
+        follow_grant_ip(990_002, item, ip("192.0.2.9"));
+        follow_grant_ip(user.token_id, item + 1, ip("192.0.2.9"));
+        follow_grant_ip(0, item, ip("192.0.2.9"));
+        assert!(find_grant(None, item, ip("192.0.2.9")).is_none());
+        // Al massimo GRANT_MAX_IPS indirizzi: il più vecchio esce.
+        for i in 1..=GRANT_MAX_IPS {
+            follow_grant_ip(user.token_id, item, ip(&format!("198.51.100.{i}")));
+        }
+        assert!(find_grant(None, item, ip("10.0.0.1")).is_none());
+        assert!(find_grant(None, item, ip("198.51.100.1")).is_some());
+    }
 
     #[test]
     fn hls_resources_under_videos() {
