@@ -124,7 +124,9 @@ pub fn convert(p: &Value, max_bitrate: Option<u64>) -> DeviceProfile {
                             "hdr10" => Some("hdr10"),
                             "hdr10plus" => Some("hdr10plus"),
                             "hlg" => Some("hlg"),
-                            "dovi" | "dovihdr10" | "dovihlg" | "dovisdr" | "dovihdr10plus" => Some("dovi"),
+                            // Solo il Dolby Vision vero: DOVIWithSDR/HLG/HDR10 sono lo strato base (AVPlayer elenca
+                            // sempre DOVIWithSDR), e per quelli basta l'HDR10 o l'SDR.
+                            "dovi" => Some("dovi"),
                             _ => None,
                         };
                         if let Some(h) = h.map(String::from) {
@@ -156,18 +158,11 @@ pub fn convert(p: &Value, max_bitrate: Option<u64>) -> DeviceProfile {
             out.hdr.push("hlg".into());
         }
     }
-    // Transcodifica in HLS: i codec accettati nei segmenti. L'audio dal profilo MPEG-TS, se c'è: è il più stretto
-    // (in fMP4 le app accettano anche FLAC, Opus, DTS) e Platea non sa ancora se i segmenti saranno TS o fMP4.
+    // Transcodifica in HLS: i codec accettati nei segmenti. L'audio solo fra quelli che stanno sia in MPEG-TS sia in
+    // fMP4: Platea non sa ancora quali segmenti farà (H.264 → TS) e le app dichiarano anche FLAC, ALAC, TrueHD, DTS.
     let hls = |t: &&Value| {
         t["Type"].as_str().is_none_or(|x| x.eq_ignore_ascii_case("video")) && t["Protocol"].as_str().is_some_and(|x| x.eq_ignore_ascii_case("hls"))
     };
-    let ts_audio: Option<Vec<String>> = p["TranscodingProfiles"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter(hls)
-        .find(|t| t["Container"].as_str().is_some_and(|c| container(&c.to_ascii_lowercase()) == "ts"))
-        .map(|t| list(&t["AudioCodec"]).iter().map(|c| audio_codec(c)).collect());
     for t in p["TranscodingProfiles"].as_array().into_iter().flatten().filter(hls) {
         if !out.protocols.iter().any(|x| x == "hls") {
             out.protocols.push("hls".into());
@@ -178,18 +173,9 @@ pub fn convert(p: &Value, max_bitrate: Option<u64>) -> DeviceProfile {
                 out.hls_video_codecs.push(c);
             }
         }
-        if ts_audio.is_none() {
-            for c in list(&t["AudioCodec"]) {
-                let c = audio_codec(&c);
-                if !out.hls_audio_codecs.contains(&c) {
-                    out.hls_audio_codecs.push(c);
-                }
-            }
-        }
-    }
-    if let Some(a) = ts_audio {
-        for c in a {
-            if !out.hls_audio_codecs.contains(&c) {
+        for c in list(&t["AudioCodec"]) {
+            let c = audio_codec(&c);
+            if matches!(c.as_str(), "aac" | "ac3" | "eac3" | "mp3") && !out.hls_audio_codecs.contains(&c) {
                 out.hls_audio_codecs.push(c);
             }
         }
@@ -225,6 +211,26 @@ pub fn convert(p: &Value, max_bitrate: Option<u64>) -> DeviceProfile {
         }
     }
     out
+}
+
+/// Il file va in direct play solo se contenitore, video e audio stanno nello stesso `DirectPlayProfile`, come in
+/// Jellyfin. `convert` li unisce (il profilo di Platea è uno solo): Swiftfin con AVPlayer ne ha uno per contenitore
+/// (AVI solo con MJPEG, MP3 solo in MOV) e senza questo controllo un AVI MPEG-4 + MP3 risulterebbe riproducibile.
+pub fn direct_play_matches(p: &Value, media: &platea_playback::MediaInfo, audio_index: Option<u32>) -> bool {
+    let video = media.video.as_ref().map(|v| video_codec(&v.codec.to_ascii_lowercase()));
+    let audio = audio_index
+        .and_then(|i| media.audio.iter().find(|a| a.index == i))
+        .or_else(|| media.audio.iter().find(|a| a.default))
+        .or_else(|| media.audio.first())
+        .map(|a| audio_codec(&a.codec.to_ascii_lowercase()));
+    let file_container = container(&media.container.to_ascii_lowercase());
+    p["DirectPlayProfiles"].as_array().into_iter().flatten().filter(|d| d["Type"].as_str().is_none_or(|t| t.eq_ignore_ascii_case("video"))).any(|d| {
+        let ok = |field: &str, value: &Option<String>, norm: fn(&str) -> String| {
+            let l = list(&d[field]);
+            l.is_empty() || value.as_ref().is_none_or(|v| l.iter().any(|x| norm(x) == *v))
+        };
+        ok("Container", &Some(file_container.clone()), container) && ok("VideoCodec", &video, video_codec) && ok("AudioCodec", &audio, audio_codec)
+    })
 }
 
 /// Codec audio dichiarati dal profilo, per il log: `aac 6ch, ac3, eac3`.
@@ -365,5 +371,98 @@ mod tests {
         let m =
             platea_playback::MediaInfo { container: "mkv".into(), video: Some(hevc(Some("hdr10"), 10)), audio: vec![audio("ac3", 6)], ..Default::default() };
         assert_eq!(platea_playback::decide(&m, &d, &req).unwrap().method, platea_playback::Method::DirectPlay);
+    }
+
+    fn media(container: &str, video: &str, audio: &str) -> platea_playback::MediaInfo {
+        platea_playback::MediaInfo {
+            container: container.into(),
+            video: Some(platea_playback::VideoInfo {
+                codec: video.into(),
+                profile: Some("main".into()),
+                bit_depth: Some(8),
+                width: 1920,
+                height: 1080,
+                ..Default::default()
+            }),
+            audio: vec![platea_playback::AudioInfo { index: 1, codec: audio.into(), channels: 2, language: None, default: true, bitrate: None }],
+            ..Default::default()
+        }
+    }
+
+    fn req() -> platea_playback::PlaybackRequest {
+        platea_playback::PlaybackRequest { allow_remux: true, allow_transcode: true, server_video_encoders: vec!["h264".into()], ..Default::default() }
+    }
+
+    /// Swiftfin 1.7.1 con AVPlayer (`MediaPlayerType+AVPlayer.swift`) su un iPhone con HEVC e senza Dolby Vision.
+    #[test]
+    fn swiftfin_avplayer_profile() {
+        let p = json!({
+            "DirectPlayProfiles": [
+                { "Type": "Audio", "Container": "m4a,m4b,mp4,mov,aac,ac3,eac3", "AudioCodec": "aac,alac,ac3,eac3" },
+                { "Type": "Video", "Container": "mp4,m4v", "VideoCodec": "h264,mpeg4,hevc", "AudioCodec": "aac,ac3,alac,eac3,flac" },
+                { "Type": "Video", "Container": "mov", "VideoCodec": "h264,mjpeg,mpeg4,hevc", "AudioCodec": "aac,ac3,alac,eac3,mp3,pcm_s16be,pcm_s16le,pcm_s24be,pcm_s24le" },
+                { "Type": "Video", "Container": "3g2,3gp", "VideoCodec": "h264,mpeg4", "AudioCodec": "aac,amr_nb" },
+                { "Type": "Video", "Container": "avi", "VideoCodec": "mjpeg", "AudioCodec": "pcm_mulaw,pcm_s16le" }
+            ],
+            "TranscodingProfiles": [
+                { "Type": "Audio", "Container": "mp3", "Protocol": "http", "AudioCodec": "mp3" },
+                { "Type": "Video", "Container": "mp4", "Protocol": "hls", "VideoCodec": "hevc,h264,mpeg4", "AudioCodec": "aac,ac3,alac,eac3,flac", "MaxAudioChannels": "8" }
+            ],
+            "CodecProfiles": [
+                { "Type": "Video", "Codec": "hevc", "Conditions": [
+                    { "Condition": "EqualsAny", "Property": "VideoProfile", "Value": "main|main 10", "IsRequired": false },
+                    { "Condition": "LessThanEqual", "Property": "VideoLevel", "Value": "175", "IsRequired": false },
+                    { "Condition": "EqualsAny", "Property": "VideoRangeType", "Value": "SDR|DOVIWithSDR|HLG|DOVIWithHLG|HDR10|HDR10Plus|DOVIWithHDR10|DOVIWithHDR10Plus|DOVIWithEL|DOVIWithELHDR10Plus", "IsRequired": false },
+                    { "Condition": "EqualsAny", "Property": "VideoCodecTag", "Value": "hvc1|dvh1", "IsRequired": true }
+                ] }
+            ]
+        });
+        let d = convert(&p, None);
+        // Niente Dolby Vision vero: DOVIWithSDR/HDR10 sono solo lo strato base.
+        assert_eq!(d.hdr, vec!["hlg", "hdr10", "hdr10plus"]);
+        assert_eq!(d.hls_audio_codecs, vec!["aac", "ac3", "eac3"]);
+        // MKV: non è fra i contenitori, va in HLS.
+        let m = media("mkv", "hevc", "eac3");
+        assert_eq!(platea_playback::decide(&m, &d, &req()).unwrap().method, platea_playback::Method::Remux);
+        // MP4 H.264 + AAC: direct play, nello stesso profilo.
+        let m = media("mp4", "h264", "aac");
+        assert_eq!(platea_playback::decide(&m, &d, &req()).unwrap().method, platea_playback::Method::DirectPlay);
+        assert!(direct_play_matches(&p, &m, None));
+        // AVI MPEG-4 + MP3: ammessi uno per uno, ma da profili diversi.
+        assert!(!direct_play_matches(&p, &media("avi", "mpeg4", "mp3"), None));
+        // MP3 nel MOV sì, nell'MP4 no.
+        assert!(direct_play_matches(&p, &media("mov", "h264", "mp3"), None));
+        assert!(!direct_play_matches(&p, &media("mp4", "h264", "mp3"), None));
+    }
+
+    /// Swiftfin 1.7.1 con MPV (`MediaPlayerType+MPV.swift`): MKV, DTS e TrueHD diretti; nell'HLS solo l'audio che sta in TS.
+    #[test]
+    fn swiftfin_mpv_profile() {
+        let p = json!({
+            "DirectPlayProfiles": [
+                { "Type": "Video", "Container": "avi,flv,m4v,mkv,mov,mp4,mpegts,ts,3g2,3gp,webm",
+                  "VideoCodec": "ffv1,flv1,h263,h264,hevc,mjpeg,mpeg1video,mpeg2video,mpeg4,prores,vc1,vp8,vp9,wmv1,wmv2,wmv3",
+                  "AudioCodec": "aac,ac3,alac,amr_nb,amr_wb,dts,dts_hd,eac3,flac,mp1,mp2,mp3,opus,truehd,vorbis" }
+            ],
+            "TranscodingProfiles": [
+                { "Type": "Video", "Container": "mp4", "Protocol": "hls", "VideoCodec": "h264,hevc,vp9", "AudioCodec": "aac,ac3,alac,dts,eac3,flac,mp3,opus,truehd" }
+            ]
+        });
+        let d = convert(&p, None);
+        assert_eq!(d.hls_audio_codecs, vec!["aac", "ac3", "eac3", "mp3"]);
+        let m = media("mkv", "hevc", "truehd");
+        assert_eq!(platea_playback::decide(&m, &d, &req()).unwrap().method, platea_playback::Method::DirectPlay);
+        assert!(direct_play_matches(&p, &m, None));
+    }
+
+    /// Findroid 1.2.0 (`JellyfinRepositoryImpl.getMediaSources`): profilo vuoto, l'app apre sempre il file diretto.
+    #[test]
+    fn findroid_empty_profile() {
+        let p = json!({ "Name": "Direct play all", "MaxStaticBitrate": 1000000000, "MaxStreamingBitrate": 1000000000,
+            "CodecProfiles": [], "ContainerProfiles": [], "DirectPlayProfiles": [], "TranscodingProfiles": [],
+            "SubtitleProfiles": [{ "Format": "srt", "Method": "External" }, { "Format": "ass", "Method": "External" }] });
+        let d = convert(&p, None);
+        assert!(d.containers.is_empty() && !d.protocols.contains(&"hls".to_string()));
+        assert_eq!(d.subtitle_text, vec!["srt", "ass"]);
     }
 }

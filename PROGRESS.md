@@ -477,6 +477,19 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-22 — **0.1.35** (solo server): profili di Findroid 1.2.0 e Swiftfin 1.7.1 confrontati col codice delle app.
+  Findroid (`JellyfinRepositoryImpl.getMediaSources`) manda un profilo "Direct play all" vuoto e apre sempre
+  `/Videos/{id}/stream?static=true`, senza transcodifica: ora un profilo senza DirectPlayProfiles né
+  TranscodingProfiles dà sempre il file diretto (prima ci si arrivava solo perché la decisione falliva). Swiftfin
+  (`MediaPlayerType+AVPlayer.swift`, `+MPV.swift`, `MediaPlayerItemResolver.swift`) usa `TranscodingUrl` se c'è,
+  altrimenti il file statico; con `requiresHLS` vuole un percorso `.m3u8` (il nostro `main.m3u8` va bene). Corretti:
+  (1) AVPlayer ha un DirectPlayProfile per contenitore (AVI solo MJPEG+PCM, MP3 solo in MOV): `convert` li unisce,
+  ora `direct_play_matches` chiede contenitore, video e audio nello stesso profilo, se no niente file diretto.
+  (2) `DOVIWithSDR`/`DOVIWithHDR10`/`DOVIWithHLG` non valgono più come Dolby Vision (AVPlayer elenca sempre
+  DOVIWithSDR): DV solo con `DOVI`, il resto va con lo strato base. (3) Audio nei segmenti HLS: solo AAC, AC3, E-AC3,
+  MP3 (le app dichiarano FLAC, ALAC, TrueHD, DTS solo per fMP4; con H.264 facciamo TS). Ignorati: `VideoCodecTag`
+  hvc1/dvh1 (non salvato dall'analisi: un MP4 HEVC hev1 andrebbe diretto ad AVPlayer; l'HLS lo etichetta già hvc1),
+  `IsInterlaced`, `IsAnamorphic`. Test: `swiftfin_avplayer_profile`, `swiftfin_mpv_profile`, `findroid_empty_profile`.
 - 2026-11-22 — **0.1.34** (solo server): profilo di Jellyfin per Android TV letto come lo scrive l'app (confronto con
   `app/src/main/java/org/jellyfin/androidtv/util/profile/deviceProfile.kt` della v0.20.0). Tre errori in
   `jellyfin_profile::convert`: (1) un codec che il dispositivo non decodifica l'app lo mette lo stesso nel direct play

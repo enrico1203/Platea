@@ -1904,7 +1904,10 @@ async fn playback_info(
         Json(json!({ "MediaSources": sources.clone(), "PlaySessionId": play_session }))
     };
     let Some(profile_json) = b.get("DeviceProfile").filter(|p| p.is_object()) else { return Ok(direct()) };
-    if infuse || !wants_transcoding || !matches!(row.kind.as_str(), "movie" | "episode") {
+    // Findroid manda un profilo "Direct play all" senza profili di direct play né di transcodifica e apre comunque
+    // il file con `static=true`: una conversione non la userebbe mai.
+    let empty = |k: &str| profile_json[k].as_array().is_none_or(|a| a.is_empty());
+    if infuse || !wants_transcoding || !matches!(row.kind.as_str(), "movie" | "episode") || (empty("DirectPlayProfiles") && empty("TranscodingProfiles")) {
         return Ok(direct());
     }
     let max_bitrate = num("maxstreamingbitrate", "MaxStreamingBitrate").filter(|b| *b > 0).map(|b| b as u64);
@@ -1930,7 +1933,14 @@ async fn playback_info(
         server_video_encoders: crate::api::playback::allowed_encoders(&state),
         force_transcode: false,
     };
-    let decision = platea_playback::decide(&info.media, &profile, &preq);
+    let mut decision = platea_playback::decide(&info.media, &profile, &preq);
+    if decision.as_ref().is_ok_and(|d| d.method == platea_playback::Method::DirectPlay)
+        && !super::jellyfin_profile::direct_play_matches(profile_json, &info.media, audio)
+    {
+        // Contenitore, video e audio ammessi ma da profili diversi: niente file diretto.
+        profile.containers.clear();
+        decision = platea_playback::decide(&info.media, &profile, &preq);
+    }
     // Cosa l'app dice di saper riprodurre e cosa ha il file: senza, un "niente audio" sulla TV non si spiega dai log.
     let tracks: Vec<String> = info
         .media
