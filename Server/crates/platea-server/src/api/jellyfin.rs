@@ -1922,11 +1922,11 @@ async fn playback_info(
     let max_bitrate = num("maxstreamingbitrate", "MaxStreamingBitrate").filter(|b| *b > 0).map(|b| b as u64);
     // Infuse riproduce da sé quasi ogni formato: file diretto, salvo quando l'utente sceglie una qualità
     // ("Transcodifica" di Infuse 8.5, che manda MaxStreamingBitrate e vuole un `TranscodingUrl`).
-    // Findroid manda un profilo "Direct play all" senza profili di direct play né di transcodifica e apre comunque
-    // il file con `static=true`: una conversione non la userebbe mai.
+    // Profilo vuoto (Findroid: "Direct play all", senza profili di direct play né di transcodifica; apre comunque il
+    // file con `static=true`): una conversione non la userebbe mai.
     let empty = |k: &str| profile_json[k].as_array().is_none_or(|a| a.is_empty());
-    let findroid = !infuse && empty("DirectPlayProfiles") && empty("TranscodingProfiles");
-    if (infuse && max_bitrate.is_none()) || findroid || !wants_transcoding || !matches!(row.kind.as_str(), "movie" | "episode") {
+    let empty_profile = !infuse && empty("DirectPlayProfiles") && empty("TranscodingProfiles");
+    if (infuse && max_bitrate.is_none()) || empty_profile || !wants_transcoding || !matches!(row.kind.as_str(), "movie" | "episode") {
         return Ok(direct());
     }
     let source = b["MediaSourceId"].as_str().map(String::from).or_else(|| q.get("mediasourceid").cloned());
