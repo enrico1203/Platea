@@ -285,6 +285,11 @@ impl HlsHandle {
         crate::transcode::playlist(&self.cuts, self.duration_ms, self.fmp4, segment_url)
     }
 
+    /// Playlist principale che rimanda a `media_uri` (vedi `transcode::master_playlist_for`).
+    pub fn master_playlist(&self, media_uri: &str) -> String {
+        crate::transcode::master_playlist_for(&self.plan.lock().unwrap().spec, media_uri)
+    }
+
     pub fn executor_id(&self) -> i64 {
         self.exec_id.load(Ordering::Relaxed)
     }

@@ -477,6 +477,15 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-22 — **0.1.39** (solo server): playlist principale HLS per le app Jellyfin. Con la 0.1.38 Infuse riceveva il
+  `TranscodingUrl`, scaricava `main.m3u8` (200) e si fermava senza chiedere segmenti. Jellyfin dà come
+  `TranscodingUrl` una `master.m3u8` con `#EXT-X-STREAM-INF`: ora c'è anche da noi (`/api/v1/hls/{s}/master.m3u8`,
+  una variante che rimanda a `main.m3u8`, `transcode::master_playlist_for` dalla `JobSpec`: BANDWIDTH dal bitrate
+  della conversione o del file — `SourceVideo.bitrate` —, RESOLUTION; niente CODECS, facoltativo e rischioso con
+  AVPlayer) e il `TranscodingUrl` di tutte le app Jellyfin punta lì (`hls_master_url` nella risposta di start).
+  Infuse fa due PlaybackInfo di fila (il secondo con `CurrentPlaySessionId` e la traccia audio): la prima conversione
+  la chiude già `start` (sessioni dello stesso dispositivo). Profili di Infuse visti nei log: nessun DirectPlayProfile,
+  TranscodingProfiles HLS TS `hevc,h264,av1` + `aac` 2 canali, sottotitoli nel manifest in vtt.
 - 2026-11-22 — **0.1.38** (solo server): "Transcodifica" di Infuse 8.5. Dalla prova dell'utente (log della 0.1.37):
   scelta una qualità, Infuse manda `POST /Items/{id}/PlaybackInfo` con `MaxStreamingBitrate=3000000`, `IsPlayback`,
   `AudioStreamIndex`, `SubtitleStreamIndex=-1`, `CurrentPlaySessionId`, `MediaSourceId` e un DeviceProfile senza nome;

@@ -676,6 +676,29 @@ pub fn segment_duration_ms(cuts: &[i64], duration_ms: i64, n: usize) -> i64 {
     (end - start).max(1)
 }
 
+/// Playlist principale con l'unica variante, come la `master.m3u8` di Jellyfin: le app scritte per Jellyfin (Infuse)
+/// la vogliono prima della playlist dei segmenti. Niente `CODECS`, facoltativo: uno sbagliato fa rifiutare lo stream
+/// ad AVPlayer.
+pub fn master_playlist_for(spec: &JobSpec, media_uri: &str) -> String {
+    use platea_playback::{AudioAction, VideoAction};
+    let (video_bitrate, size) = match &spec.video_action {
+        VideoAction::Transcode { max_width, max_height, bitrate, .. } => {
+            (Some(*bitrate), spec.video.as_ref().map(|v| command::output_size(v.width, v.height, *max_width, *max_height)))
+        }
+        VideoAction::Copy => (spec.video.as_ref().and_then(|v| v.bitrate), spec.video.as_ref().map(|v| (v.width, v.height))),
+    };
+    let audio_bitrate = match &spec.audio_action {
+        AudioAction::Transcode { bitrate, .. } => *bitrate,
+        _ => 0,
+    };
+    master_playlist(video_bitrate.unwrap_or(8_000_000) + audio_bitrate, size, media_uri)
+}
+
+fn master_playlist(bandwidth: u64, size: Option<(u32, u32)>, media_uri: &str) -> String {
+    let resolution = size.filter(|(w, h)| *w > 0 && *h > 0).map(|(w, h)| format!(",RESOLUTION={w}x{h}")).unwrap_or_default();
+    format!("#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-STREAM-INF:BANDWIDTH={bandwidth},AVERAGE-BANDWIDTH={bandwidth}{resolution}\n{media_uri}\n")
+}
+
 /// Playlist VOD con tutti i segmenti: la scrive sempre il server, chiunque esegua FFmpeg.
 pub fn playlist(cuts: &[i64], duration_ms: i64, fmp4: bool, segment_url: impl Fn(usize) -> String) -> String {
     let max = (0..cuts.len()).map(|i| segment_duration_ms(cuts, duration_ms, i)).max().unwrap_or(6000);
@@ -709,6 +732,13 @@ fn contiguous_frontier(completed: &[usize], start: usize) -> usize {
 #[cfg(test)]
 mod fmp4_tests {
     use super::*;
+
+    #[test]
+    fn master_playlist_points_to_segments() {
+        let m = master_playlist(3_128_000, Some((1280, 720)), "main.m3u8?t=abc");
+        assert_eq!(m, "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-STREAM-INF:BANDWIDTH=3128000,AVERAGE-BANDWIDTH=3128000,RESOLUTION=1280x720\nmain.m3u8?t=abc\n");
+        assert!(!master_playlist(8_000_000, None, "main.m3u8").contains("RESOLUTION"));
+    }
 
     #[test]
     fn fragments_grouped_by_segment() {

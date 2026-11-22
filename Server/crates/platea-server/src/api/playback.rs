@@ -29,7 +29,7 @@ pub fn routes(api: Api) -> Api {
         .post("/api/v1/playback/{session}/client-error", "Riproduzione", Access::User, "Errore del player (nel log del server, per la diagnosi)", client_error)
         .post("/api/v1/playback/{session}/stop", "Riproduzione", Access::User, "Fine della riproduzione", stop)
         .get("/api/v1/stream/{session}", "Riproduzione", Access::Stream, "Direct play: file originale con richieste Range", direct)
-        .get("/api/v1/hls/{session}/{file}", "Riproduzione", Access::Stream, "Playlist HLS (main.m3u8) e segmenti (N.ts)", hls)
+        .get("/api/v1/hls/{session}/{file}", "Riproduzione", Access::Stream, "Playlist HLS (master.m3u8, main.m3u8) e segmenti (N.ts)", hls)
         .get("/api/v1/subtitles/{session}/{file}", "Riproduzione", Access::Stream, "Sottotitolo in WebVTT (INDICE.vtt)", subtitle)
         .get("/api/v1/trickplay/{session}/{file}", "Riproduzione", Access::Stream, "Griglia di miniature per la barra di avanzamento (N.jpg)", trickplay)
 }
@@ -464,6 +464,7 @@ pub async fn start(state: Shared, user: AuthUser, req: InfoReq) -> ApiResult<Val
                 width: v.width,
                 height: v.height,
                 hdr: v.hdr.is_some() && ts.enable_tonemap,
+                bitrate: file.media.bitrate,
             }),
             audio_index: decision.audio_index,
             video_action: match &decision.video {
@@ -615,9 +616,9 @@ pub async fn start(state: Shared, user: AuthUser, req: InfoReq) -> ApiResult<Val
     tracing::info!(user = %user.username, method = decision.method.as_str(), reason = %reason, chain = %chain, "riproduzione avviata");
 
     let q = format!("?t={token}");
-    let (stream_url, hls_url) = match decision.method {
-        pb::Method::DirectPlay => (Some(format!("/api/v1/stream/{session_id}{q}")), None),
-        _ => (None, Some(format!("/api/v1/hls/{session_id}/main.m3u8{q}"))),
+    let (stream_url, hls_url, hls_master_url) = match decision.method {
+        pb::Method::DirectPlay => (Some(format!("/api/v1/stream/{session_id}{q}")), None, None),
+        _ => (None, Some(format!("/api/v1/hls/{session_id}/main.m3u8{q}")), Some(format!("/api/v1/hls/{session_id}/master.m3u8{q}"))),
     };
     let subtitles: Vec<Value> = file
         .streams
@@ -658,6 +659,8 @@ pub async fn start(state: Shared, user: AuthUser, req: InfoReq) -> ApiResult<Val
         "chain": chain,
         "stream_url": stream_url,
         "hls_url": hls_url,
+        // Playlist principale con una sola variante, per le app scritte per Jellyfin.
+        "hls_master_url": hls_master_url,
         "file_id": state.ids.encode(file.id),
         "duration_ms": duration_ms,
         "start_ms": start,
@@ -854,6 +857,13 @@ async fn direct(State(state): State<Shared>, Path(id): Path<String>, Query(q): Q
 async fn hls(State(state): State<Shared>, Path((id, name)): Path<(String, String)>, Query(q): Query<TokenQuery>, headers: HeaderMap) -> ApiResult<Response> {
     let s = session_by_token(&state, &id, q.t.as_deref())?;
     let rt = s.hls.clone().ok_or_else(|| ApiError::BadRequest("Questa sessione è in direct play".into()))?;
+    if name == "master.m3u8" {
+        return Ok(Response::builder()
+            .header(header::CONTENT_TYPE, "application/vnd.apple.mpegurl")
+            .header(header::CACHE_CONTROL, "no-cache")
+            .body(Body::from(rt.master_playlist(&format!("main.m3u8?t={}", s.token))))
+            .unwrap());
+    }
     if name == "main.m3u8" {
         let t = s.token.clone();
         let ext = if rt.is_fmp4() { "m4s" } else { "ts" };

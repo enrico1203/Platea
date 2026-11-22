@@ -87,6 +87,9 @@ pub struct SourceVideo {
     pub width: u32,
     pub height: u32,
     pub hdr: bool,
+    /// Bitrate complessivo del file (bit/s), per la playlist principale quando il video è copiato.
+    #[serde(default)]
+    pub bitrate: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -447,7 +450,7 @@ mod tests {
     fn spec(video: VideoAction, audio: AudioAction) -> JobSpec {
         JobSpec {
             input: "/media/film.mkv".into(),
-            video: Some(SourceVideo { index: 0, codec: "hevc".into(), bit_depth: 10, width: 3840, height: 2160, hdr: true }),
+            video: Some(SourceVideo { index: 0, codec: "hevc".into(), bit_depth: 10, width: 3840, height: 2160, hdr: true, bitrate: None }),
             audio_index: Some(1),
             video_action: video,
             audio_action: audio,
@@ -546,7 +549,7 @@ mod tests {
             VideoAction::Transcode { codec: "h264".into(), max_width: 1920, max_height: 1080, bitrate: 6_000_000, tonemap: false, burn_subtitle: None },
             AudioAction::Copy,
         );
-        s.video = Some(SourceVideo { index: 0, codec: "h264".into(), bit_depth: 10, width: 1920, height: 1080, hdr: false });
+        s.video = Some(SourceVideo { index: 0, codec: "h264".into(), bit_depth: 10, width: 1920, height: 1080, hdr: false, bitrate: None });
         let j = joined(&build_args(&s, &hw));
         assert!(!j.contains("-hwaccel qsv"));
         assert!(j.contains("hwupload"));

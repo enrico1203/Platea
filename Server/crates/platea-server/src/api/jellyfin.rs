@@ -2004,7 +2004,8 @@ async fn playback_info(
         explicit_quality: true,
     };
     let r = crate::api::playback::start(state.clone(), user.clone(), req).await?;
-    let Some(hls) = r["hls_url"].as_str() else { return Ok(direct()) };
+    // Come Jellyfin: `TranscodingUrl` è la playlist principale. Infuse non parte con quella dei segmenti.
+    let Some(hls) = r["hls_master_url"].as_str() else { return Ok(direct()) };
     let session = r["session_id"].as_str().unwrap_or_default().to_string();
     let mut src = sources.iter().find(|s| s["Id"].as_str() == Some(state.ids.encode(fid).as_str())).cloned().unwrap_or_else(|| sources[0].clone());
     let fmp4 = r["chain"].as_str().is_some_and(|c| c.contains("fMP4"));
