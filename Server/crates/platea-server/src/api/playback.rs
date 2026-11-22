@@ -616,9 +616,9 @@ pub async fn start(state: Shared, user: AuthUser, req: InfoReq) -> ApiResult<Val
     tracing::info!(user = %user.username, method = decision.method.as_str(), reason = %reason, chain = %chain, "riproduzione avviata");
 
     let q = format!("?t={token}");
-    let (stream_url, hls_url, hls_master_url) = match decision.method {
-        pb::Method::DirectPlay => (Some(format!("/api/v1/stream/{session_id}{q}")), None, None),
-        _ => (None, Some(format!("/api/v1/hls/{session_id}/main.m3u8{q}")), Some(format!("/api/v1/hls/{session_id}/master.m3u8{q}"))),
+    let (stream_url, hls_url) = match decision.method {
+        pb::Method::DirectPlay => (Some(format!("/api/v1/stream/{session_id}{q}")), None),
+        _ => (None, Some(format!("/api/v1/hls/{session_id}/main.m3u8{q}"))),
     };
     let subtitles: Vec<Value> = file
         .streams
@@ -659,8 +659,6 @@ pub async fn start(state: Shared, user: AuthUser, req: InfoReq) -> ApiResult<Val
         "chain": chain,
         "stream_url": stream_url,
         "hls_url": hls_url,
-        // Playlist principale con una sola variante, per le app scritte per Jellyfin.
-        "hls_master_url": hls_master_url,
         "file_id": state.ids.encode(file.id),
         "duration_ms": duration_ms,
         "start_ms": start,
@@ -818,11 +816,20 @@ struct TokenQuery {
 }
 
 fn session_by_token(state: &Shared, id: &str, t: Option<&str>) -> ApiResult<Arc<PlaySession>> {
+    session_matching(state, t, |s| s.id == id)
+}
+
+/// Sessione HLS di un elemento dal suo token: le app Jellyfin aprono le playlist sotto `/Videos/{id}/`.
+pub fn session_for_item(state: &Shared, item_id: i64, t: Option<&str>) -> ApiResult<Arc<PlaySession>> {
+    session_matching(state, t, |s| s.item_id == item_id)
+}
+
+fn session_matching(state: &Shared, t: Option<&str>, belongs: impl Fn(&PlaySession) -> bool) -> ApiResult<Arc<PlaySession>> {
     let t = t.ok_or(ApiError::Unauthorized)?;
     // Token sconosciuto: quasi sempre una sessione persa (server riavviato, aggiornamento). 410 come una sessione chiusa,
     // così il player la riapre da solo dalla posizione corrente invece di fermarsi con un errore.
     let s = state.sessions.by_token(t).ok_or_else(|| hls_error(HlsError::Stopped))?;
-    if s.id != id {
+    if !belongs(&s) {
         return Err(ApiError::Unauthorized);
     }
     // Account scaduto durante la riproduzione: lo stream si ferma.
@@ -856,6 +863,12 @@ async fn direct(State(state): State<Shared>, Path(id): Path<String>, Query(q): Q
 
 async fn hls(State(state): State<Shared>, Path((id, name)): Path<(String, String)>, Query(q): Query<TokenQuery>, headers: HeaderMap) -> ApiResult<Response> {
     let s = session_by_token(&state, &id, q.t.as_deref())?;
+    serve_hls(&state, &s, &name, &headers).await
+}
+
+/// Playlist principale, playlist dei segmenti, init fMP4 e segmenti di una sessione HLS. Gli indirizzi interni sono
+/// relativi, quindi valgono sia sotto `/api/v1/hls/{sessione}/` sia sotto `/Videos/{id}/` (app Jellyfin).
+pub async fn serve_hls(state: &Shared, s: &Arc<PlaySession>, name: &str, headers: &HeaderMap) -> ApiResult<Response> {
     let rt = s.hls.clone().ok_or_else(|| ApiError::BadRequest("Questa sessione è in direct play".into()))?;
     if name == "master.m3u8" {
         return Ok(Response::builder()
@@ -875,8 +888,8 @@ async fn hls(State(state): State<Shared>, Path((id, name)): Path<(String, String
             .unwrap());
     }
     if name == "init.mp4" && rt.is_fmp4() {
-        let bytes = rt.init(&state).await.map_err(hls_error)?;
-        let (resp, sent) = crate::stream::serve_bytes(bytes, "video/mp4", "private, max-age=3600", &headers);
+        let bytes = rt.init(state).await.map_err(hls_error)?;
+        let (resp, sent) = crate::stream::serve_bytes(bytes, "video/mp4", "private, max-age=3600", headers);
         s.bytes_sent.fetch_add(sent, Ordering::Relaxed);
         return Ok(resp);
     }
@@ -888,7 +901,7 @@ async fn hls(State(state): State<Shared>, Path((id, name)): Path<(String, String
             s.position_ms.store(*start, Ordering::Relaxed);
         }
     }
-    let bytes = match rt.segment(&state, n).await {
+    let bytes = match rt.segment(state, n).await {
         Ok(b) => b,
         Err(HlsError::Busy) => {
             let mut r = ApiError::coded(StatusCode::SERVICE_UNAVAILABLE, "TranscodeBusy", HlsError::Busy.to_string()).into_response();
@@ -898,7 +911,7 @@ async fn hls(State(state): State<Shared>, Path((id, name)): Path<(String, String
         Err(e) => return Err(hls_error(e)),
     };
     let ct = if rt.is_fmp4() { "video/mp4" } else { "video/mp2t" };
-    let (resp, sent) = crate::stream::serve_bytes(bytes, ct, "private, max-age=3600", &headers);
+    let (resp, sent) = crate::stream::serve_bytes(bytes, ct, "private, max-age=3600", headers);
     s.bytes_sent.fetch_add(sent, Ordering::Relaxed);
     Ok(resp)
 }

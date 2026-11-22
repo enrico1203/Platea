@@ -477,6 +477,20 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-22 — **0.1.40** (solo server): HLS delle app Jellyfin con gli indirizzi di Jellyfin. Con la 0.1.39 Infuse
+  scaricava `/api/v1/hls/{s}/master.m3u8` ma risolveva `main.m3u8` sotto `/Videos/{id}/` (e ci aggiungeva `userId`).
+  Confronto col server Jellyfin (`MediaBrowser.Model/Dlna/StreamInfo.ToUrl`, `Jellyfin.Api/Helpers/DynamicHlsHelper`,
+  `DynamicHlsController`): `TranscodingUrl` = `/videos/{itemId}/master.m3u8?…PlaySessionId…`, la master rimanda
+  relativa a `main.m3u8`, la main a `hls1/main/{n}.{ext}`. Ora `TranscodingUrl` = `/Videos/{id}/master.m3u8?
+  PlaySessionId=…&t=…` e sotto `/Videos/{id}/` si servono `master.m3u8`, `main.m3u8`, `init.mp4`, `{n}.ts|m4s`
+  (`is_hls_resource`), autorizzati dal token della sessione come `/api/v1/hls` e solo per la sessione di quell'elemento
+  (`playback::session_for_item`, `playback::serve_hls` condiviso con `/api/v1/hls`); per gli altri nomi l'utente
+  dell'app si estrae solo dopo (niente query e log di autenticazione a ogni segmento). Nuovo
+  `DELETE /Videos/ActiveEncodings?playSessionId=…` (Jellyfin per Android TV lo chiama prima di cambiare traccia).
+  Tolto `hls_master_url` dalla risposta di start. Rivisti gli altri endpoint di streaming di Jellyfin: HEAD della
+  master già coperto; `Sessions/Playing/Stopped` con `PlaySessionId` ferma la conversione; `hls1/…`, `live.m3u8`,
+  `subtitles.m3u8`, `Trickplay/…/tiles.m3u8`, `Audio/{id}/master.m3u8` non servono (playlist nostre con indirizzi
+  relativi; sottotitoli esterni via DeliveryUrl; audio sempre diretto).
 - 2026-11-22 — **0.1.39** (solo server): playlist principale HLS per le app Jellyfin. Con la 0.1.38 Infuse riceveva il
   `TranscodingUrl`, scaricava `main.m3u8` (200) e si fermava senza chiedere segmenti. Jellyfin dà come
   `TranscodingUrl` una `master.m3u8` con `#EXT-X-STREAM-INF`: ora c'è anche da noi (`/api/v1/hls/{s}/master.m3u8`,

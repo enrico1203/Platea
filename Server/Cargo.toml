@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/platea-naming", "crates/platea-playback", "crates/platea-server"]
 
 [workspace.package]
-version = "0.1.39"
+version = "0.1.40"
 edition = "2021"
 license = "AGPL-3.0-only"
 

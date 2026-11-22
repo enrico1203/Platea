@@ -85,6 +85,7 @@ pub fn router() -> Router<Shared> {
         .route("/Sessions/Playing", post(playing))
         .route("/Sessions/Playing/Progress", post(progress))
         .route("/Sessions/Playing/Stopped", post(stopped))
+        .route("/Videos/ActiveEncodings", delete(stop_encoding))
         .route("/Sessions/Playing/Ping", post(ping))
         .route("/Sessions/Capabilities", post(ok_empty))
         .route("/ClientLog/Document", post(client_log))
@@ -2004,9 +2005,13 @@ async fn playback_info(
         explicit_quality: true,
     };
     let r = crate::api::playback::start(state.clone(), user.clone(), req).await?;
-    // Come Jellyfin: `TranscodingUrl` è la playlist principale. Infuse non parte con quella dei segmenti.
-    let Some(hls) = r["hls_master_url"].as_str() else { return Ok(direct()) };
+    if r["hls_url"].is_null() {
+        return Ok(direct());
+    }
+    // Come Jellyfin (`StreamInfo.ToUrl`): la playlist principale sotto `/Videos/{id}/`, che rimanda con indirizzi
+    // relativi a `main.m3u8` e ai segmenti. Infuse risolve gli indirizzi da lì, non dall'URL che ha scaricato.
     let session = r["session_id"].as_str().unwrap_or_default().to_string();
+    let hls = format!("/Videos/{}/master.m3u8?PlaySessionId={}&t={}", item_guid(&state, id), session, r["stream_token"].as_str().unwrap_or_default());
     let mut src = sources.iter().find(|s| s["Id"].as_str() == Some(state.ids.encode(fid).as_str())).cloned().unwrap_or_else(|| sources[0].clone());
     let fmp4 = r["chain"].as_str().is_some_and(|c| c.contains("fMP4"));
     if let Some(o) = src.as_object_mut() {
@@ -2111,6 +2116,13 @@ impl axum::extract::FromRequestParts<Shared> for StreamUser {
     }
 }
 
+/// Risorse HLS servite sotto `/Videos/{id}/`, come in Jellyfin: playlist principale, playlist dei segmenti, init
+/// fMP4 e segmenti numerati.
+fn is_hls_resource(name: &str) -> bool {
+    matches!(name, "master.m3u8" | "main.m3u8" | "init.mp4")
+        || name.strip_suffix(".ts").or_else(|| name.strip_suffix(".m4s")).is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+}
+
 /// Parametri di una richiesta per il log, senza chiavi né token.
 fn request_params(query: Option<&str>) -> String {
     query
@@ -2213,19 +2225,20 @@ async fn stream(
     do_stream(&state, &user, &item, &uri, &method, &headers).await
 }
 
-async fn stream_named(
-    State(state): State<Shared>,
-    StreamUser(user): StreamUser,
-    Path((item, name)): Path<(String, String)>,
-    uri: Uri,
-    method: Method,
-    headers: HeaderMap,
-) -> ApiResult<Response> {
+async fn stream_named(State(state): State<Shared>, Path((item, name)): Path<(String, String)>, mut parts: axum::http::request::Parts) -> ApiResult<Response> {
+    // Playlist e segmenti di una conversione (`TranscodingUrl`): li autorizza il token della sessione, come in
+    // `/api/v1/hls`, perché i player li chiedono senza le intestazioni dell'app.
+    if is_hls_resource(&name) {
+        let t = crate::auth::query_param(&parts, "t");
+        let s = crate::api::playback::session_for_item(&state, item_id(&state, &item)?, t.as_deref())?;
+        return crate::api::playback::serve_hls(&state, &s, &name, &parts.headers).await;
+    }
+    let StreamUser(user) = <StreamUser as axum::extract::FromRequestParts<Shared>>::from_request_parts(&mut parts, &state).await?;
     if !name.to_lowercase().starts_with("stream") {
-        tracing::info!(user = %user.username, path = %uri.path(), query = %request_params(uri.query()), "app Jellyfin: risorsa video non gestita");
+        tracing::info!(user = %user.username, path = %parts.uri.path(), query = %request_params(parts.uri.query()), "app Jellyfin: risorsa video non gestita");
         return Err(ApiError::not_found("Risorsa"));
     }
-    do_stream(&state, &user, &item, &uri, &method, &headers).await
+    do_stream(&state, &user, &item, &parts.uri, &parts.method, &parts.headers).await
 }
 
 async fn subtitle_offset(
@@ -2383,6 +2396,17 @@ async fn progress(State(state): State<Shared>, user: AuthUser, Json(r): Json<Pla
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// `DELETE /Videos/ActiveEncodings?deviceId=…&playSessionId=…`: Jellyfin per Android TV ferma così la conversione
+/// prima di chiederne un'altra (cambio di traccia audio o sottotitoli).
+async fn stop_encoding(State(state): State<Shared>, user: AuthUser, parts: axum::http::request::Parts) -> StatusCode {
+    let session = crate::auth::query_param(&parts, "playSessionId").and_then(|p| state.sessions.get(&p)).filter(|s| s.user_id == user.user_id);
+    if let Some(s) = session {
+        COMPAT_SESSIONS.lock().unwrap().retain(|_, v| *v != s.id);
+        stop_session(&state, &s.id).await;
+    }
+    StatusCode::NO_CONTENT
+}
+
 async fn stopped(State(state): State<Shared>, user: AuthUser, Json(r): Json<PlayReport>) -> ApiResult<StatusCode> {
     if let Some(s) = report(&state, &user, &r).await? {
         COMPAT_SESSIONS.lock().unwrap().retain(|_, v| *v != s.id);
@@ -2447,6 +2471,16 @@ async fn fav_del(State(s): State<Shared>, u: AuthUser, Path(i): Path<String>) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hls_resources_under_videos() {
+        for n in ["master.m3u8", "main.m3u8", "init.mp4", "0.ts", "123.m4s"] {
+            assert!(is_hls_resource(n), "{n}");
+        }
+        for n in ["stream", "stream.mkv", ".ts", "a1.ts", "live.m3u8"] {
+            assert!(!is_hls_resource(n), "{n}");
+        }
+    }
 
     #[test]
     fn log_params_hide_secrets() {
