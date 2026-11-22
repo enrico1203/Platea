@@ -10,6 +10,8 @@ Le note sull'installazione dell'utente (mount, porte, librerie) stanno in `PROGR
 - Usare sempre container Docker (niente toolchain installate sull'host: Rust, Node, FFmpeg girano nei container).
 - Un `docker-compose.yml` nella root che avvia sia `Server/` sia `WebApp/`.
 - Repository GitHub privata `Platea`; fare sempre commit e push su `main`.
+- **Dal 22/11/2026: a ogni cambio di versione, dopo il push, creare e pubblicare il tag `vX.Y.Z`** (release su GitHub,
+  immagini `X.Y.Z`/`X.Y`/`latest` e APK nascono solo dai tag; dalla 0.1.24 alla 0.1.39 non erano stati messi).
 - Testare da soli le cose (build, test unitari, prove end-to-end con curl/browser nei container).
 - Tenere aggiornato il README. **Dal 15/11/2026 il README è in inglese, scritto in modo semplice (niente formule da
   intelligenza artificiale, niente grassetti a inizio elenco): una frase, app compatibili, compose d'esempio, poi il resto.**
@@ -477,6 +479,7 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-22 — Tag e release v0.1.40 (l'ultima era la v0.1.23). Da ora un tag a ogni versione.
 - 2026-11-22 — CI Android: falliva a intermittenza (33 test su 40) perché Robolectric scaricava da solo, durante i test e
   senza tentativi, i jar `android-all-instrumented` (SDK 34 dei test e SDK 35 di `compileSdk`, ~150 MB l'uno). Ora li
   risolve Gradle (configurazione `robolectricSdk` in `Android/app/build.gradle.kts`, task `robolectricJars`, con i suoi
