@@ -477,6 +477,17 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-22 — **0.1.37** (solo server): Infuse controllato. Codice chiuso; documentazione pubblica di Firecore
+  (support.firecore.com 360006462093, blog "Infuse 8.5 - Smarter Streaming", thread 60456 della community) dice le
+  funzioni ma non gli endpoint. Stato: Infuse 8.5.10 in modalità diretta ("Infuse-Direct"); Platea gli dà sempre il
+  file diretto, progressi e sottotitoli esterni ok. **Aperto:** dalla 8.5 Infuse chiede al server versioni
+  transcodificate (Play tenuto premuto → Transcodifica; 8.5.2 ha corretto lo stato "Direct Play" mostrato da
+  Jellyfin durante la transcodifica, quindi passa da PlaybackInfo/sessioni), ma non si sa con quale richiesta:
+  Platea a Infuse non manda mai `TranscodingUrl`, risponde 404 a `/Videos/{id}/master.m3u8` e ignora i parametri di
+  qualità su `/Videos/{id}/stream`. Per non indovinare (e non rompere il direct play che va): log
+  `app Jellyfin: richiesta PlaybackInfo` per ogni app (query e campi semplici del corpo, senza chiavi/token, nome del
+  profilo), `stream con parametri di conversione` e `app Jellyfin: risorsa video non gestita` (nomi diversi da
+  stream*). Prossimo passo: una prova di Transcodifica da Infuse, poi implementare la richiesta che si vede nei log.
 - 2026-11-22 — **0.1.36** (solo server, migrazione 0028): etichetta del codec video nell'analisi. AVPlayer (Swiftfin,
   Safari) apre l'HEVC in MP4 solo come `hvc1`/`dvh1`; un MP4 `hev1` (trovato davvero in libreria: un episodio SDTV)
   andava diretto e non partiva. Ora: `media_streams.codec_tag` da `codec_tag_string` di ffprobe (solo video; l'MKV

@@ -1902,6 +1902,14 @@ async fn playback_info(
     let infuse = client.to_ascii_lowercase().contains("infuse");
     let wants_transcoding = b["EnableTranscoding"].as_bool().unwrap_or(true);
     let ip = crate::auth::peer_ip(&state, &parts);
+    tracing::info!(
+        user = %user.username,
+        client = %client,
+        query = %request_params(uri.query()),
+        body = %body_params(&b),
+        profilo = %b["DeviceProfile"]["Name"].as_str().unwrap_or(if b["DeviceProfile"].is_object() { "senza nome" } else { "nessuno" }),
+        "app Jellyfin: richiesta PlaybackInfo"
+    );
     let direct = || {
         let play_session = crate::util::random_hex(16);
         grant_stream(&play_session, &user, id, ip);
@@ -2092,6 +2100,43 @@ impl axum::extract::FromRequestParts<Shared> for StreamUser {
     }
 }
 
+/// Parametri di una richiesta per il log, senza chiavi né token.
+fn request_params(query: Option<&str>) -> String {
+    query
+        .unwrap_or("")
+        .split('&')
+        .filter(|p| !p.is_empty())
+        .map(|p| p.split_once('=').unwrap_or((p, "")))
+        .filter(|(k, _)| !is_secret(k))
+        .map(|(k, v)| format!("{k}={}", urlencoding::decode(v).unwrap_or_default()))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Campi semplici del corpo di PlaybackInfo per il log (il DeviceProfile ha già la sua riga).
+fn body_params(b: &Value) -> String {
+    b.as_object()
+        .into_iter()
+        .flatten()
+        .filter(|(k, v)| !is_secret(k) && !v.is_object() && !v.is_array() && !v.is_null())
+        .map(|(k, v)| format!("{k}={v}"))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn is_secret(key: &str) -> bool {
+    let k = key.to_ascii_lowercase();
+    k.contains("key") || k.contains("token")
+}
+
+/// Parametri di conversione che Jellyfin accetta su `/Videos/{id}/stream` senza `static=true`. Platea manda sempre il
+/// file: chi li usa va visto nei log.
+fn transcoding_params(query: Option<&str>) -> bool {
+    const KEYS: [&str; 8] =
+        ["videobitrate", "audiobitrate", "videocodec", "audiocodec", "maxwidth", "maxheight", "maxstreamingbitrate", "transcodingmaxaudiochannels"];
+    query.unwrap_or("").split('&').filter_map(|p| p.split('=').next()).any(|k| KEYS.contains(&k.to_ascii_lowercase().as_str()))
+}
+
 async fn choose_file(state: &Shared, item: i64, source: Option<&str>) -> ApiResult<i64> {
     if let Some(fid) = source.and_then(|s| state.ids.decode(s)) {
         let ok: Option<i64> =
@@ -2114,6 +2159,9 @@ async fn do_stream(state: &Shared, user: &AuthUser, item: &str, uri: &Uri, metho
     }
     let id = item_id(state, item)?;
     crate::api::items::load_item(state, user, id).await?;
+    if transcoding_params(uri.query()) {
+        tracing::info!(user = %user.username, path = %uri.path(), query = %request_params(uri.query()), "stream con parametri di conversione: si manda il file originale");
+    }
     let source = uri.query().and_then(|q| {
         q.split('&').find_map(|p| {
             let (k, v) = p.split_once('=')?;
@@ -2163,6 +2211,7 @@ async fn stream_named(
     headers: HeaderMap,
 ) -> ApiResult<Response> {
     if !name.to_lowercase().starts_with("stream") {
+        tracing::info!(user = %user.username, path = %uri.path(), query = %request_params(uri.query()), "app Jellyfin: risorsa video non gestita");
         return Err(ApiError::not_found("Risorsa"));
     }
     do_stream(&state, &user, &item, &uri, &method, &headers).await
@@ -2387,6 +2436,16 @@ async fn fav_del(State(s): State<Shared>, u: AuthUser, Path(i): Path<String>) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn log_params_hide_secrets() {
+        let q = Some("static=true&api_key=abc&MediaSourceId=x1&X-Emby-Token=t&VideoBitrate=4000000");
+        assert_eq!(request_params(q), "static=true MediaSourceId=x1 VideoBitrate=4000000");
+        assert!(transcoding_params(q));
+        assert!(!transcoding_params(Some("static=true&MediaSourceId=x1")));
+        let b = json!({ "UserId": "u", "MaxStreamingBitrate": 8000000, "EnableDirectPlay": false, "DeviceProfile": {}, "AccessToken": "t" });
+        assert_eq!(body_params(&b), "UserId=\"u\" MaxStreamingBitrate=8000000 EnableDirectPlay=false");
+    }
 
     #[test]
     fn roku_paths_are_normalized() {
