@@ -488,6 +488,12 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
   con `fmp4_always`. Web UI e Swiftfin (MP4 per primo) invariati. Non ancora visto funzionare sulla Fire TV.
   Sull'E-AC3 in file diretto senza audio: l'utente conferma che succede anche con un server Jellyfin, quindi è il
   dispositivo (Fire TV → TV), non Platea.
+- 2026-11-22 — **0.1.43** (solo server): il play su un episodio parte da quell'episodio. Jellyfin per Android TV, al play,
+  costruisce la coda con `/Shows/{serie}/Episodes?startItemId=<episodio>&limit=150` e riproduce il primo della lista;
+  Platea ignorava `startItemId` (e `adjacentTo`, `season`, `startIndex`, `limit`) e rispondeva sempre da S01E01, quindi
+  partiva sempre il primo episodio (visto nei log: play su S03E10 → PlaybackInfo di S01E01). Ora `episodes` in
+  `api/jellyfin.rs` li gestisce come Jellyfin. Provato su un server di prova con copia del DB (una serie di 34 episodi):
+  `startItemId` S01E02 → 33 da S01E02, S03E10 → 6 da S03E10, `adjacentTo` → precedente/scelto/successivo.
 - 2026-11-22 — **0.1.41** (solo server): lo stream senza token segue l'IP del dispositivo. Findroid apre
   `/Videos/{id}/stream?static=true` senza token né `PlaySessionId`, quindi il permesso del PlaybackInfo lo riconosceva
   solo dall'IP. Un utente con Findroid: stream ok per ~2 min, poi 401 a ogni richiesta (Range) mentre `Progress` col token

@@ -1766,10 +1766,45 @@ async fn episodes(State(state): State<Shared>, user: AuthUser, Path(series): Pat
     if let Some(Ref::Item(season)) = q.season_id.as_deref().and_then(|s| parse_ref(&state, s)) {
         sql.push_str(&format!(" AND i.parent_id = {season}"));
     }
+    if let Some(season) = query_param(&uri, "season").and_then(|v| v.parse::<i64>().ok()) {
+        sql.push_str(&format!(" AND i.parent_index_number = {season}"));
+    }
     sql.push_str(" ORDER BY COALESCE(i.parent_index_number, 0), COALESCE(i.index_number, 0)");
-    let rows: Vec<Row> = sqlx::query_as(&sql).bind(user.user_id).bind(sid).fetch_all(&state.db.read).await?;
-    let n = rows.len();
-    Ok(Json(json!({ "Items": dtos(&state, &rows, &uri).await?, "TotalRecordCount": n, "StartIndex": 0 })))
+    let mut rows: Vec<Row> = sqlx::query_as(&sql).bind(user.user_id).bind(sid).fetch_all(&state.db.read).await?;
+    let item_ref = |k: &str| match query_param(&uri, k).and_then(|v| parse_ref(&state, &v)) {
+        Some(Ref::Item(i)) => Some(i),
+        _ => None,
+    };
+    // Le app Jellyfin (Android TV, web) costruiscono la coda di riproduzione con
+    // `startItemId=<episodio scelto>` e partono dal primo della lista: senza questo filtro
+    // partiva sempre l'episodio 1. `adjacentTo` chiede l'episodio, il precedente e il successivo.
+    if let Some(start) = item_ref("startitemid") {
+        if let Some(pos) = rows.iter().position(|r| r.id == start) {
+            rows.drain(..pos);
+        }
+    }
+    if let Some(adj) = item_ref("adjacentto") {
+        if let Some(pos) = rows.iter().position(|r| r.id == adj) {
+            let end = (pos + 2).min(rows.len());
+            rows.truncate(end);
+            rows.drain(..pos.saturating_sub(1));
+        }
+    }
+    let total = rows.len();
+    let start = q.start_index.unwrap_or(0).clamp(0, total as i64) as usize;
+    rows.drain(..start);
+    if let Some(limit) = q.limit.filter(|l| *l >= 0) {
+        rows.truncate(limit as usize);
+    }
+    Ok(Json(json!({ "Items": dtos(&state, &rows, &uri).await?, "TotalRecordCount": total, "StartIndex": start })))
+}
+
+/// Valore di un parametro della query (nome senza distinzione di maiuscole), già decodificato.
+fn query_param(uri: &Uri, name: &str) -> Option<String> {
+    uri.query()?.split('&').find_map(|pair| {
+        let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
+        (k.eq_ignore_ascii_case(name) && !v.is_empty()).then(|| urlencoding::decode(&v.replace('+', " ")).map(|s| s.into_owned()).ok()).flatten()
+    })
 }
 
 async fn search_hints(State(state): State<Shared>, user: AuthUser, uri: Uri) -> ApiResult<Json<Value>> {
