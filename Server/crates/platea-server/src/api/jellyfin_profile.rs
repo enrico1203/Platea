@@ -181,6 +181,23 @@ pub fn convert(p: &Value, max_bitrate: Option<u64>) -> DeviceProfile {
     out
 }
 
+/// Codec audio dichiarati dal profilo, per il log: `aac 6ch, ac3, eac3`.
+pub fn audio_summary(p: &DeviceProfile) -> String {
+    let v: Vec<String> = p
+        .audio_codecs
+        .iter()
+        .map(|a| match a.max_channels {
+            Some(ch) => format!("{} {ch}ch", a.codec),
+            None => a.codec.clone(),
+        })
+        .collect();
+    if v.is_empty() {
+        "nessuno".into()
+    } else {
+        v.join(", ")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -215,6 +232,7 @@ mod tests {
         assert_eq!(d.max_bitrate, Some(20_000_000));
         assert!(d.protocols.contains(&"hls".to_string()));
         assert_eq!(d.hls_audio_codecs, vec!["aac", "ac3"]);
+        assert_eq!(audio_summary(&d), "aac 6ch, mp3, opus, ac3");
         assert_eq!(d.subtitle_text, vec!["srt"]);
         assert_eq!(d.subtitle_image, vec!["pgs"]);
     }

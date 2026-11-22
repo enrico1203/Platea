@@ -1930,7 +1930,29 @@ async fn playback_info(
         server_video_encoders: crate::api::playback::allowed_encoders(&state),
         force_transcode: false,
     };
-    match platea_playback::decide(&info.media, &profile, &preq) {
+    let decision = platea_playback::decide(&info.media, &profile, &preq);
+    // Cosa l'app dice di saper riprodurre e cosa ha il file: senza, un "niente audio" sulla TV non si spiega dai log.
+    let tracks: Vec<String> = info
+        .media
+        .audio
+        .iter()
+        .map(|a| format!("{}:{} {}ch {}{}", a.index, a.codec, a.channels, a.language.as_deref().unwrap_or("?"), if a.default { "*" } else { "" }))
+        .collect();
+    tracing::info!(
+        user = %user.username,
+        client = %client,
+        device = %auth_fields(headers).get("device").cloned().unwrap_or_default(),
+        audio_dichiarato = %super::jellyfin_profile::audio_summary(&profile),
+        audio_hls = %profile.hls_audio_codecs.join(", "),
+        audio_file = %tracks.join(", "),
+        traccia_chiesta = ?audio,
+        decisione = %match &decision {
+            Ok(d) => format!("{:?} {:?}", d.method, d.reasons),
+            Err(e) => format!("errore: {e:?}"),
+        },
+        "app Jellyfin: PlaybackInfo"
+    );
+    match decision {
         Ok(d) if d.method == platea_playback::Method::DirectPlay => return Ok(direct()),
         Err(_) => return Ok(direct()),
         Ok(_) => {}

@@ -477,6 +477,14 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-22 — **0.1.33** (solo server): log dei codec audio dichiarati dalle app Jellyfin. Un utente non sentiva
+  l'audio con Jellyfin per Android TV 0.20 su Fire TV Stick: un episodio con E-AC3 (2.0 ita, 5.1 eng) andava in
+  direct play senza audio, un film con AC3 5.1 partiva bene. Il server si fida del profilo dell'app, ma il profilo
+  non finiva nei log. Ora ogni PlaybackInfo con DeviceProfile scrive una riga `app Jellyfin: PlaybackInfo` con
+  utente, app, dispositivo, `audio_dichiarato` (codec del direct play, con i canali massimi se limitati),
+  `audio_hls`, `audio_file` (`indice:codec canali lingua`, `*` = predefinita), `traccia_chiesta` e `decisione`
+  (`audio_summary` in `jellyfin_profile.rs`). Consiglio dato all'utente: nell'app, Uscita audio → "Downmix to stereo"
+  (o Dolby Digital Plus spento sulla Fire TV).
 - 2026-11-22 — **0.1.32**: web UI come app (PWA). Service worker `WebApp/public/sw.js`: pagine sempre dalla rete,
   senza rete `offline.html`; cache solo di `/assets/` (hash nel nome, massimo 150 file); mai API, video, immagini
   del server o manifest. Manifest con `id`/`scope` e icona `maskable` (Android): dal logo PNG la genera il server
