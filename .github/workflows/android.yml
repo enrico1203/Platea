@@ -50,8 +50,24 @@ jobs:
         id: v
         run: |
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"; else echo "version=" >> "$GITHUB_OUTPUT"; fi
+      # Jar di Android per Robolectric (~150 MB l'uno, versioni come in app/build.gradle.kts). Maven Central risponde
+      # spesso 429 ai runner di GitHub: si scaricano una volta, con tentativi, e poi restano nella cache.
+      - name: Cache dei jar di Robolectric
+        id: rjars
+        uses: actions/cache@v4
+        with:
+          path: ~/robolectric-jars
+          key: robolectric-jars-14-robolectric-10818077-i7-15-robolectric-12650502-i7
+      - name: Jar di Robolectric
+        if: steps.rjars.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/robolectric-jars
+          for v in 14-robolectric-10818077-i7 15-robolectric-12650502-i7; do
+            curl -fsSL --retry 12 --retry-all-errors --retry-delay 20 -o ~/robolectric-jars/android-all-instrumented-$v.jar \
+              "https://repo1.maven.org/maven2/org/robolectric/android-all-instrumented/$v/android-all-instrumented-$v.jar"
+          done
       - name: Test e build
-        run: ./gradlew --no-daemon testDebugUnitTest assembleRelease ${{ steps.v.outputs.version && format('-PappVersion={0}', steps.v.outputs.version) || '' }}
+        run: ./gradlew --no-daemon testDebugUnitTest assembleRelease -ProbolectricJarsDir=$HOME/robolectric-jars ${{ steps.v.outputs.version && format('-PappVersion={0}', steps.v.outputs.version) || '' }}
       - name: Nome dell'APK
         run: cp app/build/outputs/apk/release/app-release.apk "platea-${{ steps.v.outputs.version || 'edge' }}.apk"
       - uses: actions/upload-artifact@v4

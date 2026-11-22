@@ -21,10 +21,15 @@ val keystoreProps = Properties().apply {
 
 // Jar di Android usati da Robolectric: SDK 34 per @Config(sdk = [34]) dei test, SDK 35 (compileSdk) per caricare le
 // risorse dell'app. Le versioni sono quelle che Robolectric 4.14.1 cerca: se si cambia Robolectric, compileSdk o l'SDK
-// dei test vanno aggiornate (il nome del jar mancante compare nell'errore dei test).
+// dei test vanno aggiornate qui e in .github/workflows/android.yml (il nome del jar mancante compare nell'errore).
+// Li scarica Gradle, non Robolectric durante i test (senza tentativi). In CI li porta una cache e la cartella arriva
+// con -ProbolectricJarsDir=…: Maven Central risponde spesso 429 ai runner di GitHub.
 val robolectricSdk: Configuration by configurations.creating
-val robolectricJarsDir = layout.buildDirectory.dir("robolectric-jars")
+val prebuiltRobolectricJars = (project.findProperty("robolectricJarsDir") as String?)?.takeIf { it.isNotBlank() }
+val robolectricJarsDir = prebuiltRobolectricJars?.let { layout.dir(provider { file(it) }) }
+    ?: layout.buildDirectory.dir("robolectric-jars")
 val robolectricJars = tasks.register<Copy>("robolectricJars") {
+    enabled = prebuiltRobolectricJars == null
     from(robolectricSdk)
     into(robolectricJarsDir)
 }
