@@ -55,7 +55,7 @@ pub fn convert(p: &Value, max_bitrate: Option<u64>) -> DeviceProfile {
 
     let push_v = |out: &mut DeviceProfile, c: String| {
         if !out.video_codecs.iter().any(|v| v.codec == c) {
-            out.video_codecs.push(VideoCodecSupport { codec: c, profiles: vec![], max_level: None, max_bit_depth: None, max_width: None, max_height: None });
+            out.video_codecs.push(VideoCodecSupport { codec: c, ..Default::default() });
         }
     };
     let push_a = |out: &mut DeviceProfile, c: String| {
@@ -112,6 +112,8 @@ pub fn convert(p: &Value, max_bitrate: Option<u64>) -> DeviceProfile {
                         ("Width", "LessThanEqual") => v.max_width = num,
                         ("Height", "LessThanEqual") => v.max_height = num,
                         ("VideoProfile", "EqualsAny") => v.profiles = list(&cond["Value"]),
+                        // Swiftfin con AVPlayer: HEVC solo `hvc1|dvh1`.
+                        ("VideoCodecTag", "EqualsAny") => v.codec_tags = list(&cond["Value"]),
                         ("VideoProfile", "Equals") if !conditional => v.profiles = vec![val.to_ascii_lowercase()],
                         // AV1 senza Main 10: solo 8 bit.
                         ("VideoProfile", "NotEquals") if val.eq_ignore_ascii_case("main 10") => v.max_bit_depth = Some(8),
@@ -421,6 +423,14 @@ mod tests {
         // Niente Dolby Vision vero: DOVIWithSDR/HDR10 sono solo lo strato base.
         assert_eq!(d.hdr, vec!["hlg", "hdr10", "hdr10plus"]);
         assert_eq!(d.hls_audio_codecs, vec!["aac", "ac3", "eac3"]);
+        assert_eq!(d.video_codecs.iter().find(|v| v.codec == "hevc").unwrap().codec_tags, vec!["hvc1", "dvh1"]);
+        // MP4 HEVC etichettato hev1: AVPlayer non lo apre, va in HLS (che etichetta hvc1).
+        let mut m = media("mp4", "hevc", "aac");
+        m.video.as_mut().unwrap().codec_tag = Some("hev1".into());
+        let dec = platea_playback::decide(&m, &d, &req()).unwrap();
+        assert_eq!((dec.method, dec.reasons), (platea_playback::Method::Remux, vec![platea_playback::Reason::VideoCodecTagNotSupported]));
+        m.video.as_mut().unwrap().codec_tag = Some("hvc1".into());
+        assert_eq!(platea_playback::decide(&m, &d, &req()).unwrap().method, platea_playback::Method::DirectPlay);
         // MKV: non è fra i contenitori, va in HLS.
         let m = media("mkv", "hevc", "eac3");
         assert_eq!(platea_playback::decide(&m, &d, &req()).unwrap().method, platea_playback::Method::Remux);

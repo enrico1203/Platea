@@ -19,6 +19,9 @@ pub struct VideoCodecSupport {
     pub max_bit_depth: Option<u8>,
     pub max_width: Option<u32>,
     pub max_height: Option<u32>,
+    /// Etichette del codec accettate nel file diretto, minuscole (`hvc1`, `dvh1`). Vuoto = tutte. AVPlayer apre
+    /// l'HEVC in MP4 solo con `hvc1`/`dvh1`, non con `hev1`; l'HLS di Platea etichetta già `hvc1`.
+    pub codec_tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -66,6 +69,7 @@ impl Default for DeviceProfile {
                 max_bit_depth: Some(8),
                 max_width: None,
                 max_height: None,
+                codec_tags: vec![],
             }],
             audio_codecs: vec![
                 AudioCodecSupport { codec: "aac".into(), max_channels: Some(6) },
@@ -96,6 +100,9 @@ pub struct VideoInfo {
     /// `hdr10`, `hlg`, `dovi`, `hdr10plus` oppure `None` per SDR.
     pub hdr: Option<String>,
     pub bitrate: Option<u64>,
+    /// Etichetta del codec nel contenitore, minuscola (`hvc1`, `hev1`, `avc1`). `None` se assente o non analizzata.
+    #[serde(default)]
+    pub codec_tag: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -218,6 +225,7 @@ pub enum Reason {
     AudioChannelsNotSupported,
     SubtitleBurnIn,
     DirectFileNotSupported,
+    VideoCodecTagNotSupported,
     HlsVideoCodecNotSupported,
     HlsAudioCodecNotSupported,
     TranscodeForced,
@@ -238,6 +246,7 @@ impl Reason {
             Reason::AudioChannelsNotSupported => "AudioChannelsNotSupported",
             Reason::SubtitleBurnIn => "SubtitleBurnIn",
             Reason::DirectFileNotSupported => "DirectFileNotSupported",
+            Reason::VideoCodecTagNotSupported => "VideoCodecTagNotSupported",
             Reason::HlsVideoCodecNotSupported => "HlsVideoCodecNotSupported",
             Reason::HlsAudioCodecNotSupported => "HlsAudioCodecNotSupported",
             Reason::TranscodeForced => "TranscodeForced",
@@ -332,6 +341,12 @@ fn container_supported(profile: &DeviceProfile, container: &str) -> bool {
         "webm" => has(&profile.containers, "webm"),
         _ => false,
     }
+}
+
+/// L'etichetta del codec va bene per il file diretto. Non serve ricodificare: l'HLS mette la sua.
+fn codec_tag_supported(profile: &DeviceProfile, v: &VideoInfo) -> bool {
+    let Some(tag) = &v.codec_tag else { return true };
+    profile.video_codecs.iter().find(|s| s.codec.eq_ignore_ascii_case(&v.codec)).is_none_or(|s| s.codec_tags.is_empty() || has(&s.codec_tags, tag))
 }
 
 /// Verifica del video. Restituisce i motivi per cui serve una ricodifica.
@@ -486,10 +501,11 @@ pub fn decide(media: &MediaInfo, profile: &DeviceProfile, req: &PlaybackRequest)
     // 4. Audio (con il video copiato basta convertire il solo audio)
     let audio_reason_direct = audio.and_then(|a| check_audio(profile, a, None));
 
-    // 6. Contenitore
+    // 6. Contenitore (e etichetta del codec, che conta solo nel file diretto)
     let container_ok = container_supported(profile, &media.container);
+    let tag_ok = media.video.as_ref().is_none_or(|v| codec_tag_supported(profile, v));
 
-    if !need_video_transcode && audio_reason_direct.is_none() && container_ok && can_file {
+    if !need_video_transcode && audio_reason_direct.is_none() && container_ok && tag_ok && can_file {
         return Ok(Decision {
             method: Method::DirectPlay,
             reasons: vec![],
@@ -508,6 +524,9 @@ pub fn decide(media: &MediaInfo, profile: &DeviceProfile, req: &PlaybackRequest)
         }
         if !container_ok {
             r.push(Reason::ContainerNotSupported);
+        }
+        if !tag_ok {
+            r.push(Reason::VideoCodecTagNotSupported);
         }
         return Err(DecisionError::TranscodeNotAllowed(r));
     }
@@ -544,6 +563,8 @@ pub fn decide(media: &MediaInfo, profile: &DeviceProfile, req: &PlaybackRequest)
             let mut r = Vec::new();
             if !container_ok {
                 r.push(Reason::ContainerNotSupported);
+            } else if !tag_ok {
+                r.push(Reason::VideoCodecTagNotSupported);
             } else if !can_file {
                 r.push(Reason::DirectFileNotSupported);
             }

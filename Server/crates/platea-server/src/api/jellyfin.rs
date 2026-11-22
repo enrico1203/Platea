@@ -1027,6 +1027,7 @@ struct StreamRow {
     is_default: i64,
     is_forced: i64,
     is_external: i64,
+    codec_tag: Option<String>,
 }
 
 /// Sorgenti multimediali per film ed episodi: Infuse usa la prima in direct play.
@@ -1040,7 +1041,8 @@ async fn media_sources(state: &Shared, item: i64) -> ApiResult<Vec<Value>> {
     let mut out = Vec::new();
     for (fid, rel, container, size, dur, br, label) in files {
         let streams: Vec<StreamRow> = sqlx::query_as(
-            "SELECT stream_index, kind, codec, profile, level, bit_depth, width, height, hdr, channels, channel_layout, bitrate, language, title, is_default, is_forced, is_external
+            "SELECT stream_index, kind, codec, profile, level, bit_depth, width, height, hdr, channels, channel_layout, bitrate, language, title, is_default, is_forced, is_external,
+                    codec_tag
              FROM media_streams WHERE file_id = ? AND kind IN ('video','audio','subtitle') ORDER BY stream_index",
         )
         .bind(fid)
@@ -1069,6 +1071,7 @@ async fn media_sources(state: &Shared, item: i64) -> ApiResult<Vec<Value>> {
                     is_default: def,
                     is_forced: forced,
                     is_external: ext_flag,
+                    codec_tag,
                 } = st;
                 let typ = match kind.as_str() {
                     "video" => "Video",
@@ -1100,6 +1103,7 @@ async fn media_sources(state: &Shared, item: i64) -> ApiResult<Vec<Value>> {
                 let o = s.as_object_mut().unwrap();
                 if kind == "video" {
                     o.insert("Profile".into(), json!(profile));
+                    o.insert("CodecTag".into(), json!(codec_tag));
                     o.insert("Level".into(), json!(level));
                     o.insert("BitDepth".into(), json!(bd));
                     o.insert("Width".into(), json!(w));

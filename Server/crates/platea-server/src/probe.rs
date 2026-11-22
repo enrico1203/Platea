@@ -102,6 +102,7 @@ pub struct ProbeStream {
     pub codec_type: String,
     #[serde(default)]
     pub codec_name: String,
+    pub codec_tag_string: Option<String>,
     pub profile: Option<String>,
     pub level: Option<i64>,
     pub width: Option<i64>,
@@ -142,6 +143,12 @@ impl ProbeStream {
         } else {
             8
         })
+    }
+
+    /// Etichetta del codec (`hvc1`, `hev1`, `avc1`), minuscola. L'MKV non ne ha: ffprobe scrive `[0][0][0][0]`.
+    pub fn codec_tag(&self) -> Option<String> {
+        let t = self.codec_tag_string.as_deref()?.trim();
+        (t.len() == 4 && t.chars().all(|c| c.is_ascii_alphanumeric())).then(|| t.to_ascii_lowercase())
     }
 
     pub fn hdr(&self) -> Option<String> {
@@ -329,8 +336,8 @@ pub async fn save_probe(state: &Shared, file_id: i64, rel: &str, out: &ProbeOutp
         };
         sqlx::query(
             "INSERT INTO media_streams (file_id, stream_index, kind, codec, profile, level, bit_depth, width, height, frame_rate, hdr,
-               channels, channel_layout, sample_rate, bitrate, language, title, is_default, is_forced, is_external)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
+               channels, channel_layout, sample_rate, bitrate, language, title, is_default, is_forced, is_external, codec_tag)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)",
         )
         .bind(file_id)
         .bind(s.index)
@@ -351,6 +358,7 @@ pub async fn save_probe(state: &Shared, file_id: i64, rel: &str, out: &ProbeOutp
         .bind(s.tag("title"))
         .bind(s.disposition.get("default").copied().unwrap_or(0))
         .bind(s.disposition.get("forced").copied().unwrap_or(0))
+        .bind(if kind == "video" { s.codec_tag() } else { None })
         .execute(&mut *tx)
         .await?;
     }
@@ -533,6 +541,15 @@ mod tests {
         assert_eq!(s.hdr().as_deref(), Some("dovi"));
         let s = ProbeStream { pix_fmt: Some("yuv420p10le".into()), ..Default::default() };
         assert_eq!(s.bit_depth(), Some(10));
+    }
+    #[test]
+    fn codec_tag_from_ffprobe() {
+        let tag = |t: &str| ProbeStream { codec_tag_string: Some(t.into()), ..Default::default() }.codec_tag();
+        assert_eq!(tag("hvc1").as_deref(), Some("hvc1"));
+        assert_eq!(tag("HEV1").as_deref(), Some("hev1"));
+        // MKV: nessuna etichetta.
+        assert_eq!(tag("[0][0][0][0]"), None);
+        assert_eq!(ProbeStream::default().codec_tag(), None);
     }
 }
 

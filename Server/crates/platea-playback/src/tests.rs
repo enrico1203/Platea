@@ -15,6 +15,7 @@ fn h264_1080p_mp4() -> MediaInfo {
             height: 1080,
             hdr: None,
             bitrate: Some(7_500_000),
+            codec_tag: Some("avc1".into()),
         }),
         audio: vec![AudioInfo { index: 1, codec: "aac".into(), channels: 2, language: Some("ita".into()), default: true, bitrate: Some(192_000) }],
         subtitles: vec![],
@@ -47,6 +48,27 @@ fn mkv_container_means_remux() {
     assert_eq!(d.reasons, vec![Reason::ContainerNotSupported]);
     assert_eq!(d.video, VideoAction::Copy);
     assert_eq!(d.audio, AudioAction::Copy);
+}
+
+#[test]
+fn hevc_tag_hev1_means_remux_on_avplayer() {
+    let mut p = chrome();
+    p.video_codecs.push(VideoCodecSupport { codec: "hevc".into(), codec_tags: vec!["hvc1".into(), "dvh1".into()], ..Default::default() });
+    p.hls_video_codecs.push("hevc".into());
+    let mut m = h264_1080p_mp4();
+    let v = m.video.as_mut().unwrap();
+    v.codec = "hevc".into();
+    v.profile = Some("main".into());
+    v.codec_tag = Some("hev1".into());
+    let d = decide(&m, &p, &req()).unwrap();
+    assert_eq!(d.method, Method::Remux);
+    assert_eq!(d.reasons, vec![Reason::VideoCodecTagNotSupported]);
+    assert_eq!(d.video, VideoAction::Copy);
+    // hvc1, o etichetta sconosciuta (file non ancora rianalizzato): direct play.
+    for tag in [Some("hvc1"), None] {
+        m.video.as_mut().unwrap().codec_tag = tag.map(String::from);
+        assert_eq!(decide(&m, &p, &req()).unwrap().method, Method::DirectPlay);
+    }
 }
 
 #[test]

@@ -477,6 +477,15 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-22 — **0.1.36** (solo server, migrazione 0028): etichetta del codec video nell'analisi. AVPlayer (Swiftfin,
+  Safari) apre l'HEVC in MP4 solo come `hvc1`/`dvh1`; un MP4 `hev1` (trovato davvero in libreria: un episodio SDTV)
+  andava diretto e non partiva. Ora: `media_streams.codec_tag` da `codec_tag_string` di ffprobe (solo video; l'MKV
+  scrive `[0][0][0][0]` → NULL; `ProbeStream::codec_tag`); `VideoInfo.codec_tag` e `VideoCodecSupport.codec_tags`
+  in platea-playback (vuoto = tutte, etichetta sconosciuta = va bene); se l'etichetta non è ammessa niente file
+  diretto ma remux HLS col video copiato (motivo `VideoCodecTagNotSupported`), perché l'HLS etichetta già `hvc1`.
+  `VideoCodecTag EqualsAny` letto dai profili Jellyfin; `CodecTag` nelle tracce dei MediaSource. La migrazione
+  rimette in analisi solo gli HEVC non MKV già analizzati (210 file), accodando i lavori `probe_file` con lo stesso
+  `dedupe_key` del server (provata su un DB vuoto con tutte le migrazioni: niente doppioni, MKV e H.264 intatti).
 - 2026-11-22 — **0.1.35** (solo server): profili di Findroid 1.2.0 e Swiftfin 1.7.1 confrontati col codice delle app.
   Findroid (`JellyfinRepositoryImpl.getMediaSources`) manda un profilo "Direct play all" vuoto e apre sempre
   `/Videos/{id}/stream?static=true`, senza transcodifica: ora un profilo senza DirectPlayProfiles né

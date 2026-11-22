@@ -78,6 +78,7 @@ struct StreamRow {
     is_forced: i64,
     is_external: i64,
     external_path: Option<String>,
+    codec_tag: Option<String>,
 }
 
 pub struct FileInfo {
@@ -119,7 +120,8 @@ pub async fn load_file(state: &Shared, file_id: i64) -> ApiResult<FileInfo> {
         return Err(ApiError::Forbidden("Percorso non valido".into()));
     }
     let streams: Vec<StreamRow> = sqlx::query_as(
-        "SELECT stream_index, kind, codec, profile, level, bit_depth, width, height, hdr, channels, bitrate, language, title, is_default, is_forced, is_external, external_path
+        "SELECT stream_index, kind, codec, profile, level, bit_depth, width, height, hdr, channels, bitrate, language, title, is_default, is_forced, is_external,
+                external_path, codec_tag
          FROM media_streams WHERE file_id = ? ORDER BY stream_index",
     )
     .bind(file_id)
@@ -145,6 +147,7 @@ pub async fn load_file(state: &Shared, file_id: i64) -> ApiResult<FileInfo> {
                     height: s.height.unwrap_or(0) as u32,
                     hdr: s.hdr.clone(),
                     bitrate: s.bitrate.map(|b| b as u64),
+                    codec_tag: s.codec_tag.clone(),
                 })
             }
             "audio" => media.audio.push(AudioInfo {
