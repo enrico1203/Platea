@@ -19,6 +19,16 @@ val keystoreProps = Properties().apply {
     if (f.exists()) f.inputStream().use { load(it) }
 }
 
+// Jar di Android usati da Robolectric: SDK 34 per @Config(sdk = [34]) dei test, SDK 35 (compileSdk) per caricare le
+// risorse dell'app. Le versioni sono quelle che Robolectric 4.14.1 cerca: se si cambia Robolectric, compileSdk o l'SDK
+// dei test vanno aggiornate (il nome del jar mancante compare nell'errore dei test).
+val robolectricSdk: Configuration by configurations.creating
+val robolectricJarsDir = layout.buildDirectory.dir("robolectric-jars")
+val robolectricJars = tasks.register<Copy>("robolectricJars") {
+    from(robolectricSdk)
+    into(robolectricJarsDir)
+}
+
 android {
     namespace = "app.platea"
     compileSdk = 35
@@ -84,11 +94,18 @@ android {
             // Un test bloccato (server di prova che non risponde, Robolectric fermo) non deve tenere ferma la build:
             // il task si interrompe dopo 15 minuti, ogni singolo test dopo 2 (regola JUnit nei test).
             it.timeout.set(Duration.ofMinutes(15))
+            // Il jar di Android per Robolectric lo scarica Gradle (con i suoi tentativi e la sua cache), non Robolectric
+            // durante i test: il suo download senza tentativi falliva a volte in CI e faceva cadere quasi tutti i test.
+            it.dependsOn(robolectricJars)
+            it.systemProperty("robolectric.offline", "true")
+            it.systemProperty("robolectric.dependency.dir", robolectricJarsDir.get().asFile.absolutePath)
         }
     }
 }
 
 dependencies {
+    robolectricSdk("org.robolectric:android-all-instrumented:14-robolectric-10818077-i7")
+    robolectricSdk("org.robolectric:android-all-instrumented:15-robolectric-12650502-i7")
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
     implementation(composeBom)
     implementation("androidx.compose.ui:ui")

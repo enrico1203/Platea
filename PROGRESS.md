@@ -477,6 +477,11 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-22 — CI Android: falliva a intermittenza (33 test su 40) perché Robolectric scaricava da solo, durante i test e
+  senza tentativi, i jar `android-all-instrumented` (SDK 34 dei test e SDK 35 di `compileSdk`, ~150 MB l'uno). Ora li
+  risolve Gradle (configurazione `robolectricSdk` in `Android/app/build.gradle.kts`, task `robolectricJars`, con i suoi
+  tentativi e la cache di `setup-java`) e Robolectric gira con `robolectric.offline=true`. Se si cambia Robolectric,
+  `compileSdk` o l'SDK dei test, aggiornare le due versioni (il nome del jar mancante compare nell'errore).
 - 2026-11-22 — **0.1.40** (solo server): HLS delle app Jellyfin con gli indirizzi di Jellyfin. Con la 0.1.39 Infuse
   scaricava `/api/v1/hls/{s}/master.m3u8` ma risolveva `main.m3u8` sotto `/Videos/{id}/` (e ci aggiungeva `userId`).
   Confronto col server Jellyfin (`MediaBrowser.Model/Dlna/StreamInfo.ToUrl`, `Jellyfin.Api/Helpers/DynamicHlsHelper`,
