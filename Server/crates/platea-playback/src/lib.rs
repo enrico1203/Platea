@@ -54,6 +54,10 @@ pub struct DeviceProfile {
     pub hls_video_codecs: Vec<String>,
     /// Codec audio accettati dentro i segmenti HLS.
     pub hls_audio_codecs: Vec<String>,
+    /// Codec video che il client, quando sono copiati, vuole in segmenti MPEG-TS e non fMP4. Le app Jellyfin elencano
+    /// i profili HLS in ordine di preferenza e Jellyfin usa il primo compatibile (Jellyfin per Android TV: TS prima di
+    /// MP4). Vuoto: HEVC e AV1 copiati vanno in fMP4 (Safari vuole così l'HEVC).
+    pub hls_ts_video_codecs: Vec<String>,
 }
 
 impl Default for DeviceProfile {
@@ -84,6 +88,7 @@ impl Default for DeviceProfile {
             protocols: vec!["file".into(), "hls".into()],
             hls_video_codecs: vec!["h264".into()],
             hls_audio_codecs: vec!["aac".into(), "mp3".into()],
+            hls_ts_video_codecs: vec![],
         }
     }
 }

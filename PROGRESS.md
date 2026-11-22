@@ -479,6 +479,15 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-22 — **0.1.42**: HEVC copiato in MPEG-TS per le app Jellyfin che lo chiedono. Con Bitstream E-AC3 disattivato,
+  Jellyfin per Android TV 0.20 (Fire TV) riceveva il remux HLS (HEVC copiato, E-AC3 → AAC) in fMP4: scaricava master,
+  main, init e due segmenti, poi errore del player e nuovo PlaybackInfo ogni ~1,5 s (l'app riprova, dopo 3 errori chiude).
+  Jellyfin (`StreamBuilder.GetVideoTranscodeProfile`) ordina i profili di transcodifica per punteggio e a parità tiene il
+  primo: l'app elenca TS prima di MP4, quindi Jellyfin le manda TS. Nuovo `DeviceProfile.hls_ts_video_codecs` (HEVC/H.264
+  il cui primo profilo HLS è TS, da `jellyfin_profile::convert`); in `playback::start` quei codec copiati vanno in TS anche
+  con `fmp4_always`. Web UI e Swiftfin (MP4 per primo) invariati. Non ancora visto funzionare sulla Fire TV.
+  Sull'E-AC3 in file diretto senza audio: l'utente conferma che succede anche con un server Jellyfin, quindi è il
+  dispositivo (Fire TV → TV), non Platea.
 - 2026-11-22 — **0.1.41** (solo server): lo stream senza token segue l'IP del dispositivo. Findroid apre
   `/Videos/{id}/stream?static=true` senza token né `PlaySessionId`, quindi il permesso del PlaybackInfo lo riconosceva
   solo dall'IP. Un utente con Findroid: stream ok per ~2 min, poi 401 a ogni richiesta (Range) mentre `Progress` col token

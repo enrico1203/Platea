@@ -1239,7 +1239,7 @@ const en = {
       keep_segments_behind: "Segments kept behind playback",
       played_threshold_percent: "\"Watched\" threshold (%)",
       fmp4_always: "fMP4 segments for H.264 too",
-      fmp4_always_hint: "Copied HEVC and AV1 always use fMP4; with this option H.264 does too. MPEG-TS stays for transcoding.",
+      fmp4_always_hint: "Copied HEVC and AV1 use fMP4 (except for apps that ask for MPEG-TS, like Jellyfin for Android TV); with this option H.264 does too. MPEG-TS stays for transcoding.",
       trickplay_interval_seconds: "Thumbnail interval (s)",
       trickplay_width: "Thumbnail width (px)",
       trickplay_threads: "Threads for thumbnails",

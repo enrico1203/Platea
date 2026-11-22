@@ -165,7 +165,21 @@ pub fn convert(p: &Value, max_bitrate: Option<u64>) -> DeviceProfile {
     let hls = |t: &&Value| {
         t["Type"].as_str().is_none_or(|x| x.eq_ignore_ascii_case("video")) && t["Protocol"].as_str().is_some_and(|x| x.eq_ignore_ascii_case("hls"))
     };
+    // Contenitore dei segmenti come in Jellyfin (`StreamBuilder.GetVideoTranscodeProfile`): a parità di punteggio vince
+    // il primo profilo HLS che accetta il codec. Si guarda solo per HEVC e H.264, gli unici che vanno anche in TS.
+    let mut seen_hls_codecs: Vec<String> = Vec::new();
+    out.hls_ts_video_codecs.clear();
     for t in p["TranscodingProfiles"].as_array().into_iter().flatten().filter(hls) {
+        let is_ts = t["Container"].as_str().is_some_and(|c| c.eq_ignore_ascii_case("ts") || c.eq_ignore_ascii_case("mpegts"));
+        for c in list(&t["VideoCodec"]) {
+            let c = video_codec(&c);
+            if !seen_hls_codecs.contains(&c) {
+                if is_ts && matches!(c.as_str(), "hevc" | "h264") {
+                    out.hls_ts_video_codecs.push(c.clone());
+                }
+                seen_hls_codecs.push(c);
+            }
+        }
         if !out.protocols.iter().any(|x| x == "hls") {
             out.protocols.push("hls".into());
         }
@@ -326,6 +340,20 @@ mod tests {
         assert_ne!(dec.method, platea_playback::Method::DirectPlay);
     }
 
+    #[test]
+    fn hls_container_follows_profile_order() {
+        let mp4_first = json!({ "TranscodingProfiles": [
+            { "Type": "Video", "Container": "mp4", "Protocol": "hls", "VideoCodec": "hevc,h264", "AudioCodec": "aac" },
+            { "Type": "Video", "Container": "ts", "Protocol": "hls", "VideoCodec": "h264,hevc", "AudioCodec": "aac" }
+        ]});
+        assert!(convert(&mp4_first, None).hls_ts_video_codecs.is_empty());
+        let mixed = json!({ "TranscodingProfiles": [
+            { "Type": "Video", "Container": "ts", "Protocol": "hls", "VideoCodec": "h264", "AudioCodec": "aac" },
+            { "Type": "Video", "Container": "mp4", "Protocol": "hls", "VideoCodec": "hevc,av1", "AudioCodec": "aac" }
+        ]});
+        assert_eq!(convert(&mixed, None).hls_ts_video_codecs, vec!["h264"]);
+    }
+
     /// Profilo come lo costruisce Jellyfin per Android TV 0.20 (`util/profile/deviceProfile.kt`) su un dispositivo
     /// con HEVC Main 10, HDR10 e Dolby Vision, senza AV1 né VC1, con E-AC3 in bitstream spento.
     #[test]
@@ -364,6 +392,8 @@ mod tests {
         assert!(!d.audio_codecs.iter().any(|a| a.codec == "eac3"));
         assert!(d.audio_codecs.iter().all(|a| a.max_channels == Some(8)));
         assert_eq!(d.hls_audio_codecs, vec!["aac", "ac3", "mp3"]);
+        // Come Jellyfin: il primo profilo HLS che accetta il codec è TS, quindi HEVC e H.264 copiati vanno in TS.
+        assert_eq!(d.hls_ts_video_codecs, vec!["hevc", "h264"]);
         assert_eq!(d.max_bitrate, Some(120_000_000));
 
         let req =

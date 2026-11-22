@@ -1240,7 +1240,7 @@ const it = {
       keep_segments_behind: "Segmenti conservati dietro la visione",
       played_threshold_percent: "Soglia \"visto\" (%)",
       fmp4_always: "Segmenti fMP4 anche per H.264",
-      fmp4_always_hint: "HEVC e AV1 copiati usano sempre fMP4; con questa opzione anche H.264. MPEG-TS resta per la transcodifica.",
+      fmp4_always_hint: "HEVC e AV1 copiati usano fMP4 (tranne per le app che chiedono MPEG-TS, come Jellyfin per Android TV); con questa opzione anche H.264. MPEG-TS resta per la transcodifica.",
       trickplay_interval_seconds: "Intervallo delle miniature (s)",
       trickplay_width: "Larghezza delle miniature (px)",
       trickplay_threads: "Thread per le miniature",

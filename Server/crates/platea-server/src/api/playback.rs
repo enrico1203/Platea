@@ -487,10 +487,21 @@ pub async fn start(state: Shared, user: AuthUser, req: InfoReq) -> ApiResult<Val
             sw_preset: ts.sw_preset.clone(),
             sw_crf: ts.sw_crf,
             tonemapx: state.ffmpeg.get().is_jellyfin,
-            // HEVC e AV1 copiati viaggiano solo in fMP4; H.264 e la transcodifica restano in MPEG-TS.
-            fmp4: match &decision.video {
-                VideoAction::Copy => s.playback.fmp4_always || file.media.video.as_ref().is_some_and(|v| v.codec == "hevc" || v.codec == "av1"),
-                VideoAction::Transcode { codec, .. } => codec == "hevc" || codec == "av1",
+            // HEVC e AV1 viaggiano in fMP4; H.264 resta in MPEG-TS. Un'app che vuole l'HEVC in TS (Jellyfin per
+            // Android TV, come fa Jellyfin) lo riceve in TS: con fMP4 il suo ExoPlayer andava in errore dopo 2 segmenti.
+            fmp4: {
+                let ts_ok = |c: &str| req.profile.hls_ts_video_codecs.iter().any(|x| x == c);
+                match &decision.video {
+                    VideoAction::Copy => file.media.video.as_ref().is_some_and(|v| {
+                        let c = v.codec.as_str();
+                        if ts_ok(c) {
+                            false
+                        } else {
+                            s.playback.fmp4_always || c == "hevc" || c == "av1"
+                        }
+                    }),
+                    VideoAction::Transcode { codec, .. } => (codec == "hevc" && !ts_ok("hevc")) || codec == "av1",
+                }
             },
             run: 0,
         };
