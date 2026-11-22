@@ -477,6 +477,16 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-22 — **0.1.38** (solo server): "Transcodifica" di Infuse 8.5. Dalla prova dell'utente (log della 0.1.37):
+  scelta una qualità, Infuse manda `POST /Items/{id}/PlaybackInfo` con `MaxStreamingBitrate=3000000`, `IsPlayback`,
+  `AudioStreamIndex`, `SubtitleStreamIndex=-1`, `CurrentPlaySessionId`, `MediaSourceId` e un DeviceProfile senza nome;
+  alla nostra risposta senza `TranscodingUrl` non chiede nessuno stream ed esce con errore. Ora: Infuse senza
+  `MaxStreamingBitrate` → file diretto come prima; con `MaxStreamingBitrate` → `jellyfin_profile::plays_everything`
+  (accetta il file com'è, HDR/DV e sottotitoli compresi; unico limite il bitrate; HLS con i codec dei suoi
+  TranscodingProfiles, se no H.264/AAC) e la stessa strada delle altre app: sotto il limite file diretto, sopra HLS
+  con `TranscodingUrl`. Per Infuse niente `direct_play_matches` (i suoi profili non descrivono cosa riproduce).
+  Il file si carica prima di costruire il profilo, così `EnableDirectPlay=false` vale anche per Infuse. Nel log della
+  richiesta anche quanti DirectPlayProfiles e i TranscodingProfiles dell'app. Test: `infuse_quality_choice`.
 - 2026-11-22 — **0.1.37** (solo server): Infuse controllato. Codice chiuso; documentazione pubblica di Firecore
   (support.firecore.com 360006462093, blog "Infuse 8.5 - Smarter Streaming", thread 60456 della community) dice le
   funzioni ma non gli endpoint. Stato: Infuse 8.5.10 in modalità diretta ("Infuse-Direct"); Platea gli dà sempre il

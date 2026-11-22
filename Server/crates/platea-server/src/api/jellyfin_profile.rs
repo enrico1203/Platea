@@ -215,6 +215,21 @@ pub fn convert(p: &Value, max_bitrate: Option<u64>) -> DeviceProfile {
     out
 }
 
+/// Profilo per un'app che riproduce da sé qualsiasi file (Infuse): accetta il file così com'è, tracce e sottotitoli
+/// compresi, e lascia come unico limite il bitrate chiesto. Sopra quel bitrate si converte in HLS con i codec che
+/// l'app dichiara nei TranscodingProfiles (H.264 e AAC se non ne dichiara).
+pub fn plays_everything(p: &Value, media: &platea_playback::MediaInfo, max_bitrate: Option<u64>) -> DeviceProfile {
+    let mut out = convert(p, max_bitrate);
+    out.containers = vec![media.container.clone()];
+    out.video_codecs = media.video.iter().map(|v| VideoCodecSupport { codec: v.codec.clone(), ..Default::default() }).collect();
+    out.audio_codecs = media.audio.iter().map(|a| AudioCodecSupport { codec: a.codec.clone(), max_channels: None }).collect();
+    out.hdr = ["hdr10", "hdr10plus", "hlg", "dovi"].map(String::from).to_vec();
+    out.subtitle_text = ["srt", "ass", "vtt"].map(String::from).to_vec();
+    out.subtitle_image = ["pgs", "dvdsub"].map(String::from).to_vec();
+    out.protocols = vec!["file".into(), "hls".into()];
+    out
+}
+
 /// Il file va in direct play solo se contenitore, video e audio stanno nello stesso `DirectPlayProfile`, come in
 /// Jellyfin. `convert` li unisce (il profilo di Platea è uno solo): Swiftfin con AVPlayer ne ha uno per contenitore
 /// (AVI solo con MJPEG, MP3 solo in MOV) e senza questo controllo un AVI MPEG-4 + MP3 risulterebbe riproducibile.
@@ -474,5 +489,26 @@ mod tests {
         let d = convert(&p, None);
         assert!(d.containers.is_empty() && !d.protocols.contains(&"hls".to_string()));
         assert_eq!(d.subtitle_text, vec!["srt", "ass"]);
+    }
+
+    /// Infuse 8.5, "Transcodifica" a 3 Mbit/s: profilo senza TranscodingProfiles, file HEVC 4K DV con E-AC3.
+    #[test]
+    fn infuse_quality_choice() {
+        let p = json!({});
+        let mut m = media("mkv", "hevc", "eac3");
+        m.bitrate = Some(25_000_000);
+        m.video.as_mut().unwrap().hdr = Some("dovi".into());
+        // Senza limite: tutto diretto, anche DV e E-AC3.
+        let d = plays_everything(&p, &m, None);
+        assert_eq!(platea_playback::decide(&m, &d, &req()).unwrap().method, platea_playback::Method::DirectPlay);
+        // 3 Mbit/s: conversione in HLS H.264 + AAC, con tonemapping.
+        let d = plays_everything(&p, &m, Some(3_000_000));
+        let dec = platea_playback::decide(&m, &d, &req()).unwrap();
+        assert_eq!(dec.method, platea_playback::Method::Transcode);
+        assert!(matches!(dec.video, platea_playback::VideoAction::Transcode { ref codec, bitrate, .. } if codec == "h264" && bitrate <= 3_000_000));
+        assert_eq!(d.hls_audio_codecs, vec!["aac"]);
+        // File già sotto il limite: resta diretto.
+        m.bitrate = Some(2_000_000);
+        assert_eq!(platea_playback::decide(&m, &d, &req()).unwrap().method, platea_playback::Method::DirectPlay);
     }
 }

@@ -1908,6 +1908,8 @@ async fn playback_info(
         query = %request_params(uri.query()),
         body = %body_params(&b),
         profilo = %b["DeviceProfile"]["Name"].as_str().unwrap_or(if b["DeviceProfile"].is_object() { "senza nome" } else { "nessuno" }),
+        profili_direct_play = b["DeviceProfile"]["DirectPlayProfiles"].as_array().map_or(0, |a| a.len()),
+        profili_transcodifica = %b["DeviceProfile"]["TranscodingProfiles"].to_string(),
         "app Jellyfin: richiesta PlaybackInfo"
     );
     let direct = || {
@@ -1916,14 +1918,24 @@ async fn playback_info(
         Json(json!({ "MediaSources": sources.clone(), "PlaySessionId": play_session }))
     };
     let Some(profile_json) = b.get("DeviceProfile").filter(|p| p.is_object()) else { return Ok(direct()) };
+    let max_bitrate = num("maxstreamingbitrate", "MaxStreamingBitrate").filter(|b| *b > 0).map(|b| b as u64);
+    // Infuse riproduce da sé quasi ogni formato: file diretto, salvo quando l'utente sceglie una qualità
+    // ("Transcodifica" di Infuse 8.5, che manda MaxStreamingBitrate e vuole un `TranscodingUrl`).
     // Findroid manda un profilo "Direct play all" senza profili di direct play né di transcodifica e apre comunque
     // il file con `static=true`: una conversione non la userebbe mai.
     let empty = |k: &str| profile_json[k].as_array().is_none_or(|a| a.is_empty());
-    if infuse || !wants_transcoding || !matches!(row.kind.as_str(), "movie" | "episode") || (empty("DirectPlayProfiles") && empty("TranscodingProfiles")) {
+    let findroid = !infuse && empty("DirectPlayProfiles") && empty("TranscodingProfiles");
+    if (infuse && max_bitrate.is_none()) || findroid || !wants_transcoding || !matches!(row.kind.as_str(), "movie" | "episode") {
         return Ok(direct());
     }
-    let max_bitrate = num("maxstreamingbitrate", "MaxStreamingBitrate").filter(|b| *b > 0).map(|b| b as u64);
-    let mut profile = super::jellyfin_profile::convert(profile_json, max_bitrate);
+    let source = b["MediaSourceId"].as_str().map(String::from).or_else(|| q.get("mediasourceid").cloned());
+    let fid = choose_file(&state, id, source.as_deref()).await?;
+    let info = crate::api::playback::load_file(&state, fid).await?;
+    let mut profile = if infuse {
+        super::jellyfin_profile::plays_everything(profile_json, &info.media, max_bitrate)
+    } else {
+        super::jellyfin_profile::convert(profile_json, max_bitrate)
+    };
     // Direct play rifiutato dall'app (Jellyfin per Android TV dopo un errore o un cambio di traccia audio): le serve un
     // `TranscodingUrl`, senza va in crash. Niente file diretto nel profilo, così si passa da HLS (remux se basta).
     let no_direct_play = b["EnableDirectPlay"].as_bool() == Some(false) || q.get("enabledirectplay").is_some_and(|v| v.eq_ignore_ascii_case("false"));
@@ -1931,9 +1943,6 @@ async fn playback_info(
         profile.containers.clear();
         profile.protocols.retain(|p| p == "hls");
     }
-    let source = b["MediaSourceId"].as_str().map(String::from).or_else(|| q.get("mediasourceid").cloned());
-    let fid = choose_file(&state, id, source.as_deref()).await?;
-    let info = crate::api::playback::load_file(&state, fid).await?;
     let audio = num("audiostreamindex", "AudioStreamIndex").map(|i| i as u32);
     let subtitle = num("subtitlestreamindex", "SubtitleStreamIndex").filter(|i| *i >= 0).map(|i| i as u32);
     let preq = platea_playback::PlaybackRequest {
@@ -1946,7 +1955,8 @@ async fn playback_info(
         force_transcode: false,
     };
     let mut decision = platea_playback::decide(&info.media, &profile, &preq);
-    if decision.as_ref().is_ok_and(|d| d.method == platea_playback::Method::DirectPlay)
+    if !infuse
+        && decision.as_ref().is_ok_and(|d| d.method == platea_playback::Method::DirectPlay)
         && !super::jellyfin_profile::direct_play_matches(profile_json, &info.media, audio)
     {
         // Contenitore, video e audio ammessi ma da profili diversi: niente file diretto.
