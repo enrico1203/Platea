@@ -81,15 +81,28 @@ pub fn convert(p: &Value, max_bitrate: Option<u64>) -> DeviceProfile {
         }
     }
     // Vincoli per codec: profondità di bit, livello, risoluzione, profili, canali, intervallo dinamico.
+    let mut unsupported: Vec<String> = Vec::new();
+    // HDR dichiarato per esclusione (Jellyfin per Android TV): `VideoRangeType NotEquals "DOVI|HDR10Plus|…"`.
+    let mut hdr_excluded: Option<Vec<String>> = None;
     for cp in p["CodecProfiles"].as_array().into_iter().flatten() {
         let kind = cp["Type"].as_str().unwrap_or("").to_ascii_lowercase();
         let codecs = list(&cp["Codec"]);
+        let conditional = cp["ApplyConditions"].as_array().is_some_and(|a| !a.is_empty());
         for cond in cp["Conditions"].as_array().into_iter().flatten() {
             let prop = cond["Property"].as_str().unwrap_or("");
             let op = cond["Condition"].as_str().unwrap_or("");
             let val = cond["Value"].as_str().unwrap_or("");
             let num = val.parse::<u32>().ok();
             if kind == "video" {
+                // Codec che il dispositivo non decodifica: l'app lo elenca nel direct play e lo esclude così.
+                if (prop, op) == ("VideoProfile", "Equals") && val.eq_ignore_ascii_case("none") && !conditional {
+                    unsupported.extend(codecs.iter().map(|c| video_codec(c)));
+                    continue;
+                }
+                if prop == "VideoRangeType" && op == "NotEquals" && (codecs.is_empty() || codecs.iter().any(|c| video_codec(c) == "hevc")) {
+                    hdr_excluded = Some(list(&cond["Value"]));
+                    continue;
+                }
                 for v in
                     out.video_codecs.iter_mut().filter(|v| codecs.is_empty() || codecs.contains(&v.codec) || codecs.iter().any(|c| video_codec(c) == v.codec))
                 {
@@ -99,6 +112,9 @@ pub fn convert(p: &Value, max_bitrate: Option<u64>) -> DeviceProfile {
                         ("Width", "LessThanEqual") => v.max_width = num,
                         ("Height", "LessThanEqual") => v.max_height = num,
                         ("VideoProfile", "EqualsAny") => v.profiles = list(&cond["Value"]),
+                        ("VideoProfile", "Equals") if !conditional => v.profiles = vec![val.to_ascii_lowercase()],
+                        // AV1 senza Main 10: solo 8 bit.
+                        ("VideoProfile", "NotEquals") if val.eq_ignore_ascii_case("main 10") => v.max_bit_depth = Some(8),
                         _ => {}
                     }
                 }
@@ -127,11 +143,32 @@ pub fn convert(p: &Value, max_bitrate: Option<u64>) -> DeviceProfile {
             }
         }
     }
-    // Transcodifica in HLS: i codec accettati nei segmenti.
-    for t in p["TranscodingProfiles"].as_array().into_iter().flatten() {
-        if t["Type"].as_str().is_some_and(|x| !x.eq_ignore_ascii_case("video")) || !t["Protocol"].as_str().is_some_and(|x| x.eq_ignore_ascii_case("hls")) {
-            continue;
+    out.video_codecs.retain(|v| !unsupported.contains(&v.codec));
+    if let Some(excluded) = hdr_excluded {
+        // Supportato ciò che non è escluso, come fa Jellyfin. HLG non è mai elencato dall'app: segue l'HDR10.
+        let has = |n: &str| excluded.iter().any(|x| x == n);
+        for (name, ours) in [("hdr10", "hdr10"), ("hdr10plus", "hdr10plus"), ("dovi", "dovi")] {
+            if !has(name) && !out.hdr.iter().any(|h| h == ours) {
+                out.hdr.push(ours.into());
+            }
         }
+        if !has("hlg") && !has("hdr10") && !out.hdr.iter().any(|h| h == "hlg") {
+            out.hdr.push("hlg".into());
+        }
+    }
+    // Transcodifica in HLS: i codec accettati nei segmenti. L'audio dal profilo MPEG-TS, se c'è: è il più stretto
+    // (in fMP4 le app accettano anche FLAC, Opus, DTS) e Platea non sa ancora se i segmenti saranno TS o fMP4.
+    let hls = |t: &&Value| {
+        t["Type"].as_str().is_none_or(|x| x.eq_ignore_ascii_case("video")) && t["Protocol"].as_str().is_some_and(|x| x.eq_ignore_ascii_case("hls"))
+    };
+    let ts_audio: Option<Vec<String>> = p["TranscodingProfiles"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(hls)
+        .find(|t| t["Container"].as_str().is_some_and(|c| container(&c.to_ascii_lowercase()) == "ts"))
+        .map(|t| list(&t["AudioCodec"]).iter().map(|c| audio_codec(c)).collect());
+    for t in p["TranscodingProfiles"].as_array().into_iter().flatten().filter(hls) {
         if !out.protocols.iter().any(|x| x == "hls") {
             out.protocols.push("hls".into());
         }
@@ -141,8 +178,17 @@ pub fn convert(p: &Value, max_bitrate: Option<u64>) -> DeviceProfile {
                 out.hls_video_codecs.push(c);
             }
         }
-        for c in list(&t["AudioCodec"]) {
-            let c = audio_codec(&c);
+        if ts_audio.is_none() {
+            for c in list(&t["AudioCodec"]) {
+                let c = audio_codec(&c);
+                if !out.hls_audio_codecs.contains(&c) {
+                    out.hls_audio_codecs.push(c);
+                }
+            }
+        }
+    }
+    if let Some(a) = ts_audio {
+        for c in a {
             if !out.hls_audio_codecs.contains(&c) {
                 out.hls_audio_codecs.push(c);
             }
@@ -255,5 +301,69 @@ mod tests {
             platea_playback::PlaybackRequest { allow_remux: true, allow_transcode: true, server_video_encoders: vec!["h264".into()], ..Default::default() };
         let dec = platea_playback::decide(&media, &d, &req).unwrap();
         assert_ne!(dec.method, platea_playback::Method::DirectPlay);
+    }
+
+    /// Profilo come lo costruisce Jellyfin per Android TV 0.20 (`util/profile/deviceProfile.kt`) su un dispositivo
+    /// con HEVC Main 10, HDR10 e Dolby Vision, senza AV1 né VC1, con E-AC3 in bitstream spento.
+    #[test]
+    fn android_tv_020_profile() {
+        let p = json!({
+            "Name": "AndroidTV-Default",
+            "MaxStreamingBitrate": 120000000,
+            "TranscodingProfiles": [
+                { "Type": "Video", "Container": "ts", "Protocol": "hls", "VideoCodec": "hevc,h264", "AudioCodec": "aac,ac3,mp3" },
+                { "Type": "Video", "Container": "mp4", "Protocol": "hls", "VideoCodec": "hevc,h264", "AudioCodec": "aac,ac3,mp3,alac,flac,opus,dts" },
+                { "Type": "Audio", "Container": "ts", "Protocol": "hls", "AudioCodec": "aac" }
+            ],
+            "DirectPlayProfiles": [
+                { "Type": "Video", "Container": "asf,hls,m4v,mkv,mov,mp4,ogm,ogv,ts,vob,webm,wmv,xvid",
+                  "VideoCodec": "av1,h264,hevc,mpeg,mpeg2video,vc1,vp8,vp9",
+                  "AudioCodec": "aac,aac_latm,ac3,alac,dca,dts,flac,mlp,mp2,mp3,opus,pcm_alaw,pcm_mulaw,pcm_s16le,pcm_s20le,pcm_s24le,truehd,vorbis" },
+                { "Type": "Audio", "AudioCodec": "aac,ac3" }
+            ],
+            "CodecProfiles": [
+                { "Type": "Video", "Codec": "hevc", "Conditions": [{ "Condition": "EqualsAny", "Property": "VideoProfile", "Value": "main|main 10", "IsRequired": false }] },
+                { "Type": "Video", "Codec": "hevc", "ApplyConditions": [{ "Condition": "Equals", "Property": "VideoProfile", "Value": "main" }],
+                  "Conditions": [{ "Condition": "LessThanEqual", "Property": "VideoLevel", "Value": "153" }] },
+                { "Type": "Video", "Codec": "av1", "Conditions": [{ "Condition": "Equals", "Property": "VideoProfile", "Value": "none" }] },
+                { "Type": "Video", "Codec": "vc1", "Conditions": [{ "Condition": "Equals", "Property": "VideoProfile", "Value": "none" }] },
+                { "Type": "Video", "Codec": "hevc",
+                  "ApplyConditions": [{ "Condition": "EqualsAny", "Property": "VideoRangeType", "Value": "DOVIInvalid|DOVIWithEL|HDR10Plus" }],
+                  "Conditions": [{ "Condition": "NotEquals", "Property": "VideoRangeType", "Value": "DOVIInvalid|DOVIWithEL|HDR10Plus" }] },
+                { "Type": "VideoAudio", "Conditions": [{ "Condition": "LessThanEqual", "Property": "AudioChannels", "Value": "8" }] }
+            ]
+        });
+        let d = convert(&p, None);
+        let codecs: Vec<&str> = d.video_codecs.iter().map(|v| v.codec.as_str()).collect();
+        assert_eq!(codecs, vec!["h264", "hevc", "mpeg", "mpeg2video", "vp8", "vp9"]);
+        assert_eq!(d.hdr, vec!["hdr10", "dovi", "hlg"]);
+        // E-AC3 non dichiarato: va convertito, mai mandato diretto.
+        assert!(!d.audio_codecs.iter().any(|a| a.codec == "eac3"));
+        assert!(d.audio_codecs.iter().all(|a| a.max_channels == Some(8)));
+        assert_eq!(d.hls_audio_codecs, vec!["aac", "ac3", "mp3"]);
+        assert_eq!(d.max_bitrate, Some(120_000_000));
+
+        let req =
+            platea_playback::PlaybackRequest { allow_remux: true, allow_transcode: true, server_video_encoders: vec!["h264".into()], ..Default::default() };
+        let hevc = |hdr: Option<&str>, depth: u8| platea_playback::VideoInfo {
+            codec: "hevc".into(),
+            profile: Some(if depth == 10 { "main 10" } else { "main" }.into()),
+            bit_depth: Some(depth),
+            width: 3840,
+            height: 2160,
+            hdr: hdr.map(String::from),
+            ..Default::default()
+        };
+        let audio =
+            |codec: &str, ch: u32| platea_playback::AudioInfo { index: 1, codec: codec.into(), channels: ch, language: None, default: true, bitrate: None };
+        // Tulsa King S01E01: HEVC + E-AC3 2.0 → video copiato, audio convertito.
+        let m = platea_playback::MediaInfo { container: "mkv".into(), video: Some(hevc(None, 8)), audio: vec![audio("eac3", 2)], ..Default::default() };
+        let dec = platea_playback::decide(&m, &d, &req).unwrap();
+        assert_eq!(dec.method, platea_playback::Method::Remux);
+        assert!(matches!(dec.audio, platea_playback::AudioAction::Transcode { .. }));
+        // HEVC HDR10 + AC3: direct play, niente tonemapping.
+        let m =
+            platea_playback::MediaInfo { container: "mkv".into(), video: Some(hevc(Some("hdr10"), 10)), audio: vec![audio("ac3", 6)], ..Default::default() };
+        assert_eq!(platea_playback::decide(&m, &d, &req).unwrap().method, platea_playback::Method::DirectPlay);
     }
 }

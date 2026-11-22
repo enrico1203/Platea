@@ -477,6 +477,19 @@ Aggiornati il 15/11/2026. Stato dell'installazione dell'utente: in `PROGRESS.loc
 
 ## Registro
 
+- 2026-11-22 — **0.1.34** (solo server): profilo di Jellyfin per Android TV letto come lo scrive l'app (confronto con
+  `app/src/main/java/org/jellyfin/androidtv/util/profile/deviceProfile.kt` della v0.20.0). Tre errori in
+  `jellyfin_profile::convert`: (1) un codec che il dispositivo non decodifica l'app lo mette lo stesso nel direct play
+  e lo esclude con `VideoProfile Equals "none"` (AV1, VC1, HEVC sui dispositivi vecchi): era ignorato, ora il codec
+  viene tolto; `VideoProfile NotEquals "main 10"` (AV1 senza 10 bit) → solo 8 bit. (2) L'HDR l'app lo dichiara per
+  esclusione (`VideoRangeType NotEquals "DOVIInvalid|DOVIWithEL|HDR10Plus…"` con ApplyConditions, sul codice HEVC):
+  leggevamo solo `EqualsAny`, quindi per noi nessun HDR e ogni film HDR veniva convertito con tonemapping. Ora è
+  supportato ciò che non è escluso (HLG segue l'HDR10). (3) I codec audio HLS erano l'unione dei profili TS e fMP4:
+  ora quelli del profilo TS (in fMP4 l'app accetta anche FLAC, Opus, DTS, che in TS non vanno copiati).
+  Audio: l'app mette AC3/E-AC3/DTS/TrueHD nel direct play solo se li manda in passthrough via HDMI (impostazione
+  Bitstream: Auto = se l'uscita HDMI li dichiara), non li decodifica da sola; con "Downmix to stereo" solo AAC/MP2/MP3
+  e 2 canali. Ignorati e innocui: `MaxAudioChannels` (l'app lo manda nullo), `EnableDirectStream`, `AllowAudioStreamCopy`,
+  ApplyConditions sui livelli H.264/HEVC (vince l'ultimo livello dichiarato), RefFrames. Test: `android_tv_020_profile`.
 - 2026-11-22 — **0.1.33** (solo server): log dei codec audio dichiarati dalle app Jellyfin. Un utente non sentiva
   l'audio con Jellyfin per Android TV 0.20 su Fire TV Stick: un episodio con E-AC3 (2.0 ita, 5.1 eng) andava in
   direct play senza audio, un film con AC3 5.1 partiva bene. Il server si fida del profilo dell'app, ma il profilo
